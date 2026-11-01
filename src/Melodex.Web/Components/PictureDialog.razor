@@ -1,0 +1,98 @@
+@using Microsoft.AspNetCore.Components.Forms
+
+@*
+    Gives something a picture of its own, or takes it away so whatever stands in for it shows again: a playlist's
+    albums' covers, or a folder's icon.
+*@
+<Dialog Title="@Title" OnClose="CloseAsync">
+    <div class="playlist-cover-preview">
+        @if (_uploadUrl is not null)
+        {
+            <img class="cover" src="@_uploadUrl" alt="" />
+        }
+        else
+        {
+            @Preview
+        }
+    </div>
+    <div class="cover-upload row">
+        <label class="button">
+            <InputFile OnChange="UploadAsync" accept="image/jpeg,image/png,image/webp,image/gif" />
+            @(_upload is null ? "Choose a picture…" : "Choose another…")
+        </label>
+        <span class="muted small">A JPEG, PNG, WebP or GIF, up to 10 MB. Square pictures suit best.</span>
+    </div>
+    @if (Note is not null)
+    {
+        <p class="muted small">@Note</p>
+    }
+    @if (_error is not null) { <p class="error small">@_error</p> }
+    <div class="toolbar">
+        @if (HasOwn && _upload is null)
+        {
+            <button disabled="@_busy" @onclick="() => SaveAsync(null)">Remove the picture</button>
+        }
+        <span class="spacer"></span>
+        <button disabled="@_busy" @onclick="CloseAsync">Cancel</button>
+        <button class="primary" disabled="@(_busy || _upload is null)" @onclick="() => SaveAsync(_upload)">
+            @if (_busy) { <span class="spinner"></span> }
+            Use it
+        </button>
+    </div>
+</Dialog>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+
+    /// <summary>What it looks like now.</summary>
+    [Parameter] public RenderFragment? Preview { get; set; }
+
+    /// <summary>Whether it has a picture of its own now, which can be taken away.</summary>
+    [Parameter] public bool HasOwn { get; set; }
+
+    [Parameter] public string? Note { get; set; }
+
+    /// <summary>Saves the picture (base64), or with null takes it away. Throws to say why it couldn't.</summary>
+    [Parameter, EditorRequired] public Func<string?, Task> Save { get; set; } = null!;
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private const long MaxUpload = 10 * 1024 * 1024;
+
+    private string? _upload, _uploadUrl, _error;
+    private bool _busy;
+
+    private async Task UploadAsync(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        if (e.File.Size > MaxUpload)
+        {
+            _error = "That picture is bigger than 10 MB.";
+            return;
+        }
+        using var stream = e.File.OpenReadStream(MaxUpload);
+        using var copy = new MemoryStream();
+        await stream.CopyToAsync(copy);
+        _upload = Convert.ToBase64String(copy.ToArray());
+        _uploadUrl = $"data:{e.File.ContentType};base64,{_upload}";
+    }
+
+    private Task CloseAsync() => _busy ? Task.CompletedTask : OnClose.InvokeAsync();
+
+    private async Task SaveAsync(string? upload)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Save(upload);
+            _busy = false;
+            await OnClose.InvokeAsync();
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            _error = e.Message;
+            _busy = false;
+        }
+    }
+}

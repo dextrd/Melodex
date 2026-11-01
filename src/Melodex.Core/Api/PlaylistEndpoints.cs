@@ -90,7 +90,7 @@ public static class PlaylistEndpoints
 
         playlists.MapGet("/{id:guid}/cover", async (Guid id, HttpContext http, PlaylistService service, CancellationToken ct) =>
                 Owner(http) is { } user
-                    ? await service.CoverAsync(user, id, ct) is { } cover ? Results.File(cover.Path, cover.ContentType) : Results.NotFound()
+                    ? await service.CoverAsync(user, id, ct) is { } cover ? Picture(http, cover) : Results.NotFound()
                     : NoOwner())
             .WithName("GetPlaylistCover").WithSummary("A playlist's own picture, if it has one; without, its albums' covers stand in for it.")
             .Produces(StatusCodes.Status200OK, contentType: "image/jpeg").Produces(StatusCodes.Status404NotFound);
@@ -107,8 +107,36 @@ public static class PlaylistEndpoints
             .WithName("RemovePlaylistCover").WithSummary("Take a playlist's own picture away, here and on the media server, so its albums' covers stand in again.")
             .Produces<PlaylistSummary>().Produces(StatusCodes.Status404NotFound);
 
+        playlists.MapGet("/folders", async (HttpContext http, PlaylistService service, CancellationToken ct) =>
+                Owner(http) is { } user ? Results.Ok(await service.FoldersAsync(user, ct)) : NoOwner())
+            .WithName("ListPlaylistFolders").WithSummary("Your folders of playlists that have pictures of their own. Folders are parts of playlists' names.")
+            .Produces<IReadOnlyList<PlaylistFolderInfo>>();
+        playlists.MapGet("/folders/{id:guid}/cover", async (Guid id, HttpContext http, PlaylistService service, CancellationToken ct) =>
+                Owner(http) is { } user
+                    ? await service.FolderCoverAsync(user, id, ct) is { } cover ? Picture(http, cover) : Results.NotFound()
+                    : NoOwner())
+            .WithName("GetPlaylistFolderCover").WithSummary("A folder's picture.")
+            .Produces(StatusCodes.Status200OK, contentType: "image/jpeg").Produces(StatusCodes.Status404NotFound);
+        playlists.MapPut("/folders/cover", async (SetPlaylistFolderCover body, HttpContext http, PlaylistService service, CancellationToken ct) =>
+                Owner(http) is { } user ? await Refusable(async () => Results.Ok(await service.SetFolderCoverAsync(user, body.Path, body.Upload, ct))) : NoOwner())
+            .WithName("SetPlaylistFolderCover")
+            .WithSummary("Give a folder of playlists a picture of its own: base64, up to 10 MB, JPEG, PNG, WebP or GIF. It stays here, as media servers "
+                         + "have no folders.")
+            .Produces<PlaylistFolderInfo>().ProducesValidationProblem();
+        playlists.MapDelete("/folders/cover", async (string path, HttpContext http, PlaylistService service, CancellationToken ct) =>
+                Owner(http) is { } user ? await Refusable(async () => Results.Ok(await service.SetFolderCoverAsync(user, path, null, ct))) : NoOwner())
+            .WithName("RemovePlaylistFolderCover").WithSummary("Take a folder's picture away, so the folder icon stands for it again.")
+            .Produces<PlaylistFolderInfo>().ProducesValidationProblem();
+
         MapLogins(api);
         return api;
+    }
+
+    // A picture's address changes with it, so the browser keeps it as long as it likes.
+    private static IResult Picture(HttpContext http, (string Path, string ContentType) cover)
+    {
+        http.Response.Headers.CacheControl = "private, max-age=31536000, immutable";
+        return Results.File(cover.Path, cover.ContentType);
     }
 
     // Your own media server login, and the admin's way of setting someone else's.

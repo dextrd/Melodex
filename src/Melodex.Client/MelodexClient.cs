@@ -588,6 +588,20 @@ public sealed class MelodexClient(HttpClient http)
     }
 
     /// <summary>Gives the playlist a picture of its own, or with null, takes it away.</summary>
+    /// <summary>Your folders of playlists that have pictures of their own.</summary>
+    public async Task<IReadOnlyList<PlaylistFolderInfo>> GetPlaylistFoldersAsync(CancellationToken ct = default) =>
+        (await http.GetFromJsonAsync<IReadOnlyList<PlaylistFolderInfo>>($"{Api}/playlists/folders", MelodexJson.Options, ct))!;
+
+    /// <summary>Gives a folder of playlists a picture of its own, or with null takes it away.</summary>
+    public async Task<PlaylistFolderInfo> SetPlaylistFolderCoverAsync(string path, string? upload, CancellationToken ct = default)
+    {
+        using var response = upload is null
+            ? await http.DeleteAsync($"{Api}/playlists/folders/cover?path={Uri.EscapeDataString(path)}", ct)
+            : await http.PutAsJsonAsync($"{Api}/playlists/folders/cover", new SetPlaylistFolderCover(path, upload), MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<PlaylistFolderInfo>(MelodexJson.Options, ct))!;
+    }
+
     public async Task<PlaylistSummary> SetPlaylistCoverAsync(Guid id, SetPlaylistCover? cover, CancellationToken ct = default)
     {
         using var response = cover is null

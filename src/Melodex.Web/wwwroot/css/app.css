@@ -279,6 +279,9 @@ p.error { max-width: none; white-space: normal; }
 .page-head { display: flex; gap: 1rem; align-items: flex-end; }
 .page-head > .cover { width: 96px; flex: none; }
 @media (max-width: 640px) { .page-head > .cover { width: 64px; } }
+/* A list straight under a page's head keeps clear of its buttons. */
+.page-head + .card, .page-head + .notice + .card, .page-head + .error + .card { margin-top: 1rem; }
+.crumbs { margin-bottom: .35rem; }
 
 /* Collapsible sections on the artist page. */
 h2.section { margin: 1.5rem 0 .5rem; }
@@ -1165,3 +1168,8 @@ input[type=search]:disabled { opacity: .6; }
     .lyrics-actions .icon-button > span:not(.spinner) { display: none; }
     .lyrics-actions .icon-button:has(span:not(.spinner)) { padding: 0; }
 }
+
+/* Playlists' folders as squares: the folder icon, or a picture of the folder's own; and the way back up. */
+.cover.folder-cover { display: grid; place-items: center; background: var(--bg); color: var(--accent); }
+.cover.folder-cover svg { width: 46%; height: 46%; fill: currentColor; fill-opacity: .18; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+.folder-crumbs { display: flex; flex-wrap: wrap; gap: .4rem; align-items: baseline; margin: 1rem 0 .75rem; }

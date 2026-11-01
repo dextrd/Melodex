@@ -20,10 +20,11 @@ else
     var summary = _playlist.Playlist;
     var folders = PlaylistNames.Folders(summary.Name, Delimiter);
     var playable = PlaylistNames.Playable(_playlist.Songs);
+    @* The way back sits above the head, so the cover is as tall as the title, details and buttons beside it. *@
+    <div class="muted small crumbs"><a href="playlists">Playlists</a>@foreach (var folder in folders) { <text> › @folder</text> }</div>
     <div class="page-head">
         <PlaylistCover Covers="summary.Covers" />
         <div>
-            <div class="muted small"><a href="playlists">Playlists</a>@foreach (var folder in folders) { <text> › @folder</text> }</div>
             <h1>@PlaylistNames.Leaf(summary.Name, Delimiter)</h1>
             @if (summary.Comment is not null) { <p class="muted">@summary.Comment</p> }
             <div class="row muted small">

@@ -89,3 +89,17 @@ public class PlaylistEntry
     /// <summary>Its ID on the media server, once found there.</summary>
     public string? ServerTrackId { get; set; }
 }
+
+/// <summary>A folder of a user's playlists with a picture of its own. Folders are only parts of playlists' names, so one has a row only for its picture.</summary>
+public class PlaylistFolder
+{
+    public Guid Id { get; set; } = Guid.CreateVersion7();
+    public Guid UserId { get; set; }
+
+    /// <summary>The folder's path, its parents' names and its own joined by the user's separator, as in playlists' names.</summary>
+    public required string Path { get; set; }
+
+    public string? CoverFile { get; set; }
+    public string? CoverType { get; set; }
+    public string? CoverHash { get; set; }
+}

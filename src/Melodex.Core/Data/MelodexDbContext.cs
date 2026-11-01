@@ -32,6 +32,7 @@ public class MelodexDbContext(DbContextOptions<MelodexDbContext> options) : DbCo
     public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
     public DbSet<Playlist> Playlists => Set<Playlist>();
     public DbSet<PlaylistEntry> PlaylistEntries => Set<PlaylistEntry>();
+    public DbSet<PlaylistFolder> PlaylistFolders => Set<PlaylistFolder>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -135,6 +136,12 @@ public class MelodexDbContext(DbContextOptions<MelodexDbContext> options) : DbCo
         {
             e.HasOne(p => p.User).WithMany().HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(p => p.UserId);
+        });
+
+        modelBuilder.Entity<PlaylistFolder>(e =>
+        {
+            e.HasOne<User>().WithMany().HasForeignKey(f => f.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(f => new { f.UserId, f.Path }).IsUnique();
         });
 
         modelBuilder.Entity<PlaylistEntry>(e =>

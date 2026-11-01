@@ -6,6 +6,7 @@ using Melodex.Client;
 using Melodex.Contracts.Plugins;
 using Melodex.Contracts.Plugins.Connectors;
 using Melodex.Core.Data;
+using Melodex.Core.Library;
 using Melodex.Core.Playlists;
 using Melodex.Core.Plugins;
 using Melodex.Core.Tests.Support;
@@ -123,6 +124,72 @@ public sealed class PlaylistTests : IDisposable
         server.Playlists.Clear();
         await SyncAsync(server);
         Assert.Empty(await _api.ListPlaylistsAsync());
+    }
+
+    [TestLibraryFact]
+    public async Task Songs_from_the_server_are_found_however_their_names_are_written()
+    {
+        await ScanAsync();
+        var (a, b) = await TwoTracksAsync();
+        var server = new FakePlaylistServer();
+
+        // Written otherwise: other apostrophes, other case, a featured artist, and the credit as a list.
+        static string Otherwise(string title) => title.Replace('\'', '‘').Replace('’', '\'').ToUpperInvariant() + " (feat. Somebody Else)";
+        server.Add("Loose", [new ServerTrack("s:a", null, Otherwise(a.Title), $"{a.ArtistCredit}; Somebody Else", null, null, null),
+            new ServerTrack("s:b", null, b.Title, "Nobody At All", null, null, null)]);
+        await SyncAsync(server);
+        var loose = Assert.Single(await _api.ListPlaylistsAsync());
+        var songs = (await _api.GetPlaylistAsync(loose.Id))!.Songs;
+        Assert.Equal(a.TrackId, songs[0].TrackId);
+        // The same title by someone else is someone else's.
+        Assert.Equal(PlaylistSongState.ServerOnly, songs[1].State);
+
+        // A song brought over before it could be found is looked for again.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MelodexDbContext>();
+            var entry = await db.PlaylistEntries.SingleAsync(e => e.ServerTrackId == "s:a");
+            entry.TrackId = null;
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(PlaylistSongState.ServerOnly, (await _api.GetPlaylistAsync(loose.Id))!.Songs[0].State);
+        await SyncAsync(server);
+        Assert.Equal(a.TrackId, (await _api.GetPlaylistAsync(loose.Id))!.Songs[0].TrackId);
+    }
+
+    [Fact]
+    public void Names_are_compared_by_their_letters_and_artists()
+    {
+        Assert.Equal(SongNames.TitleKey("Don’t Stop Me Now"), SongNames.TitleKey("Don't stop me now"));
+        Assert.Equal(SongNames.TitleKey("Under Pressure"), SongNames.TitleKey("Under Pressure (feat. David Bowie)"));
+        Assert.Equal(SongNames.TitleKey("Get Lucky"), SongNames.TitleKey("Get Lucky feat. Pharrell Williams"));
+        Assert.NotEqual(SongNames.TitleKey("Stay"), SongNames.TitleKey("Stay with Me"));
+        Assert.NotEqual(SongNames.TitleKey("All Too Well"), SongNames.TitleKey("All Too Well (Taylor's Version)"));
+        Assert.Equal(["queen", "davidbowie"], SongNames.ArtistKeys("Queen; David Bowie"));
+        Assert.Equal(["daftpunk", "pharrellwilliams", "nilerodgers"], SongNames.ArtistKeys("Daft Punk feat. Pharrell Williams & Nile Rodgers"));
+        Assert.Equal(["beyonce"], SongNames.ArtistKeys("Beyoncé"));
+    }
+
+    [Fact]
+    public async Task Folders_have_pictures_of_their_own_that_follow_them()
+    {
+        await _api.CreatePlaylistAsync(new CreatePlaylist("Moods/Calm/Evening"));
+        Assert.Empty(await _api.GetPlaylistFoldersAsync());
+
+        var set = await _api.SetPlaylistFolderCoverAsync("Moods/Calm", Convert.ToBase64String(Png(3)));
+        Assert.Equal("Moods/Calm", Assert.Single(await _api.GetPlaylistFoldersAsync()).Path);
+
+        // Its address changes with the picture, so the browser keeps it.
+        using var http = _factory.CreateSignedInClient();
+        using var picture = await http.GetAsync("/" + set.CoverUrl);
+        Assert.Equal(Png(3), await picture.Content.ReadAsByteArrayAsync());
+        Assert.Contains("immutable", picture.Headers.CacheControl!.ToString());
+
+        // Renamed, the picture goes with it; emptied, it goes.
+        await _api.RenamePlaylistFolderAsync(new RenamePlaylistFolder("Moods", "Feelings", "/"));
+        Assert.Equal("Feelings/Calm", Assert.Single(await _api.GetPlaylistFoldersAsync()).Path);
+        await _api.SetPlaylistFolderCoverAsync("Feelings/Calm", null);
+        Assert.Empty(await _api.GetPlaylistFoldersAsync());
     }
 
     [TestLibraryFact]

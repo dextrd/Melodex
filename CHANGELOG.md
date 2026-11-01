@@ -47,7 +47,9 @@ Everything on the way to 1.0.
   **Sync playlists** ticked in the Navidrome plugin, and each user's Navidrome login linked on their account page (kept
   encrypted), they're kept the same in Navidrome both ways, and formatting that moves files doesn't break them there.
   They're a tab of the Library page, as a list in folders or as squares, with search, sorting, and your pinned ones in a
-  row at the top. Each can have a picture of its own, which goes to Navidrome and comes from it.
+  row at the top. Each can have a picture of its own, which goes to Navidrome and comes from it. As squares, folders
+  come first and open to what's in them; each can have a picture of its own too. Songs Navidrome has are recognised
+  however their names are written, and ones that weren't are looked for again.
 - **Getting your library ready**: just after starting, the top bar and the Library page say the library's lists are
   being worked out, which takes a while the first time on a big library.
 

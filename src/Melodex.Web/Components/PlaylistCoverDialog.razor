@@ -1,46 +1,13 @@
-@using Microsoft.AspNetCore.Components.Forms
 @inject MelodexClient Api
 
 @*
     Gives a playlist a picture of its own, or takes it away so its albums' covers stand in again. When playlists are
     synced, the media server gets it too.
 *@
-<Dialog Title="@($"A picture for {Name}")" OnClose="CloseAsync">
-    <div class="playlist-cover-preview">
-        @if (_uploadUrl is not null)
-        {
-            <img class="cover" src="@_uploadUrl" alt="" />
-        }
-        else
-        {
-            <PlaylistCover Covers="Playlist.Covers" />
-        }
-    </div>
-    <div class="cover-upload row">
-        <label class="button">
-            <InputFile OnChange="UploadAsync" accept="image/jpeg,image/png,image/webp,image/gif" />
-            @(_upload is null ? "Choose a picture…" : "Choose another…")
-        </label>
-        <span class="muted small">A JPEG, PNG, WebP or GIF, up to 10 MB. Square pictures suit best.</span>
-    </div>
-    @if (Synced)
-    {
-        <p class="muted small">It goes to the media server too, and a picture given to it there comes here.</p>
-    }
-    @if (_error is not null) { <p class="error small">@_error</p> }
-    <div class="toolbar">
-        @if (Playlist.OwnCover && _upload is null)
-        {
-            <button disabled="@_busy" @onclick="() => SaveAsync(null)">Remove the picture</button>
-        }
-        <span class="spacer"></span>
-        <button disabled="@_busy" @onclick="CloseAsync">Cancel</button>
-        <button class="primary" disabled="@(_busy || _upload is null)" @onclick="() => SaveAsync(_upload)">
-            @if (_busy) { <span class="spinner"></span> }
-            Use it
-        </button>
-    </div>
-</Dialog>
+<PictureDialog Title="@($"A picture for {Name}")" HasOwn="Playlist.OwnCover" Save="SaveAsync" OnClose="OnClose"
+               Note="@(Synced ? "It goes to the media server too, and a picture given to it there comes here." : null)">
+    <Preview><PlaylistCover Covers="Playlist.Covers" /></Preview>
+</PictureDialog>
 
 @code {
     [Parameter, EditorRequired] public PlaylistSummary Playlist { get; set; } = null!;
@@ -49,43 +16,6 @@
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback<PlaylistSummary> OnChanged { get; set; }
 
-    private const long MaxUpload = 10 * 1024 * 1024;
-
-    private string? _upload, _uploadUrl, _error;
-    private bool _busy;
-
-    private async Task UploadAsync(InputFileChangeEventArgs e)
-    {
-        _error = null;
-        if (e.File.Size > MaxUpload)
-        {
-            _error = "That picture is bigger than 10 MB.";
-            return;
-        }
-        using var stream = e.File.OpenReadStream(MaxUpload);
-        using var copy = new MemoryStream();
-        await stream.CopyToAsync(copy);
-        _upload = Convert.ToBase64String(copy.ToArray());
-        _uploadUrl = $"data:{e.File.ContentType};base64,{_upload}";
-    }
-
-    private Task CloseAsync() => _busy ? Task.CompletedTask : OnClose.InvokeAsync();
-
-    private async Task SaveAsync(string? upload)
-    {
-        _busy = true;
-        _error = null;
-        try
-        {
-            var changed = await Api.SetPlaylistCoverAsync(Playlist.Id, upload is null ? null : new SetPlaylistCover(upload));
-            _busy = false;
-            await OnChanged.InvokeAsync(changed);
-            await OnClose.InvokeAsync();
-        }
-        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
-        {
-            _error = e.Message;
-            _busy = false;
-        }
-    }
+    private async Task SaveAsync(string? upload) =>
+        await OnChanged.InvokeAsync(await Api.SetPlaylistCoverAsync(Playlist.Id, upload is null ? null : new SetPlaylistCover(upload)));
 }

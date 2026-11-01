@@ -118,18 +118,7 @@ public sealed class PlaylistService(MelodexDbContext db, SettingsService setting
             covers.Remove(playlist);
         else
         {
-            byte[] data;
-            try
-            {
-                data = Convert.FromBase64String(upload);
-            }
-            catch (FormatException)
-            {
-                throw new PlaylistRefusedException("upload", "The picture must be base64.");
-            }
-            if (data.Length > CoverChooser.MaxUpload)
-                throw new PlaylistRefusedException("upload", "The picture is bigger than 10 MB.");
-            var type = CoverChooser.ImageType(data) ?? throw new PlaylistRefusedException("upload", "That isn't a JPEG, PNG, WebP or GIF picture.");
+            var (data, type) = Picture(upload);
             await covers.SetAsync(playlist, data, type, ct);
         }
         playlist.CoverChangedAt = DateTime.UtcNow;
@@ -175,10 +164,83 @@ public sealed class PlaylistService(MelodexDbContext db, SettingsService setting
             playlist.UpdatedAt = DateTime.UtcNow;
             moved++;
         }
+        // Folders' pictures go with them; taking everything out of one leaves it nothing to be the picture of.
+        foreach (var folder in await db.PlaylistFolders.Where(f => f.UserId == userId).ToListAsync(ct))
+        {
+            if (folder.Path != from && !folder.Path.StartsWith(prefix, StringComparison.Ordinal))
+                continue;
+            if (to.Length == 0 && folder.Path == from)
+            {
+                covers.Remove(folder);
+                db.PlaylistFolders.Remove(folder);
+            }
+            else
+                folder.Path = folder.Path == from ? to : to.Length == 0 ? folder.Path[prefix.Length..] : to + body.Delimiter + folder.Path[prefix.Length..];
+        }
         await db.SaveChangesAsync(ct);
         if (moved > 0)
             syncer.Changed(userId);
         return moved;
+    }
+
+    // An uploaded picture, checked.
+    private static (byte[] Data, string Type) Picture(string upload)
+    {
+        byte[] data;
+        try
+        {
+            data = Convert.FromBase64String(upload);
+        }
+        catch (FormatException)
+        {
+            throw new PlaylistRefusedException("upload", "The picture must be base64.");
+        }
+        if (data.Length > CoverChooser.MaxUpload)
+            throw new PlaylistRefusedException("upload", "The picture is bigger than 10 MB.");
+        return (data, CoverChooser.ImageType(data) ?? throw new PlaylistRefusedException("upload", "That isn't a JPEG, PNG, WebP or GIF picture."));
+    }
+
+    // ---- Folders ----
+
+    /// <summary>The user's folders that have pictures of their own.</summary>
+    public async Task<IReadOnlyList<PlaylistFolderInfo>> FoldersAsync(Guid userId, CancellationToken ct) =>
+        (await db.PlaylistFolders.AsNoTracking().Where(f => f.UserId == userId && f.CoverFile != null).OrderBy(f => f.Path).ToListAsync(ct))
+        .Select(Info).ToList();
+
+    private static PlaylistFolderInfo Info(PlaylistFolder folder) =>
+        new(folder.Id, folder.Path, folder.CoverHash is { } hash ? $"api/v1/playlists/folders/{folder.Id}/cover?v={hash[..12]}" : null);
+
+    public async Task<(string Path, string ContentType)?> FolderCoverAsync(Guid userId, Guid id, CancellationToken ct) =>
+        await db.PlaylistFolders.AsNoTracking().FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId, ct) is { } folder
+        && covers.PathOf(folder) is { } path && File.Exists(path)
+            ? (path, folder.CoverType ?? "image/jpeg")
+            : null;
+
+    /// <summary>
+    /// Gives a folder a picture of its own (base64, up to 10 MB), or with null, takes it away so the folder icon stands
+    /// for it again. Folders are the user's alone: the media server has none.
+    /// </summary>
+    public async Task<PlaylistFolderInfo> SetFolderCoverAsync(Guid userId, string path, string? upload, CancellationToken ct)
+    {
+        path = path.Trim();
+        if (path.Length == 0)
+            throw new PlaylistRefusedException("path", "Say which folder.");
+        var folder = await db.PlaylistFolders.FirstOrDefaultAsync(f => f.UserId == userId && f.Path == path, ct);
+        if (upload is null)
+        {
+            if (folder is null)
+                return new PlaylistFolderInfo(Guid.Empty, path, null);
+            covers.Remove(folder);
+            db.PlaylistFolders.Remove(folder);
+            await db.SaveChangesAsync(ct);
+            return new PlaylistFolderInfo(folder.Id, path, null);
+        }
+        var (data, type) = Picture(upload);
+        if (folder is null)
+            db.PlaylistFolders.Add(folder = new PlaylistFolder { UserId = userId, Path = path });
+        await covers.SetAsync(folder, data, type, ct);
+        await db.SaveChangesAsync(ct);
+        return Info(folder);
     }
 
     private Task<Playlist?> FindAsync(Guid userId, Guid id, CancellationToken ct) =>

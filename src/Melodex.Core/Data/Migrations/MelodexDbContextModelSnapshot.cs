@@ -613,6 +613,36 @@ namespace Melodex.Core.Data.Migrations
                     b.ToTable("PlaylistEntries");
                 });
 
+            modelBuilder.Entity("Melodex.Core.Data.PlaylistFolder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CoverFile")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CoverHash")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CoverType")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Path")
+                        .IsUnique();
+
+                    b.ToTable("PlaylistFolders");
+                });
+
             modelBuilder.Entity("Melodex.Core.Data.PluginInstance", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1088,6 +1118,15 @@ namespace Melodex.Core.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Playlist");
+                });
+
+            modelBuilder.Entity("Melodex.Core.Data.PlaylistFolder", b =>
+                {
+                    b.HasOne("Melodex.Core.Data.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Melodex.Core.Data.Request", b =>

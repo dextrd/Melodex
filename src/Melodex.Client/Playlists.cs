@@ -105,3 +105,12 @@ public sealed record PlaylistSyncStatus(bool Available, string? Server, string? 
 
 /// <summary>Body of <c>PUT /auth/media-server</c> and <c>PUT /users/{id}/media-server</c>: a login on the media server. It's checked before it's kept.</summary>
 public sealed record LinkMediaServer(string Username, string Password);
+
+/// <summary>A folder of playlists with a picture of its own.</summary>
+/// <param name="Path">The folder's path, its parents' names and its own joined by your separator.</param>
+/// <param name="CoverUrl">Its picture; null when the folder icon stands for it.</param>
+public sealed record PlaylistFolderInfo(Guid Id, string Path, string? CoverUrl);
+
+/// <summary>Body of <c>PUT /playlists/folders/cover</c>.</summary>
+/// <param name="Upload">The picture, base64.</param>
+public sealed record SetPlaylistFolderCover(string Path, string Upload);

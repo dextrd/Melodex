@@ -4,6 +4,7 @@
 @inject AuthState Auth
 @inject Player Player
 @inject Preferences Preferences
+@inject NavigationManager Nav
 
 <PageTitle>Playlists · Melodex</PageTitle>
 
@@ -55,11 +56,12 @@ else
 {
     var shown = Shown().ToList();
     var pinned = Sorted(_playlists.Where(p => p.Pinned)).ToList();
-    @if (_showPinned && pinned.Count > 0 && _filter.Trim().Length == 0)
+    var finding = _filter.Trim().Length > 0;
+    @if (_showPinned && pinned.Count > 0 && !finding && (_view != "squares" || InFolder is null))
     {
         <h2 class="section">Pinned <span class="muted small">@pinned.Count</span></h2>
         <div class="tiles pinned-row">
-            @foreach (var playlist in pinned) { @Tile(playlist) }
+            @foreach (var playlist in pinned) { @Tile(playlist, withFolders: true) }
         </div>
         <h2 class="section">All playlists <span class="muted small">@_playlists.Count</span></h2>
     }
@@ -67,11 +69,41 @@ else
     {
         <div class="empty card">No playlists called that.</div>
     }
-    else if (_view == "squares")
+    else if (_view == "squares" && finding)
     {
         <div class="tiles">
-            @foreach (var playlist in shown) { @Tile(playlist) }
+            @foreach (var playlist in shown) { @Tile(playlist, withFolders: true) }
         </div>
+    }
+    else if (_view == "squares")
+    {
+        @* A folder at a time: its folders, then its playlists. *@
+        var here = Find(Tree(shown), InFolder ?? "");
+        if (here is null)
+        {
+            <div class="empty card">There's no folder called that now. <a href="playlists">See all your playlists</a></div>
+        }
+        else
+        {
+            @if (here.Path.Length > 0)
+            {
+                var path = "";
+                <nav class="folder-crumbs" aria-label="Folders">
+                    <a href="playlists">All playlists</a>
+                    @foreach (var name in here.Path.Split(Delimiter))
+                    {
+                        path = path.Length == 0 ? name : path + Delimiter + name;
+                        <span class="muted" aria-hidden="true">›</span>
+                        @if (path == here.Path) { <strong aria-current="page">@name</strong> }
+                        else { <a href="@FolderHref(path)">@name</a> }
+                    }
+                </nav>
+            }
+            <div class="tiles">
+                @foreach (var folder in here.Folders.OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase)) { @FolderTile(folder) }
+                @foreach (var playlist in here.Playlists) { @Tile(playlist, withFolders: false) }
+            </div>
+        }
     }
     else if (_filter.Trim().Length > 0)
     {
@@ -114,8 +146,21 @@ else
     </Dialog>
 }
 
+@if (_picturing is { } picturing)
+{
+    var url = _folders.GetValueOrDefault(picturing)?.CoverUrl;
+    <PictureDialog Title="@($"A picture for {picturing.Split(Delimiter)[^1]}")" HasOwn="url is not null" Save="upload => SaveFolderPictureAsync(picturing, upload)"
+                   OnClose="() => _picturing = null" Note="It stays here: the media server has no folders.">
+        <Preview>@FolderCover(url)</Preview>
+    </PictureDialog>
+}
+
 @code {
+    [SupplyParameterFromQuery(Name = "folder")] public string? InFolder { get; set; }
+
     private IReadOnlyList<PlaylistSummary>? _playlists;
+    private Dictionary<string, PlaylistFolderInfo> _folders = [];
+    private string? _picturing;
     private PlaylistSyncStatus? _sync;
     private string? _error;
     private HashSet<string> _closed = [];
@@ -160,6 +205,7 @@ else
         try
         {
             _playlists = await Api.ListPlaylistsAsync();
+            _folders = (await Api.GetPlaylistFoldersAsync()).ToDictionary(f => f.Path);
             _sync = await Api.GetPlaylistSyncAsync();
             _error = null;
         }
@@ -239,12 +285,50 @@ else
         return root;
     }
 
-    private RenderFragment Tile(PlaylistSummary playlist) => @<div class="tile-wrap" @key="playlist.Id">
+    private string FolderHref(string path) => $"playlists?folder={Uri.EscapeDataString(path)}";
+
+    // The folder at the path, through each folder on the way to it; null if there's none now.
+    private Node? Find(Node root, string path)
+    {
+        var node = root;
+        while (node is not null && node.Path != path)
+            node = node.Folders.FirstOrDefault(f => IsWithin(path, f.Path));
+        return node;
+    }
+
+    private bool IsWithin(string path, string folder) => path == folder || path.StartsWith(folder + Delimiter, StringComparison.Ordinal);
+
+    private async Task SaveFolderPictureAsync(string path, string? upload)
+    {
+        var saved = await Api.SetPlaylistFolderCoverAsync(path, upload);
+        if (saved.CoverUrl is null)
+            _folders.Remove(path);
+        else
+            _folders[path] = saved;
+    }
+
+    // A folder's own picture, or the folder icon.
+    private static RenderFragment FolderCover(string? url) => url is not null
+        ? @<Cover Url="@url" />
+        : @<div class="cover folder-cover" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z" /></svg>
+          </div>;
+
+    private RenderFragment FolderTile(Node folder) => @<div class="tile-wrap" @key="folder.Path">
+        <a class="tile" href="@FolderHref(folder.Path)" title="@folder.Name">
+            @FolderCover(_folders.GetValueOrDefault(folder.Path)?.CoverUrl)
+            <div class="tile-name">@folder.Name</div>
+            <div class="muted small tile-sub">Folder · @Format.Count(folder.Count, "playlist", "playlists")</div>
+        </a>
+        <IconButton Icon="image" Class="small tile-remove" Title="@($"Give {folder.Name} a picture")" OnClick="() => _picturing = folder.Path" />
+    </div>;
+
+    private RenderFragment Tile(PlaylistSummary playlist, bool withFolders) => @<div class="tile-wrap" @key="playlist.Id">
         <a class="tile" href="playlists/@playlist.Id" title="@playlist.Name">
             <PlaylistCover Covers="playlist.Covers" />
             <div class="tile-name">@PlaylistNames.Leaf(playlist.Name, Delimiter)</div>
             <div class="muted small tile-sub">
-                @(string.Join(" › ", PlaylistNames.Folders(playlist.Name, Delimiter)) is { Length: > 0 } folders ? $"{folders} · " : "")@PlaylistNames.Length(playlist.Count, playlist.DurationSeconds)
+                @(withFolders && string.Join(" › ", PlaylistNames.Folders(playlist.Name, Delimiter)) is { Length: > 0 } folders ? $"{folders} · " : "")@PlaylistNames.Length(playlist.Count, playlist.DurationSeconds)
             </div>
         </a>
         <IconButton Icon="pin" Class="@($"small tile-remove tile-pin {(playlist.Pinned ? "pinned" : "")}")" On="playlist.Pinned"
@@ -284,6 +368,7 @@ else
                     <span class="spacer"></span>
                     <IconButton Icon="plus" Class="small" Title="@($"Make a playlist in {folder.Name}")" OnClick="() => StartNew(folder.Path)" />
                     <IconButton Icon="rename" Class="small" Title="@($"Rename {folder.Name}")" OnClick="() => StartRename(folder.Path)" />
+                    <IconButton Icon="image" Class="small" Title="@($"Give {folder.Name} a picture")" OnClick="() => _picturing = folder.Path" />
                 </div>
                 @if (open)
                 {

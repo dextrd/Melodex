@@ -120,6 +120,7 @@ public sealed class PlaylistSync(MelodexDbContext db, ConnectorPlugins connector
         var started = DateTime.UtcNow;
         var remote = (await server.GetPlaylistsAsync(login, ct)).ToDictionary(p => p.Id);
         var local = await db.Playlists.Include(p => p.Entries).Where(p => p.UserId == user.Id).ToListAsync(ct);
+        await RematchAsync(user.Id, local, ct);
         string? problem = null;
         int sent = 0, brought = 0, removed = 0;
 
@@ -360,8 +361,10 @@ public sealed class PlaylistSync(MelodexDbContext db, ConnectorPlugins connector
     private sealed record Match(Guid? TrackId, Guid? FileId);
 
     /// <summary>
-    /// Which library song each server song is: one already found as it in another playlist, then by its MusicBrainz
-    /// recording, its path, or its title, artist and length. Songs not found stay the server's only.
+    /// Which library song each server song is: one already found as it in another playlist, then the file the server
+    /// knows it as, its MusicBrainz recording, its path, or its title, artist and length. The server reads the same
+    /// files, so these are compared with the files' own tags as well as the catalogue's names, loosely: "Don't" is
+    /// "Don’t", and "(feat. …)" is left out. Songs not found stay the server's only.
     /// </summary>
     private async Task<Dictionary<string, Match>> MatchAsync(Guid userId, IReadOnlyList<ServerTrack> songs, CancellationToken ct)
     {
@@ -373,34 +376,96 @@ public sealed class PlaylistSync(MelodexDbContext db, ConnectorPlugins connector
                      .Where(e => e.Playlist.UserId == userId && e.ServerTrackId != null && ids.Contains(e.ServerTrackId) && (e.TrackId != null || e.FileId != null))
                      .Select(e => new { e.ServerTrackId, e.TrackId, e.FileId }).ToListAsync(ct))
             matches.TryAdd(known.ServerTrackId!, new Match(known.TrackId, known.FileId));
+        foreach (var file in await db.LibraryFiles.AsNoTracking()
+                     .Where(f => f.MediaServerTrackId != null && ids.Contains(f.MediaServerTrackId) && f.HiddenAt == null)
+                     .Select(f => new { f.MediaServerTrackId, f.TrackId, f.Id }).ToListAsync(ct))
+            matches.TryAdd(file.MediaServerTrackId!, Of(file.TrackId, file.Id));
 
         var rest = songs.Where(s => !matches.ContainsKey(s.Id)).ToList();
+        if (rest.Count == 0)
+            return matches;
         var recordings = rest.Select(s => s.MusicBrainzRecordingId).OfType<string>().ToList();
         var byRecording = await db.Crosswalk.AsNoTracking()
             .Where(m => m.EntityKind == EntityKind.Track && m.Provider == Providers.MusicBrainz && recordings.Contains(m.Value))
             .Where(m => db.LibraryFiles.Any(f => f.TrackId == m.EntityId && f.HiddenAt == null))
             .Select(m => new { m.Value, m.EntityId }).ToListAsync(ct);
-        var paths = rest.Select(s => s.Path).OfType<string>().ToList();
-        var byPath = await db.LibraryFiles.AsNoTracking().Where(f => paths.Contains(f.Path) && f.HiddenAt == null)
-            .Select(f => new { f.Path, f.Id, f.TrackId }).ToListAsync(ct);
-        var titles = rest.Select(s => s.Title).Distinct().ToList();
-        var byTitle = await db.LibraryFiles.AsNoTracking().Where(f => f.TrackId != null && f.HiddenAt == null && titles.Contains(f.Track!.Title))
-            .Select(f => new { f.TrackId, f.Track!.Title, f.Track.ArtistCredit, Duration = f.Duration ?? f.Track.Duration }).ToListAsync(ct);
+
+        // Every file the library shows, by the names it goes by, to look the rest up in.
+        var files = (await db.LibraryFiles.AsNoTracking().Where(f => f.HiddenAt == null && (f.TrackId != null || f.ExcludedAt != null))
+                .Select(f => new { f.Id, f.TrackId, f.Path, f.TagsJson, Title = f.Track == null ? null : f.Track.Title, Artist = f.Track == null ? null : f.Track.ArtistCredit,
+                    Duration = f.Duration ?? (f.Track == null ? null : f.Track.Duration) })
+                .ToListAsync(ct))
+            .Select(f =>
+            {
+                var tags = FileTags.Parse(f.TagsJson);
+                return new Candidate(f.Id, f.TrackId, f.Path, f.Duration, tags.Album,
+                    new[] { f.Title, tags.Title }.OfType<string>().Select(SongNames.TitleKey).Where(k => k.Length > 0).ToHashSet(),
+                    new[] { f.Artist, tags.Artist, tags.AlbumArtist }.OfType<string>().SelectMany(SongNames.ArtistKeys).ToHashSet());
+            })
+            .ToList();
+        var byTitle = files.SelectMany(f => f.Titles.Select(t => (Title: t, File: f))).ToLookup(x => x.Title, x => x.File);
 
         foreach (var song in rest)
         {
             if (song.MusicBrainzRecordingId is { } recording && byRecording.FirstOrDefault(r => string.Equals(r.Value, recording, StringComparison.OrdinalIgnoreCase)) is { } r)
                 matches[song.Id] = new Match(r.EntityId, null);
-            else if (song.Path is { } path && byPath.FirstOrDefault(f => f.Path == path) is { } p)
-                matches[song.Id] = new Match(p.TrackId, p.Id);
-            else if (byTitle.FirstOrDefault(f => f.Title == song.Title && Same(f.ArtistCredit, song.Artist)
-                                                && (f.Duration is null || song.Duration is null || Math.Abs((f.Duration.Value - song.Duration.Value).TotalSeconds) <= 3)) is { } t)
-                matches[song.Id] = new Match(t.TrackId, null);
+            else if (song.Path is { } path && files.FirstOrDefault(f => SamePath(path, f.Path)) is { } p)
+                matches[song.Id] = Of(p.TrackId, p.Id);
+            else if (Named(song) is { } n)
+                matches[song.Id] = Of(n.TrackId, n.Id);
         }
         return matches;
+
+        // The file with the song's title, by one of the same artists, as long, preferring one on the same album.
+        Candidate? Named(ServerTrack song)
+        {
+            var artists = song.Artist is null ? [] : SongNames.ArtistKeys(song.Artist).ToHashSet();
+            var album = song.Album is null ? null : SongNames.TitleKey(song.Album);
+            return byTitle[SongNames.TitleKey(song.Title)]
+                .Where(f => artists.Count == 0 || f.Artists.Overlaps(artists))
+                .Where(f => f.Duration is null || song.Duration is null || Math.Abs((f.Duration.Value - song.Duration.Value).TotalSeconds) <= 3)
+                .OrderBy(f => album is not null && f.Album is not null && SongNames.TitleKey(f.Album) == album ? 0 : 1)
+                .ThenBy(f => f.TrackId is null ? 1 : 0)
+                .FirstOrDefault();
+        }
     }
 
-    private static bool Same(string? a, string? b) => a is not null && b is not null && string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+    private sealed record Candidate(Guid Id, Guid? TrackId, string Path, TimeSpan? Duration, string? Album, HashSet<string> Titles, HashSet<string> Artists);
+
+    // A song in the library is its track; a file of your own, which isn't one, is itself.
+    private static Match Of(Guid? trackId, Guid fileId) => trackId is { } track ? new Match(track, null) : new Match(null, fileId);
+
+    // The server's path ends with the library's, as its music folder may be mounted somewhere else.
+    private static bool SamePath(string server, string ours) =>
+        server.Replace('\\', '/').TrimStart('/').EndsWith(ours.Replace('\\', '/').TrimStart('/'), StringComparison.Ordinal);
+
+    /// <summary>
+    /// Looks again for songs in the user's playlists that were only the server's when they came over: the library may
+    /// have them now, or recognise them better. As it reads the whole library, only when the library has been matched
+    /// again or there are other songs to look for since the last time.
+    /// </summary>
+    private async Task RematchAsync(Guid userId, IReadOnlyList<Playlist> playlists, CancellationToken ct)
+    {
+        var unmatched = playlists.SelectMany(p => p.Entries).Where(e => e.ServerTrackId is not null && e.TrackId is null && e.FileId is null).ToList();
+        if (unmatched.Count == 0)
+            return;
+        var matched = await db.LibraryFiles.MaxAsync(f => f.MatchedAt, ct);
+        var since = $"{matched:O}/{string.Join(',', unmatched.Select(e => e.ServerTrackId).Order())}".GetHashCode();
+        if (LastRematch.TryGetValue(userId, out var last) && last == since)
+            return;
+        LastRematch[userId] = since;
+        var songs = unmatched.GroupBy(e => e.ServerTrackId!).Select(g => g.First())
+            .Select(e => new ServerTrack(e.ServerTrackId!, null, e.Title, e.Artist, e.Album,
+                e.DurationSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : null, null))
+            .ToList();
+        var matches = await MatchAsync(userId, songs, ct);
+        foreach (var entry in unmatched)
+            if (matches.TryGetValue(entry.ServerTrackId!, out var match))
+                (entry.TrackId, entry.FileId) = (match.TrackId, match.FileId);
+    }
+
+    // What the library and the songs looked for were the last time, for each user.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, int> LastRematch = new();
 
     /// <summary>
     /// Files moved by a format may have new IDs on the media server, so the playlists they're in look for them again,

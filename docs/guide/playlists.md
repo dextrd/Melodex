@@ -16,7 +16,8 @@ A song that leaves your library stays in the playlist, greyed out, so it's there
 
 ## Finding them
 
-Show your playlists as a **List**, in their folders, or as **Squares**, each with its picture. Find one by name, and
+Show your playlists as a **List**, in their folders, or as **Squares**, each with its picture. In Squares, folders
+come first: click one to see what's in it, and the names above the squares to go back up. Find one by name, and
 sort them by name, when they last changed, how many songs they have or how long they are. Melodex remembers your
 choices in that browser.
 
@@ -28,6 +29,9 @@ button in the toolbar hides and shows again. Pins are yours alone and stay in Me
 A playlist shows the covers of the albums in it, or four of them in a square once it has that many. Give it a
 picture of its own with **Picture** on its page (a JPEG, PNG, WebP or GIF, up to 10 MB), and take it away the same way
 to have its albums' covers back.
+
+A folder shows a folder icon. Give it a picture of its own with the picture button beside it in the list, or on its
+square. Folders' pictures stay in Melodex, as media servers have no folders, and go with a folder when it's renamed.
 
 ## Folders
 
@@ -60,7 +64,10 @@ public playlists from other users aren't brought over.
 - **Pictures** go both ways too, the later change winning. A picture Navidrome makes from a playlist's songs isn't
   brought over, only one someone gave it.
 - **Songs Navidrome has that your library doesn't** stay in the playlist, marked *only on the media server*, and go
-  back to Navidrome with it.
+  back to Navidrome with it. Songs are recognised by their MusicBrainz IDs where the files have them, and otherwise by
+  their title, artist and length as the files' own tags or the catalogue have them, however they're written: "Don't"
+  is "Don’t", and "(feat. …)" doesn't count. Songs marked only on the media server are looked for again when the
+  library changes.
 
 Formatting can move files, which can give them new IDs in Navidrome. Playlists with songs that moved look for them
 again once Navidrome has scanned them, and aren't sent until it's found them all, so nothing drops out of the

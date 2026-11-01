@@ -36,6 +36,27 @@ public sealed class PlaylistCovers(IOptions<MelodexOptions> options)
         playlist.CoverHash = null;
     }
 
+    public string? PathOf(PlaylistFolder folder) => folder.CoverFile is { } file ? Path.Combine(Root, file) : null;
+
+    /// <summary>Gives the folder this picture. Saving it is left to the caller.</summary>
+    public async Task SetAsync(PlaylistFolder folder, byte[] data, string contentType, CancellationToken ct)
+    {
+        Directory.CreateDirectory(Root);
+        var file = $"folder-{folder.Id:N}{Extension(contentType)}";
+        if (folder.CoverFile is { } old && old != file)
+            File.Delete(Path.Combine(Root, old));
+        await File.WriteAllBytesAsync(Path.Combine(Root, file), data, ct);
+        folder.CoverFile = file;
+        folder.CoverType = contentType;
+        folder.CoverHash = Hash(data);
+    }
+
+    public void Remove(PlaylistFolder folder)
+    {
+        if (PathOf(folder) is { } path)
+            File.Delete(path);
+    }
+
     private static string Extension(string contentType) => contentType switch
     {
         "image/png" => ".png",
