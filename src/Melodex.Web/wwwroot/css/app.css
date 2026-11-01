@@ -671,7 +671,8 @@ tr.playing td:nth-child(2) { color: var(--accent); font-weight: 600; }
     display: grid; grid-template-columns: 2.25rem minmax(0, 1fr) auto; gap: .6rem; align-items: center;
     height: 52px; box-sizing: border-box; padding: 0 .6rem; border-bottom: 1px solid var(--border);
 }
-.scan-file > a { display: block; line-height: 0; }
+/* The cover's link, not the To review chip beside it. */
+.scan-file > a:not(.badge) { display: block; line-height: 0; }
 .scan-file .cover { width: 2.25rem; }
 .scan-file-icon { width: 2.25rem; height: 2.25rem; display: grid; place-items: center; color: var(--muted); }
 .scan-file-icon .spinner { width: 1rem; height: 1rem; color: var(--accent); }

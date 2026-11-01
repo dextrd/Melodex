@@ -60,6 +60,7 @@ Everything on the way to 1.0.
 - An album's tracks arriving no longer move the page: rows on their way are as tall and as wide as those arrived.
 - Songs matched on their own, rather than as part of an album, show the album their tags name (or their first) in
   playlists and the Library's Tracks view, rather than none. Formatting isn't needed for that.
+- The To review chip in a scan's file list on Activity is the size of the others.
 - On a phone, buttons meant to give way to the title (add to playlist, queue and ignore on an album's tracks) do.
 - Browsers could keep an old copy of the web app's page, showing *Loading Navidex* and failing to change the theme.
 - The ownership meters and legend use brighter colours in light themes.
