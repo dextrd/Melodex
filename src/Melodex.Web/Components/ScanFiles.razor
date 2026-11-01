@@ -1,11 +1,14 @@
 @implements IDisposable
 @inject MelodexClient Api
 @inject Preferences Prefs
+@using Microsoft.JSInterop
+@inject IJSRuntime Js
 @using Microsoft.AspNetCore.Components.Web.Virtualization
 
 @*
     What a scan is doing, file by file: the file's name while it's read and matched, then the song it turned out to be.
-    Each file keeps its place, so the list can be watched filling in.
+    Each file keeps its place, so the list can be watched filling in. It opens where the scan is, and keeps up with it
+    while it's left alone.
 *@
 @if (_files is null)
 {
@@ -24,7 +27,7 @@ else
             @(_newestFirst ? "Latest at the top" : "Latest at the bottom")
         </button>
     </div>
-    <div class="scan-files">
+    <div class="scan-files" @ref="_list">
         <Virtualize Items="Shown" Context="file" ItemSize="52" OverscanCount="10">
             <div @key="file.Path" class="scan-file @file.State.ToString().ToLowerInvariant() @(file.Seq > _freshAfter ? "fresh" : "")">
                 @if (file.State == ScanFileState.Matched)
@@ -98,6 +101,11 @@ else
     private bool _newestFirst;
     private Timer? _timer;
 
+    private ElementReference _list;
+    // Whether the list has been taken to where the scan is since it opened; after that it follows only when left alone.
+    private bool _placed;
+    private bool _follow;
+
     private ICollection<ScanFile> Shown => _newestFirst ? _reversed : _files!;
 
     private string Summary
@@ -110,6 +118,27 @@ else
         }
     }
 
+    // Where the scan is: the first file it's still reading or matching, in the order shown.
+    private int? Current
+    {
+        get
+        {
+            var i = _files!.FindIndex(f => f.State is ScanFileState.Reading or ScanFileState.Matching);
+            return i < 0 ? null : _newestFirst ? _files.Count - 1 - i : i;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_files is not { Count: > 0 } || (_placed && !_follow))
+            return;
+        _follow = false;
+        if (Current is not { } at)
+            return;
+        await Js.InvokeVoidAsync("melodexScanList.show", _list, at, !_placed);
+        _placed = true;
+    }
+
     protected override async Task OnInitializedAsync()
     {
         _newestFirst = await Prefs.GetAsync(NewestFirstKey, false);
@@ -119,6 +148,7 @@ else
             if (!Active)
                 return;
             await LoadAsync();
+            _follow = true;
             StateHasChanged();
         }), null, TimeSpan.FromSeconds(1.5), TimeSpan.FromSeconds(1.5));
     }
@@ -144,6 +174,7 @@ else
             _index.Clear();
             _scan = page.Scan;
             _freshAfter = long.MaxValue;
+            _placed = false;
         }
         else
             _freshAfter = _latest;

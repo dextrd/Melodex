@@ -9,7 +9,7 @@
 <div class="row small">
     @if (_status?.CurrentTask is { } task)
     {
-        <a class="muted" href="activity" title="See what it's doing">@(task.Progress ?? "Starting…")</a>
+        <a class="muted scan-progress" href="activity" title="See what it's doing">@(task.Progress ?? "Starting…")</a>
     }
     else if (_status?.Preparing == true)
     {
@@ -28,12 +28,13 @@
     @if (Auth.May(UserPermissions.Scan))
     {
     <div class="split-button">
-        <button class="primary" disabled="@(_status?.CurrentTask is not null)" title="Read new and changed files, and match them" @onclick="() => ScanAsync(Rematch.None)">Scan library</button>
-        <button class="primary more" title="More ways to scan, and formatting" aria-label="More ways to scan, and formatting" aria-haspopup="menu"
+        <button class="primary" disabled="@(_status?.CurrentTask is not null)" title="Read new and changed files, and match them" @onclick="() => ScanAsync(Rematch.None)">Scan</button>
+        @* The menu's ways to scan and format wait for the running task too. *@
+        <button class="primary more" disabled="@(_status?.CurrentTask is not null)" title="More ways to scan, and formatting" aria-label="More ways to scan, and formatting" aria-haspopup="menu"
                 aria-expanded="@(_menu ? "true" : "false")" @onclick="() => _menu = !_menu">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
         </button>
-        @if (_menu)
+        @if (_menu && _status?.CurrentTask is null)
         {
             <div class="menu-backdrop" @onclick="() => _menu = false"></div>
             <div class="menu right scan-menu" role="menu">

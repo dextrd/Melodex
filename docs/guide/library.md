@@ -13,7 +13,7 @@ need the whole page stay greyed until it's there, and while MusicBrainz is still
 
 ## Scanning
 
-**Scan library**, at the top right, reads new and changed files and matches them. Its menu has more:
+**Scan**, at the top right, reads new and changed files and matches them. Its menu has more:
 
 - **Scan for changes**: the same as the button.
 - **Match unmatched files again**: files under review and deferred ones, as well as changes.

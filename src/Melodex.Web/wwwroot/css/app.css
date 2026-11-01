@@ -147,6 +147,10 @@ h2 { font-size: 1.15rem; margin: 1.75rem 0 .5rem; }
     .nav a { padding: .3rem .45rem; }
     .topbar .scan-count { display: none; }
 }
+/* On a phone, what a task is doing is left to Activity (its greyed button says something is), so the bar keeps the account on its line. */
+@media (max-width: 640px) {
+    .topbar .scan-progress { display: none; }
+}
 .spacer { flex: 1; }
 main { max-width: 1100px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
 
@@ -844,6 +848,11 @@ svg.flip { transform: scaleY(-1); }
 .account-menu { position: relative; display: inline-flex; margin-left: .5rem; }
 .account-button { border-radius: 50%; padding: 0; width: 2.1rem; height: 2.1rem; display: inline-flex; align-items: center; justify-content: center; }
 .avatar { font-weight: 600; font-size: .9rem; }
+/* Settings, beside the account: a gear the size of the account button, filled in while you're there. */
+.topbar-icon { width: 2.1rem; height: 2.1rem; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.topbar-icon:hover { color: var(--text); background: var(--bg); text-decoration: none; }
+.topbar-icon.active { color: var(--text); background: var(--bg); }
+.topbar-icon svg { width: 1.2rem; height: 1.2rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .menu a { color: var(--text); text-decoration: none; padding: .45rem .7rem; border-radius: 6px; white-space: nowrap; }
 .menu a:hover { background: var(--bg); }
 .menu-note { display: flex; flex-direction: column; padding: .45rem .7rem; max-width: 16rem; }

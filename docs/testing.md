@@ -79,7 +79,7 @@ generated library stays as the answer key expects), builds any image that's miss
 network, creates a Navidrome admin, adds Navidrome and both plugins to Melodex, and scans.
 
 - Navidrome: http://localhost:4533. The user is `admin`; the password is generated into `sandbox/.env` on first run.
-- Melodex: http://localhost:8787. Press **Scan library**, then use the Get buttons.
+- Melodex: http://localhost:8787. Press **Scan**, then use the Get buttons.
 - The inbox plugin reads `sandbox/inbox`. Drop files there, then press Retry on the request.
 
 The beets worker and the plugins run as you, so the files they write in `sandbox/music` and take from `sandbox/inbox`

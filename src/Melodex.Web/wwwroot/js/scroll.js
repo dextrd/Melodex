@@ -13,6 +13,27 @@ window.melodexScroll = {
     },
 };
 
+// A scan's files on the Activity page: opened where the scan is, and following it along unless someone's scrolled or
+// clicked in the list in the last little while.
+window.melodexScanList = {
+    show: (list, index, opening) => {
+        if (!list)
+            return;
+        if (list.melodexTouched === undefined) {
+            list.melodexTouched = 0;
+            for (const name of ['wheel', 'touchstart', 'pointerdown', 'keydown'])
+                list.addEventListener(name, () => list.melodexTouched = Date.now(), { passive: true });
+        }
+        if (!opening && Date.now() - list.melodexTouched < 8000)
+            return;
+        // Rows are one height (.scan-file); the current one goes in the middle.
+        const row = 52;
+        const top = Math.max(0, index * row - (list.clientHeight - row) / 2);
+        if (Math.abs(list.scrollTop - top) > 2)
+            list.scrollTo({ top, behavior: opening ? 'instant' : 'smooth' });
+    },
+};
+
 // Back and forward put each page where it was scrolled to this session. Where a page was is noted as it's left, by a
 // link or by back and forward; the browser's own attempt comes before the page is drawn, so it's left to this.
 (() => {

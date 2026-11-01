@@ -79,6 +79,10 @@ Everything on the way to 1.0.
 
 ### Changed
 
+- Settings is a gear beside your account button, top right, instead of a link in the bar.
+- The scan button says just **Scan**, and its menu is greyed out with it while a task is running.
+- A scan's files on the Activity page open at the file being read or matched, and follow the scan along while you
+  leave the list alone.
 - The media-server connector contract is 1.2, adding `IPlaylistSync` for each user's playlists, and in 1.2 their
   pictures. Connectors built for 1.0 and 1.1 still load.
 
