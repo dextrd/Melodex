@@ -1079,13 +1079,24 @@ svg.flip { transform: scaleY(-1); }
 .stepper input[type=number]:focus { outline: none; }
 .stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
-/* The missing view's kinds of release: a row each, grouped, with a choice of Show, New songs only or Hide. */
-.release-kinds { gap: 1rem; }
-.release-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .6rem; padding-bottom: .35rem; border-bottom: 1px solid var(--border); }
-.release-group-head h3 { margin: 0; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
-.release-row { display: flex; align-items: center; justify-content: space-between; gap: .5rem 1rem; padding: .35rem 0; }
+/* The missing view's kinds of release: a row each, with a choice of Show, New songs only or Hide. */
+.release-kinds { gap: 0; }
+.release-row { display: flex; align-items: center; justify-content: space-between; gap: .5rem 1rem; padding: .4rem 0; }
 .release-row + .release-row { border-top: 1px solid var(--border); }
-.release-name { display: flex; flex-direction: column; gap: .05rem; font-weight: 500; }
+.release-name { display: inline-flex; align-items: center; gap: .4rem; font-weight: 500; }
+/* What a kind takes in, on hover or focus (a tap, on a phone). */
+.info {
+    position: relative; display: inline-grid; place-items: center; width: 1rem; height: 1rem; flex: none; border-radius: 50%;
+    border: 1px solid var(--border); color: var(--muted); font: italic 600 .65rem/1 Georgia, serif; cursor: help;
+}
+.info:hover, .info:focus-visible { color: var(--text); border-color: var(--muted); outline: none; }
+.info::after {
+    content: attr(data-tip); position: absolute; left: -.6rem; bottom: calc(100% + .4rem); z-index: 5;
+    width: max-content; max-width: 14rem; padding: .35rem .55rem; border-radius: 6px; background: var(--text); color: var(--surface);
+    font: 400 .78rem/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; white-space: normal; text-align: left;
+    opacity: 0; pointer-events: none; transition: opacity .12s;
+}
+.info:hover::after, .info:focus::after { opacity: 1; }
 .release-row .segmented { flex: none; font-size: .85rem; }
 .release-row .segmented button { padding: .25rem .75rem; }
 .segmented.showing.show .thumb { background: var(--owned-bg); }
@@ -1093,7 +1104,7 @@ svg.flip { transform: scaleY(-1); }
 .segmented.showing.newsongsonly .thumb { background: var(--covered-bg); }
 .segmented.showing.newsongsonly button.selected { color: var(--covered); }
 .segmented.showing.hide .thumb { background: var(--bg); }
-.release-kinds > .link { align-self: flex-start; }
+.release-kinds > .link { align-self: flex-start; margin-top: .5rem; }
 /* An artist's own choices: wide enough for each kind's choices beside its name, as in Settings. */
 .showing-dialog { width: min(44rem, 100%); }
 @media (max-width: 640px) {

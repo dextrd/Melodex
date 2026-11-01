@@ -53,9 +53,10 @@ files' tags** for titles, artists and albums, and **Use your files' cover art** 
 
 ## What counts as missing
 
-**Settings → General → Missing view** has a choice for each kind of release: the main types (albums, EPs, singles,
-broadcasts, other), the kinds a release can also be (live, compilations, remixes, demos, soundtracks, DJ mixes,
-mixtapes, spoken word, interviews, audiobooks, audio dramas, field recordings), and bootlegs. Each can be:
+**Settings → General → Missing view** has a choice for each kind of release, in one list: the main types (albums,
+EPs, singles, broadcasts) first, then the kinds a release can also be (live, compilations, remixes, demos, soundtracks,
+DJ mixes, mixtapes, spoken word, interviews, audiobooks, audio dramas, field recordings), and bootlegs. The **i**
+beside some says what they take in. Each can be:
 
 - **Show**: listed as missing, with every song on it.
 - **New songs only**: listed just for the songs that aren't on a release shown in full or one you have (the same

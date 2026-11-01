@@ -29,6 +29,7 @@ Everything on the way to 1.0.
   its own choice of Show, Hide or **New songs only**, which lists a release just for the songs found nowhere else.
   An artist can have their own choices instead, from **Releases shown** on their page, and go back to the ones in
   Settings from there (`/api/v1/settings/artists/{id}/showing`).
+  The choices are one list, the main types first, with notes on some behind an **i** you hover or tap.
 - **File metadata**: your files' tags and their cover art can each be preferred on their own.
 - **Library and Search remember where you were**, until you close the tab. Their links in the top bar take you back
   to the artist, album or song you were last on there; click again for the Library or your search as you left it, and
