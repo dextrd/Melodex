@@ -4,20 +4,24 @@
 @inject MelodexClient Api
 @inject RequestTracker Tracker
 @inject Player Player
+@inject Glimpses Glimpses
 
-<PageTitle>@(_album?.Album.Title ?? "Album") · Melodex</PageTitle>
+<PageTitle>@(_album?.Album.Title ?? _glimpse?.Album.Title ?? "Album") · Melodex</PageTitle>
 
 @if (_notFound)
 {
     <div class="empty card">That album isn't in the catalogue.</div>
 }
-else if (_album is null)
+else if (_album is null && _glimpse is null)
 {
     <Loading />
 }
 else
 {
-    var album = _album.Album;
+    // Shown at once from what the list it was opened from knew, filled in as the rest arrives.
+    var album = _album?.Album ?? _glimpse!.Album;
+    // Buttons that need the whole album wait for it.
+    var ready = _album is { Fetching: false } && _switching is null;
     <div class="page-head">
         <Cover Url="@album.CoverUrl" />
         <div>
@@ -31,25 +35,26 @@ else
                 @if (album.Ignored) { <span class="badge neutral">Ignored</span> }
                 <ProviderIds Ids="album.Ids" Entity="release-group" />
             </div>
-            @if (_album.Editions.Count > 0 && _album.Tracks.Any(t => t.Status is not TrackStatus.Ignored))
+            @if (_album is null || _album.Editions.Count > 0 && _album.Tracks.Any(t => t.Status is not TrackStatus.Ignored))
             {
-                var missing = _album.Tracks.Any(t => t.Status == TrackStatus.Missing);
-                var playLabel = _album.Tracks.Any(t => t.Status is TrackStatus.Owned or TrackStatus.OwnedElsewhere) ? "Play" : "Listen now";
+                var tracks = _album?.Tracks ?? [];
+                var missing = _album is null ? album.Status is AlbumStatus.Missing or AlbumStatus.Partial : tracks.Any(t => t.Status == TrackStatus.Missing);
+                var playLabel = (_album is null ? album.OwnedTracks > 0 : tracks.Any(Owned)) ? "Play" : "Listen now";
                 var playHint = missing ? $"{playLabel}: in order, fetching the tracks you don't have to listen to, without adding them to your library" : "Play the album";
                 RenderFragment play = @<text>
                     <IconButton Icon="play" Requires="@UserPermissions.Listen" Primary="true" Large="true" Label="@playLabel" Title="@playHint" OnClick="() => Player.PlayAlbumAsync(_album!)" />
                     <IconButton Icon="queue" Requires="@UserPermissions.Listen" Large="true" Confirm="true" Title="@(missing ? "Add to the queue, fetching the tracks you don't have to listen to" : "Add to the queue")"
                                 OnClick="() => Player.QueueAlbumAsync(_album!)" />
-                    @if (_album.Tracks.Any(Owned))
+                    @if (tracks.Any(Owned))
                     {
                         <IconButton Icon="playlist" Requires="@UserPermissions.Listen" Large="true" Title="Add the songs you have to a playlist"
                                     OnClick="() => _adding = (_album!.Album.Title, _album.Tracks.Where(Owned).Select(t => new PlaylistItem(t.TrackId)).ToList())" />
                     }
                 </text>;
-                <div class="row album-actions" style="margin-top: .5rem;">
+                <fieldset class="row album-actions" disabled="@(!ready)" style="margin-top: .5rem;">
                     @if (album.Status is AlbumStatus.Missing or AlbumStatus.Partial)
                     {
-                        <FetchButton Kind="RequestKind.Album" Id="album.Id" EditionId="_album.ShownEditionId" Large="true"
+                        <FetchButton Kind="RequestKind.Album" Id="album.Id" EditionId="_album?.ShownEditionId" Large="true"
                                      Label="@(album.Status == AlbumStatus.Partial ? "Get missing tracks" : "Get album")"
                                      Hint="@(album.Status == AlbumStatus.Partial ? "Get the missing tracks into your library, as the edition shown below" : "Get the album into your library, as the edition shown below")">
                             @play
@@ -66,14 +71,78 @@ else
                     }
                     <IconButton Icon="image" Requires="@UserPermissions.Format" Large="true" Label="Cover" Title="Choose the album's cover, from any of its editions or a picture of your own"
                                 OnClick="() => _choosingCover = true" />
-                </div>
+                </fieldset>
             }
         </div>
     </div>
 
-    @if (_album.Editions.Count == 0 && _album.Fetching)
+    @if (_album is { Editions.Count: > 0 } detail)
     {
-        <Loading Inline="true" Text="Fetching its editions and tracks from MusicBrainz…" />
+        <div class="toolbar">
+            <label class="small">
+                Edition
+                <select value="@(_switching ?? detail.ShownEditionId)" disabled="@(_switching is not null)" @onchange="ChangeEditionAsync">
+                    @foreach (var edition in detail.Editions)
+                    {
+                        <option value="@edition.Id">@EditionLabel(edition)</option>
+                    }
+                </select>
+            </label>
+            @if (detail.OwnedEditionId is { } owned && owned != (_switching ?? detail.ShownEditionId))
+            {
+                <button class="link small" @onclick="() => ShowEditionAsync(owned)">Show the edition you have</button>
+            }
+            @if (detail.Fetching)
+            {
+                <Loading Inline="true" Text="Checking MusicBrainz for its editions…" />
+            }
+        </div>
+    }
+
+    @if (_album is null || _switching is not null || _album.Editions.Count == 0 && _album.Fetching)
+    {
+        @if (_album is { Editions.Count: 0, Fetching: true })
+        {
+            <Loading Inline="true" Text="Fetching its editions and tracks from MusicBrainz…" />
+        }
+        <div class="card">
+            <table class="table" aria-busy="true">
+                <thead>
+                    <tr>
+                        <th class="num">#</th>
+                        <th>Title</th>
+                        <th class="num hide-narrow">Length</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var slot in Slots())
+                    {
+                        <tr>
+                            <td class="num muted nowrap">@slot.Number</td>
+                            @if (slot.Owned is { } track)
+                            {
+                                <td>
+                                    <a href="tracks/@track.TrackId" class="plain">@track.Title</a>
+                                    @if (track.ArtistCredit != album.ArtistCredit) { <span class="muted small"> · @track.ArtistCredit</span> }
+                                    <div class="muted small">@track.Path</div>
+                                </td>
+                                <td class="num hide-narrow muted">@Format.Duration(track.DurationSeconds)</td>
+                                <td><StatusBadge Track="TrackStatus.Owned" /></td>
+                            }
+                            else
+                            {
+                                <td><span class="placeholder" style="width: @(7 + slot.Index * 37 % 9)rem"></span></td>
+                                <td class="num hide-narrow"><span class="placeholder short"></span></td>
+                                <td><span class="placeholder badge-size"></span></td>
+                            }
+                            <td></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     }
     else if (_album.Editions.Count == 0)
     {
@@ -81,22 +150,6 @@ else
     }
     else
     {
-        <div class="toolbar">
-            <label class="small">
-                Edition
-                <select value="@_album.ShownEditionId" @onchange="ChangeEditionAsync">
-                    @foreach (var edition in _album.Editions)
-                    {
-                        <option value="@edition.Id">@EditionLabel(edition)</option>
-                    }
-                </select>
-            </label>
-            @if (_album.OwnedEditionId is { } owned && owned != _album.ShownEditionId)
-            {
-                <button class="link small" @onclick="() => LoadAsync(owned)">Show the edition you have</button>
-            }
-        </div>
-
         <div class="card">
             <table class="table">
                 <thead>
@@ -176,6 +229,9 @@ else
     [Parameter] public Guid Id { get; set; }
 
     private AlbumDetail? _album;
+    private AlbumGlimpse? _glimpse;
+    // The edition being changed to, until its tracks arrive.
+    private Guid? _switching;
     private bool _notFound;
     private bool _formatting;
     private bool _choosingCover;
@@ -184,6 +240,36 @@ else
     private static bool Owned(TrackRow track) => track.Status is TrackStatus.Owned or TrackStatus.OwnedElsewhere;
 
     private bool MultiDisc => _album!.Tracks.Select(t => t.Disc).Distinct().Count() > 1;
+
+    private sealed record Slot(int Index, string Number, LibraryTrack? Owned);
+
+    // The tracks of the edition on its way, in order: those you have filled in, the rest blank until they arrive.
+    private List<Slot> Slots()
+    {
+        var edition = _switching is { } switching ? _album?.Editions.FirstOrDefault(e => e.Id == switching) : null;
+        // Your songs are numbered as on the edition you have, so they're put in their places only on that one.
+        var owned = _glimpse is not null && (_switching is null || _switching == _album?.OwnedEditionId) ? _glimpse.Owned : [];
+        var count = edition?.TrackCount ?? (_switching is null ? _glimpse?.Album.TotalTracks : null) ?? 0;
+        var ordered = owned.OrderBy(t => t.Disc ?? 1).ThenBy(t => int.TryParse(t.Number, out var n) ? n : int.MaxValue).ToList();
+        var slots = new List<Slot>();
+        if (ordered.Select(t => t.Disc ?? 1).Distinct().Count() > 1)
+        {
+            // Over several discs a count doesn't say where each goes: yours first, then the rest.
+            foreach (var track in ordered)
+                slots.Add(new Slot(slots.Count, $"{track.Disc}-{track.Number}", track));
+            while (slots.Count < count)
+                slots.Add(new Slot(slots.Count, "", null));
+            return slots;
+        }
+        var numbered = ordered.Where(t => int.TryParse(t.Number, out var n) && n > 0).DistinctBy(t => int.Parse(t.Number!)).ToDictionary(t => int.Parse(t.Number!));
+        count = Math.Max(count, numbered.Keys.DefaultIfEmpty().Max());
+        // Nothing to go by: a few, to show something's coming.
+        if (count == 0)
+            count = 8;
+        for (var i = 1; i <= count; i++)
+            slots.Add(new Slot(i, i.ToString(), numbered.GetValueOrDefault(i)));
+        return slots;
+    }
 
     protected override Task OnParametersSetAsync()
     {
@@ -227,11 +313,33 @@ else
             _notFound = false;
         }
         else if (_album?.Album.Id != Id)
+        {
+            // New to this session: what the list it was opened from knew, until the rest arrives.
             _album = null;
+            _glimpse = Glimpses.Album(Id);
+            _notFound = false;
+        }
         var album = await Api.GetAlbumAsync(Id, editionId, quick: true);
         _album = editionId is null ? Pages.Keep(Key(Id), album) : album;
         _notFound = _album is null;
+        if (_album is not null)
+            Glimpses.Saw(_album);
         Follow();
+    }
+
+    // The tracks shown go blank, but for those you have, until the edition's arrive.
+    private async Task ShowEditionAsync(Guid? editionId)
+    {
+        _switching = editionId;
+        _glimpse ??= Glimpses.Album(Id);
+        try
+        {
+            await LoadAsync(editionId);
+        }
+        finally
+        {
+            _switching = null;
+        }
     }
 
     private static string Key(Guid id) => $"album/{id}";
@@ -274,7 +382,7 @@ else
         await LoadAsync(_album!.ShownEditionId);
     }
 
-    private Task ChangeEditionAsync(ChangeEventArgs e) => LoadAsync(Guid.TryParse(e.Value?.ToString(), out var id) ? id : null);
+    private Task ChangeEditionAsync(ChangeEventArgs e) => ShowEditionAsync(Guid.TryParse(e.Value?.ToString(), out var id) ? id : null);
 
     private string EditionLabel(EditionSummary e)
     {

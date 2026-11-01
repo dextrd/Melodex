@@ -78,6 +78,13 @@ Everything on the way to 1.0.
 - Artist and album pages open at once with what Melodex knows, and fill in as MusicBrainz answers, rather than waiting
   for it. What they fetch goes ahead of catalogue updates running in the background. `GET /artists/{id}` and
   `GET /albums/{id}` take `quick=true` to answer this way, with `fetching` set while the rest is on its way.
+- Album, artist and song pages opened from a list show what that list knew straight away: an album's cover, title and
+  its tracks in order, the ones you have filled in and the rest shimmering until they arrive; an artist's name and the
+  albums you have; a song's title and cover. Buttons that need the whole page, such as Get missing tracks and Get
+  everything missing, are greyed until it's there, and while MusicBrainz is still being asked. Changing an album's
+  edition shows its tracks shimmering until they arrive.
+- Album and song pages, and search results, work out what you own from just their own songs, not the whole library
+  and every album the artist has, so they answer several times faster on a big library.
 - The library's lists of artists, albums and tracks are kept on disk, so they show at once after a restart, and carry
   an ETag, so switching between them only downloads what changed. Views already loaded show at once.
 - Settings → General reads more easily: songs on more than one release are described for every kind of release, and

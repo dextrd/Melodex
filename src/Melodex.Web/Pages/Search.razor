@@ -6,6 +6,7 @@
 @inject Player Player
 @inject Preferences Prefs
 @inject SearchMemory Memory
+@inject Glimpses Glimpses
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -500,8 +501,13 @@ else
         _focusSearch = _searchOpen;
     }
 
+    // The results shown last, kept for the pages they lead to.
+    private SearchResults? _glimpsed;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_results is { } results && !ReferenceEquals(results, _glimpsed))
+            Glimpses.Saw(_glimpsed = results);
         if (_restoreScroll is { } y)
         {
             _restoreScroll = null;

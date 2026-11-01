@@ -7,6 +7,10 @@ your search, go to Activity, and **Search** takes you back to that artist; click
 it, and once more for a fresh one. **Library** works the same way. Going back and forward shows pages you've already
 seen at once, scrolled to where you were, while Melodex checks them for anything new.
 
+An album, artist or song opened from a list shows what that list already knew while the rest arrives: an album's tracks
+in order, with the ones you have filled in and the others shimmering, or an artist's albums that you have. Buttons that
+need the whole page stay greyed until it's there, and while MusicBrainz is still being asked about it.
+
 ## Scanning
 
 **Scan library**, at the top right, reads new and changed files and matches them. Its menu has more:

@@ -11,8 +11,8 @@ using Melodex.Core.Tests.Support;
 namespace Melodex.Core.Tests;
 
 /// <summary>
-/// The missing view's choice for each kind of release, settings saved before there was one, and the library's lists
-/// being sent only when they've changed.
+/// The missing view's choice for each kind of release, settings saved before there was one, songs owned through their
+/// ISRCs, and the library's lists being sent only when they've changed.
 /// </summary>
 public sealed class ReleaseShowingTests : IDisposable
 {
@@ -112,6 +112,10 @@ public sealed class ReleaseShowingTests : IDisposable
 
             var missing = await view.GetMissingAsync(default);
             Assert.Equal(new[] { "Live at the Hall", "Rarities", "Studio" }, missing.Select(m => m.Album.Title).Order());
+
+            // Asked for on their own, as search results and a song's page do, they're judged the same.
+            var few = await view.GetAlbumSummariesAsync([liveId, hitsId], default);
+            Assert.All(few, a => Assert.Equal((albums[a.Id].HiddenByDefault, albums[a.Id].TotalTracks), (a.HiddenByDefault, a.TotalTracks)));
         }
 
         // With the defaults, only the studio album is listed.
@@ -120,6 +124,52 @@ public sealed class ReleaseShowingTests : IDisposable
             await scope.ServiceProvider.GetRequiredService<SettingsService>().SaveLibraryAsync(new LibrarySettings(), default);
             var missing = await scope.ServiceProvider.GetRequiredService<LibraryView>().GetMissingAsync(default);
             Assert.Equal("Studio", Assert.Single(missing).Album.Title);
+        }
+    }
+
+    [Fact]
+    public async Task A_song_is_owned_when_a_recording_sharing_its_ISRC_is_in_the_library()
+    {
+        Guid singleId, otherId, takeId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MelodexDbContext>();
+            var artist = new Artist { Name = "Band", InLibrary = true, AlbumsRefreshedAt = DateTime.UtcNow };
+            db.Artists.Add(artist);
+            var song = Track(artist, "Song");
+            var take = Track(artist, "Song");
+            var studio = Album(artist, "Studio", [], (song, "Song"));
+            var single = Album(artist, "Song", [], (take, "Song"), (Track(artist, "B-side"), "B-side"));
+            var other = Album(artist, "Other", [], (Track(artist, "Song"), "Song"));
+            await db.SaveChangesAsync();
+            db.Crosswalk.AddRange(
+                new ProviderIdMapping { EntityKind = EntityKind.Track, EntityId = song.Id, Provider = Providers.Isrc, Value = "GBAAA0000001" },
+                new ProviderIdMapping { EntityKind = EntityKind.Track, EntityId = take.Id, Provider = Providers.Isrc, Value = "GBAAA0000001" });
+            db.LibraryFiles.Add(new LibraryFile
+            {
+                Path = "Band/Studio/01 Song.flac", Format = "flac", TrackId = song.Id, EditionId = studio.Editions[0].Id, ArtistId = artist.Id,
+                MatchedAt = DateTime.UtcNow, MatchMethod = MatchMethod.MusicBrainzTags,
+            });
+            await db.SaveChangesAsync();
+            (singleId, otherId, takeId) = (single.Id, other.Id, take.Id);
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var view = scope.ServiceProvider.GetRequiredService<LibraryView>();
+            // The album's page reads only its own songs' files, and still finds it owned through the ISRC.
+            var single = (await view.GetAlbumAsync(singleId, null, default))!;
+            Assert.Equal(TrackStatus.OwnedElsewhere, single.Tracks.Single(t => t.TrackId == takeId).Status);
+            Assert.Equal(TrackStatus.Missing, single.Tracks.Single(t => t.Title == "B-side").Status);
+            Assert.Equal(1, single.Album.OwnedTracks);
+            // Another recording of the same name without the ISRC is a song of its own.
+            Assert.Equal(TrackStatus.Missing, Assert.Single((await view.GetAlbumAsync(otherId, null, default))!.Tracks).Status);
+
+            // A few albums at once, as search results and a song's page ask, say the same as the artist's page.
+            var artist = (await view.GetArtistAsync(single.Album.ArtistId, default))!.Albums.ToDictionary(a => a.Id);
+            var few = await view.GetAlbumSummariesAsync([otherId, singleId], default);
+            Assert.Equal([otherId, singleId], few.Select(a => a.Id));
+            Assert.All(few, a => Assert.Equal((artist[a.Id].Status, artist[a.Id].OwnedTracks, artist[a.Id].TotalTracks), (a.Status, a.OwnedTracks, a.TotalTracks)));
         }
     }
 

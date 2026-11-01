@@ -3,6 +3,7 @@
 @inject PageCache Pages
 @inject MelodexClient Api
 @inject Preferences Prefs
+@inject Glimpses Glimpses
 
 <PageTitle>@(_artist?.Name ?? "Artist") · Melodex</PageTitle>
 
@@ -23,26 +24,40 @@ else
             <div class="row muted small">
                 @if (_artist.Disambiguation is not null) { <span>@_artist.Disambiguation</span> }
                 @if (_artist.Country is not null) { <span>@_artist.Country</span> }
-                <span>@Owned owned · @Missing missing@(Covered > 0 ? $" · {Covered} covered" : "")</span>
+                @if (_glimpsed)
+                {
+                    <span>@Owned owned</span><span class="placeholder short"></span>
+                }
+                else
+                {
+                    <span>@Owned owned · @Missing missing@(Covered > 0 ? $" · {Covered} covered" : "")</span>
+                }
                 <ProviderIds Ids="_artist.Ids" Entity="artist" />
             </div>
         </div>
     </div>
 
     <div class="toolbar">
-        @if (Missing > 0 || _artist.Albums.Any(a => a.Status == AlbumStatus.Partial && !a.Ignored))
-        {
-            <FetchButton Kind="RequestKind.Artist" Id="_artist.Id" Primary="true" Label="Get everything missing"
-                         Hint="Fetch the missing albums shown here, and the missing tracks of albums you partly own" />
-        }
-        @if (_artist.InLibrary)
-        {
-            <IconButton Icon="format" Requires="@UserPermissions.Format" Label="Format" Title="Rewrite this artist's files: their tags, covers and where they live" OnClick="() => _formatting = true" />
-        }
+        @* Until the whole discography is here, what's missing isn't known. *@
+        <fieldset class="row" disabled="@(_glimpsed || _artist.Fetching)">
+            @if (_glimpsed || Missing > 0 || _artist.Albums.Any(a => a.Status == AlbumStatus.Partial && !a.Ignored))
+            {
+                <FetchButton Kind="RequestKind.Artist" Id="_artist.Id" Primary="true" Label="Get everything missing"
+                             Hint="Fetch the missing albums shown here, and the missing tracks of albums you partly own" />
+            }
+            @if (_artist.InLibrary)
+            {
+                <IconButton Icon="format" Requires="@UserPermissions.Format" Label="Format" Title="Rewrite this artist's files: their tags, covers and where they live" OnClick="() => _formatting = true" />
+            }
+        </fieldset>
         <OwnershipFilter OnChange="StateHasChanged" OwnedHint="Only albums you have" MissingHint="Only missing albums, and albums with tracks missing" />
     </div>
 
-    @if (_artist.Fetching)
+    @if (_glimpsed)
+    {
+        @* The albums you have are shown below at once; the rest of the discography is on its way. *@
+    }
+    else if (_artist.Fetching)
     {
         <Loading Inline="true" Text="@(_artist.Albums.Any(a => !a.Local) ? "Fetching the rest of the discography from MusicBrainz…" : "Fetching the discography from MusicBrainz…")" />
     }
@@ -68,6 +83,26 @@ else
         {
             <AlbumTable Albums="group.ToList()" OnIgnore="ToggleIgnoreAsync" />
         }
+    }
+
+    @if (_glimpsed)
+    {
+        <h2 class="section"><span class="placeholder title"></span></h2>
+        <div class="card" aria-busy="true">
+            <table class="table albums">
+                <tbody>
+                    @for (var i = 0; i < 6; i++)
+                    {
+                        <tr>
+                            <td class="cover-col"><div class="cover album pending"></div></td>
+                            <td><span class="placeholder" style="width: @(7 + i * 37 % 9)rem"></span></td>
+                            <td class="hide-narrow"><span class="placeholder short"></span></td>
+                            <td><span class="placeholder badge-size"></span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     }
 
     @if (Prefs.Ownership == OwnershipView.All && Hidden.Any())
@@ -99,6 +134,8 @@ else
     private const string SectionsKey = "artistSections";
 
     private ArtistDetail? _artist;
+    // Shown from what the lists seen knew of them, until their page arrives.
+    private bool _glimpsed;
     private bool _notFound;
 
     // Which sections are open, by type; remembered for every artist. Albums start open, the rest closed.
@@ -127,11 +164,20 @@ else
         ScanStatus.LibraryChanged += Reload;
         // Seen already this session: shown as it was while it's asked for again.
         _artist = Pages.Get<ArtistDetail>(Key) ?? (_artist?.Id == Id ? _artist : null);
+        _glimpsed = false;
+        if (_artist is null && Glimpses.Artist(Id) is { } glimpse)
+        {
+            _artist = new ArtistDetail(Id, glimpse.Name, null, null, null, [], glimpse.Owned.Count > 0, null, glimpse.Owned, glimpse.ImageUrl);
+            _glimpsed = true;
+        }
         _notFound = false;
         await Prefs.LoadAsync();
         _sections = await Prefs.GetAsync<Dictionary<AlbumType, bool>>(SectionsKey, []);
         _artist = Pages.Keep(Key, await Api.GetArtistAsync(Id, quick: true));
+        _glimpsed = false;
         _notFound = _artist is null;
+        if (_artist is not null)
+            Glimpses.Saw(_artist);
         Follow();
     }
 

@@ -700,10 +700,22 @@ td.actions > .icon-button + .icon-button, td.actions > .icon-button + .badge, td
 }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+/* Something on its way: a blank where it'll go, shimmering like a cover does. */
+.placeholder {
+    display: inline-block; vertical-align: middle; height: .85em; width: 60%; max-width: 22rem; border-radius: 4px;
+    background: linear-gradient(100deg, var(--bg) 30%, var(--border) 50%, var(--bg) 70%) 0 0 / 300% 100%;
+    animation: shimmer 1.4s linear infinite;
+}
+.placeholder.short { width: 2.5rem; }
+.placeholder.badge-size { width: 4.5rem; height: 1.2em; border-radius: 999px; }
+.placeholder.line { display: block; width: 14rem; margin-top: .45rem; }
+.placeholder.title { height: 1.6em; width: 16rem; max-width: 80%; }
 @media (prefers-reduced-motion: reduce) {
-    .cover.pending { animation: none; }
+    .cover.pending, .placeholder { animation: none; }
     .cover.loaded img { animation: none; }
 }
+/* Buttons that wait for the page to arrive, together: greyed until then. */
+fieldset.row { border: 0; margin: 0; padding: 0; min-width: 0; }
 
 /* Choices with a highlight that slides to the one picked; owned and missing wear their colours. */
 .segmented.slider { position: relative; display: inline-grid; grid-template-columns: repeat(var(--count), 1fr); }

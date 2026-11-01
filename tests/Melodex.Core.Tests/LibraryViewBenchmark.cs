@@ -50,6 +50,20 @@ public sealed class LibraryViewBenchmark(ITestOutputHelper output) : IDisposable
             watch.Restart();
             var found = await scope.ServiceProvider.GetRequiredService<Catalogue.CatalogueSearch>().SearchAsync("Song 12-3", null, local: true, default);
             output.WriteLine($"{round} local search: {watch.ElapsedMilliseconds} ms ({found.Artists.Count} artists, {found.Albums.Count} albums, {found.Tracks.Count} tracks)");
+
+            // A page: an artist's, one of their albums', and a song's.
+            var db = scope.ServiceProvider.GetRequiredService<MelodexDbContext>();
+            var album = await db.Albums.OrderBy(x => x.Title).Skip(round == "cold" ? 100 : 200).FirstAsync();
+            var song = await db.EditionTracks.Where(et => et.Edition.AlbumId == album.Id).Select(et => et.TrackId).FirstAsync();
+            watch.Restart();
+            await view.GetArtistAsync(album.ArtistId, default);
+            output.WriteLine($"{round} artist page: {watch.ElapsedMilliseconds} ms");
+            watch.Restart();
+            await view.GetAlbumAsync(album.Id, null, default);
+            output.WriteLine($"{round} album page: {watch.ElapsedMilliseconds} ms");
+            watch.Restart();
+            await view.GetTrackAsync(song, default);
+            output.WriteLine($"{round} song page: {watch.ElapsedMilliseconds} ms");
         }
     }
 

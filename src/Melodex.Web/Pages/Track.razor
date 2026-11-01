@@ -4,12 +4,59 @@
 @inject MelodexClient Api
 @inject RequestTracker Tracker
 @inject Player Player
+@inject Glimpses Glimpses
 
-<PageTitle>@(_track?.Title ?? "Track") · Melodex</PageTitle>
+<PageTitle>@(_track?.Title ?? _glimpse?.Title ?? "Track") · Melodex</PageTitle>
 
 @if (_notFound)
 {
     <div class="empty card">That track isn't in the catalogue.</div>
+}
+else if (_track is null && _glimpse is { } glimpse)
+{
+    @* What the list it was opened from knew, at once; the albums it's on and its files follow. *@
+    <div class="page-head">
+        <Cover Url="@glimpse.CoverUrl" />
+        <div>
+            <h1>@glimpse.Title</h1>
+            <div class="row muted small">
+                @if (glimpse.ArtistId is { } artistId) { <a href="artists/@artistId">@glimpse.ArtistCredit</a> } else { <span>@glimpse.ArtistCredit</span> }
+                @if (glimpse.DurationSeconds is not null) { <span>@Format.Duration(glimpse.DurationSeconds)</span> }
+                <StatusBadge Track="@(glimpse.Owned ? TrackStatus.Owned : TrackStatus.Missing)" />
+            </div>
+            <fieldset class="row album-actions" disabled style="margin-top: .5rem;">
+                @if (glimpse.Owned)
+                {
+                    <IconButton Icon="play" Requires="@UserPermissions.Listen" Primary="true" Large="true" Label="Play" Title="Play it" />
+                    <IconButton Icon="queue" Requires="@UserPermissions.Listen" Large="true" Title="Add to the queue" />
+                    <IconButton Icon="playlist" Requires="@UserPermissions.Listen" Large="true" Title="Add to a playlist" />
+                    <IconButton Icon="format" Requires="@UserPermissions.Format" Large="true" Label="Format" Title="Rewrite this song's files: their tags, cover and where they live" />
+                    <IconButton Icon="image" Requires="@UserPermissions.Format" Large="true" Label="Cover" Title="Choose this song's cover, from any release it's on or a picture of your own" />
+                }
+                else
+                {
+                    <IconButton Icon="listen" Requires="@UserPermissions.Listen" Large="true" Label="Listen now" Title="Fetch it to play now, without adding it to your library" />
+                    <IconButton Icon="get" Requires="@UserPermissions.Request" Large="true" Label="Get track" Title="Get it into your library" />
+                }
+            </fieldset>
+        </div>
+    </div>
+    <h2 class="section"><span class="placeholder title"></span></h2>
+    <div class="card" aria-busy="true">
+        <table class="table">
+            <tbody>
+                @for (var i = 0; i < 3; i++)
+                {
+                    <tr>
+                        <td><span class="placeholder" style="width: @(7 + i * 37 % 9)rem"></span></td>
+                        <td class="hide-narrow"><span class="placeholder"></span></td>
+                        <td class="num"><span class="placeholder short"></span></td>
+                        <td><span class="placeholder badge-size"></span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
 }
 else if (_track is null)
 {
@@ -149,6 +196,7 @@ else
     [Parameter] public Guid Id { get; set; }
 
     private TrackDetail? _track;
+    private TrackGlimpse? _glimpse;
     private bool _notFound;
     private bool _formatting;
     private bool _choosingCover;
@@ -189,6 +237,7 @@ else
         {
             // Seen already this session: shown as it was while it's asked for again.
             _track = Pages.Get<TrackDetail>(Key);
+            _glimpse = _track is null ? Glimpses.Track(Id) : null;
             _notFound = false;
         }
         _track = Pages.Keep(Key, await Api.GetTrackAsync(Id));

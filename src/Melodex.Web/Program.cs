@@ -20,6 +20,7 @@ builder.Services.AddScoped<Player>();
 builder.Services.AddScoped<LibraryStore>();
 builder.Services.AddScoped<SearchMemory>();
 builder.Services.AddScoped<PageCache>();
+builder.Services.AddScoped<Glimpses>();
 builder.Services.AddScoped<NavSections>();
 builder.Services.AddScoped<ViewTransitions>();
 

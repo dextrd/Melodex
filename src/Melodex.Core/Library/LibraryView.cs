@@ -46,29 +46,43 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
         public required ILookup<(Guid ArtistId, string Title), Guid> FullReleasesByTitle { get; init; }
     }
 
-    private async Task<Snapshot> LoadAsync(IReadOnlyCollection<Guid> artistIds, CancellationToken ct)
+    /// <param name="onlyAlbums">
+    /// For a page about a few albums, such as an album's or a song's: just these, and only the files that are theirs, so
+    /// the page needn't wait on the whole library or every album the artist has. Albums shown for new songs only still
+    /// need the songs of their artist's albums shown in full, which are read on their own.
+    /// </param>
+    private async Task<Snapshot> LoadAsync(IReadOnlyCollection<Guid> artistIds, CancellationToken ct, IReadOnlyCollection<Guid>? onlyAlbums = null,
+        bool scoped = false)
     {
         var settings = await settingsService.GetLibraryAsync(ct);
-        var albums = await db.Albums.Where(a => artistIds.Contains(a.ArtistId)).ToListAsync(ct);
+        var albums = onlyAlbums is null
+            ? await db.Albums.Where(a => artistIds.Contains(a.ArtistId)).ToListAsync(ct)
+            : await db.Albums.Where(a => onlyAlbums.Contains(a.Id)).ToListAsync(ct);
+        scoped |= onlyAlbums is not null;
         var albumIds = albums.Select(a => a.Id).ToList();
         var editions = await db.Editions.Where(e => albumIds.Contains(e.AlbumId)).ToListAsync(ct);
         var editionIds = editions.Select(e => e.Id).ToList();
         var listings = await db.EditionTracks.Where(et => editionIds.Contains(et.EditionId))
             .Select(et => new Listing(et.EditionId, et.Disc, et.Position, et.Number, et.Title, et.TrackId, et.Track.ArtistCredit, et.Duration ?? et.Track.Duration))
             .ToListAsync(ct);
+        var listingTracks = listings.Select(l => l.TrackId).Distinct().ToList();
 
-        var files = await db.LibraryFiles.Where(f => f.TrackId != null)
-            .Select(f => new OwnedFile(f.Id, f.Path, f.TrackId!.Value, f.EditionId)).ToListAsync(ct);
+        // A page about an artist or a few albums needs only their songs' files and those filed under their editions.
+        var files = scoped
+            ? await db.LibraryFiles.Where(f => f.TrackId != null && (listingTracks.Contains(f.TrackId.Value) || f.EditionId != null && editionIds.Contains(f.EditionId.Value)))
+                .Select(f => new OwnedFile(f.Id, f.Path, f.TrackId!.Value, f.EditionId)).ToListAsync(ct)
+            : await db.LibraryFiles.Where(f => f.TrackId != null)
+                .Select(f => new OwnedFile(f.Id, f.Path, f.TrackId!.Value, f.EditionId)).ToListAsync(ct);
         var owned = files.Select(f => f.TrackId).ToHashSet();
 
-        // Different recordings sharing an ISRC are the same song as far as owning it goes.
-        var ownedIsrcs = await db.Crosswalk.Where(m => m.EntityKind == EntityKind.Track && m.Provider == Providers.Isrc && owned.Contains(m.EntityId))
-            .Select(m => m.Value).Distinct().ToListAsync(ct);
-        var listingTracks = listings.Select(l => l.TrackId).Distinct().ToList();
-        var sharingIsrc = await db.Crosswalk.Where(m => m.EntityKind == EntityKind.Track && m.Provider == Providers.Isrc
-                                                       && ownedIsrcs.Contains(m.Value) && listingTracks.Contains(m.EntityId))
+        // Different recordings sharing an ISRC are the same song as far as owning it goes: a song here is owned when
+        // a recording with one of its ISRCs is in the library.
+        var listingIsrcs = db.Crosswalk.Where(m => m.EntityKind == EntityKind.Track && m.Provider == Providers.Isrc && listingTracks.Contains(m.EntityId));
+        var ownedIsrcs = await listingIsrcs
+            .Where(m => db.Crosswalk.Any(o => o.EntityKind == EntityKind.Track && o.Provider == Providers.Isrc && o.Value == m.Value
+                                              && db.LibraryFiles.Any(f => f.TrackId == o.EntityId)))
             .Select(m => m.EntityId).ToListAsync(ct);
-        owned.UnionWith(sharingIsrc);
+        owned.UnionWith(ownedIsrcs);
 
         var ignored = await db.Tracks.Where(t => t.Ignored).Select(t => t.Id).ToHashSetAsync(ct);
         if (ignored.Count > 0)
@@ -84,15 +98,28 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
             .Select(m => new { m.EntityId, m.Provider, m.Value }).ToListAsync(ct);
 
         var showing = albums.ToDictionary(a => a.Id, a => settings.ShowingOf(a));
-        var full = new List<(Listing Listing, Album Album)>();
-        if (showing.ContainsValue(ReleaseShowing.NewSongsOnly))
+        var full = new List<(Guid TrackId, string Title, Album Album)>();
+        if (showing.ContainsValue(ReleaseShowing.NewSongsOnly) && onlyAlbums is null)
         {
             var albumsById = albums.ToDictionary(a => a.Id);
             var albumOfEdition = editions.ToDictionary(e => e.Id, e => albumsById[e.AlbumId]);
             var ownedAlbums = files.Where(f => f.EditionId is { } e && albumOfEdition.ContainsKey(e))
                 .Select(f => albumOfEdition[f.EditionId!.Value].Id).ToHashSet();
-            full = listings.Select(l => (Listing: l, Album: albumOfEdition[l.EditionId]))
+            full = listings.Select(l => (l.TrackId, l.Title, Album: albumOfEdition[l.EditionId]))
                 .Where(x => showing[x.Album.Id] == ReleaseShowing.Show || ownedAlbums.Contains(x.Album.Id)).ToList();
+        }
+        else if (showing.ContainsValue(ReleaseShowing.NewSongsOnly))
+        {
+            // Just a few albums: whether a song is new needs only the songs of their artists' albums shown in full or owned.
+            var theirs = albums.Select(a => a.ArtistId).Distinct().ToList();
+            var candidates = await db.Albums.Where(a => theirs.Contains(a.ArtistId)).ToListAsync(ct);
+            var ownedAlbums = await db.LibraryFiles.Where(f => f.EditionId != null && theirs.Contains(f.Edition!.Album.ArtistId))
+                .Select(f => f.Edition!.AlbumId).Distinct().ToListAsync(ct);
+            var fully = candidates.Where(a => settings.ShowingOf(a) == ReleaseShowing.Show || ownedAlbums.Contains(a.Id)).ToDictionary(a => a.Id);
+            var fullIds = fully.Keys.ToList();
+            full = (await db.EditionTracks.Where(et => fullIds.Contains(et.Edition.AlbumId))
+                    .Select(et => new { et.TrackId, et.Title, et.Edition.AlbumId }).ToListAsync(ct))
+                .Select(x => (x.TrackId, x.Title, Album: fully[x.AlbumId])).ToList();
         }
 
         return new Snapshot
@@ -107,8 +134,8 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
             Ignored = ignored,
             AlbumIds = providerIds.ToLookup(p => p.EntityId, p => new ProviderId(p.Provider, p.Value)),
             Showing = showing,
-            FullReleasesByTrack = full.Select(x => (x.Listing.TrackId, x.Album.Id)).Distinct().ToLookup(x => x.TrackId, x => x.Id),
-            FullReleasesByTitle = full.Select(x => (Key: (x.Album.ArtistId, SongKey(x.Listing.Title)), x.Album.Id)).Distinct().ToLookup(x => x.Key, x => x.Id),
+            FullReleasesByTrack = full.Select(x => (x.TrackId, x.Album.Id)).Distinct().ToLookup(x => x.TrackId, x => x.Id),
+            FullReleasesByTitle = full.Select(x => (Key: (x.Album.ArtistId, SongKey(x.Title)), x.Album.Id)).Distinct().ToLookup(x => x.Key, x => x.Id),
         };
     }
 
@@ -324,7 +351,7 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
         var artist = await db.Artists.FindAsync([id], ct);
         if (artist is null)
             return null;
-        var s = await LoadAsync([id], ct);
+        var s = await LoadAsync([id], ct, scoped: true);
         var albums = Ordered(s.Albums.Select(a => Evaluate(s, a))).Select(e => Summarise(s, e)).ToList();
         if (artist.InLibrary)
             albums.AddRange((await local.LoadAsync(ct)).Albums.Where(a => a.ArtistId == id).Select(a => a.Summary()));
@@ -339,7 +366,7 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
         var album = await db.Albums.Include(a => a.Artist).FirstOrDefaultAsync(a => a.Id == id, ct);
         if (album is null)
             return null;
-        var s = await LoadAsync([album.ArtistId], ct);
+        var s = await LoadAsync([album.ArtistId], ct, onlyAlbums: [id]);
         var evaluation = Evaluate(s, s.Albums.First(a => a.Id == id));
         var editions = s.EditionsByAlbum[id].OrderBy(e => e.ReleaseDate ?? "9999").ThenBy(e => e.Country).ToList();
         var editionIds = editions.Select(e => e.Id).ToHashSet();
@@ -420,8 +447,7 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
     /// <summary>Summaries for any albums, for example search results, in the order given.</summary>
     public async Task<IReadOnlyList<AlbumSummary>> GetAlbumSummariesAsync(IReadOnlyList<Guid> albumIds, CancellationToken ct)
     {
-        var artistIds = await db.Albums.Where(a => albumIds.Contains(a.Id)).Select(a => a.ArtistId).Distinct().ToListAsync(ct);
-        var s = await LoadAsync(artistIds, ct);
+        var s = await LoadAsync([], ct, onlyAlbums: albumIds);
         var byId = s.Albums.ToDictionary(a => a.Id);
         return albumIds.Where(byId.ContainsKey).Select(id => Summarise(s, Evaluate(s, byId[id]))).ToList();
     }
