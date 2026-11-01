@@ -58,6 +58,8 @@ Everything on the way to 1.0.
 - The Library's colour key sits above the artists, with room beneath it, rather than under a "No artists match" box,
   and the Albums view has one too.
 - An album's tracks arriving no longer move the page: rows on their way are as tall and as wide as those arrived.
+- Songs matched on their own, rather than as part of an album, show the album their tags name (or their first) in
+  playlists and the Library's Tracks view, rather than none. Formatting isn't needed for that.
 - On a phone, buttons meant to give way to the title (add to playlist, queue and ignore on an album's tracks) do.
 - Browsers could keep an old copy of the web app's page, showing *Loading Navidex* and failing to change the theme.
 - The ownership meters and legend use brighter colours in light themes.
@@ -89,6 +91,11 @@ Everything on the way to 1.0.
   edition shows its tracks shimmering until they arrive.
 - The Library's Tracks view is laid out as a playlist's songs are, with the album in a column of its own, and marks the
   song playing. A playlist's page keeps the Library heading and tabs.
+- A playlist's songs each show their album's cover, and a long playlist shows 60 songs and more as you scroll, as the
+  Library does. How many is under Settings → Appearance, for both (`listPage` in `Appearance`). A song only on the media
+  server that looks to be a file waiting in Review links to it there.
+- Covers show from the browser's cache at once, and are checked for changes behind, rather than asked for again first;
+  a playlist's four covers appear together.
 - Album and song pages, and search results, work out what you own from just their own songs, not the whole library
   and every album the artist has, so they answer several times faster on a big library.
 - The library's lists of artists, albums and tracks are kept on disk, so they show at once after a restart, and carry

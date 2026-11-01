@@ -343,6 +343,7 @@ public sealed class PlaylistService(MelodexDbContext db, SettingsService setting
         if (entries.Any(e => e.TrackId is null && e.FileId is not null))
             own = (await local.LoadAsync(ct)).Albums.SelectMany(a => a.Songs.Select(s => (a, s))).ToDictionary(x => x.s.File.Id);
 
+        var inReview = await InReviewAsync(entries, ct);
         var songs = new List<PlaylistSong>();
         foreach (var e in entries)
         {
@@ -361,10 +362,37 @@ public sealed class PlaylistService(MelodexDbContext db, SettingsService setting
             else
             {
                 songs.Add(new PlaylistSong(e.Id, e.TrackId, e.FileId, e.Title, e.Artist, null, null, e.Album, null, e.DurationSeconds,
-                    e.TrackId is null && e.FileId is null ? PlaylistSongState.ServerOnly : PlaylistSongState.Gone));
+                    e.TrackId is null && e.FileId is null ? PlaylistSongState.ServerOnly : PlaylistSongState.Gone, inReview.GetValueOrDefault(e.Id)));
             }
         }
         return songs;
+    }
+
+    /// <summary>
+    /// Songs only the media server has that look to be among the files waiting for review: the same title, an artist in
+    /// common, and the same length to within a few seconds. Each with that file's path.
+    /// </summary>
+    private async Task<Dictionary<Guid, string>> InReviewAsync(IReadOnlyList<PlaylistEntry> entries, CancellationToken ct)
+    {
+        var serverOnly = entries.Where(e => e.TrackId is null && e.FileId is null).ToList();
+        if (serverOnly.Count == 0)
+            return [];
+        var waiting = (await db.LibraryFiles.AsNoTracking()
+                .Where(f => f.TrackId == null && f.MatchedAt != null && f.ExcludedAt == null && f.DeferredAt == null && f.HiddenAt == null)
+                .Select(f => new { f.Path, f.TagsJson, f.Duration }).ToListAsync(ct))
+            .Select(f => (f.Path, f.Duration, Tags: FileTags.Parse(f.TagsJson)))
+            .ToLookup(f => SongNames.TitleKey(f.Tags.Title ?? Path.GetFileNameWithoutExtension(f.Path)));
+        var found = new Dictionary<Guid, string>();
+        foreach (var e in serverOnly)
+        {
+            var artists = SongNames.ArtistKeys(e.Artist).ToHashSet();
+            var file = waiting[SongNames.TitleKey(e.Title)].FirstOrDefault(f =>
+                (artists.Count == 0 || SongNames.ArtistKeys(f.Tags.Artist ?? f.Tags.AlbumArtist ?? "").Any(artists.Contains))
+                && (e.DurationSeconds is not { } length || f.Duration is not { } own || Math.Abs(own.TotalSeconds - length) <= 3));
+            if (file.Path is not null)
+                found[e.Id] = file.Path;
+        }
+        return found;
     }
 
     private sealed record FoundFile(Guid Id, Guid? TrackId, Guid? EditionId, Guid? AlbumId, string? AlbumTitle, TimeSpan? Duration);
@@ -376,8 +404,13 @@ public sealed class PlaylistService(MelodexDbContext db, SettingsService setting
         var trackIds = entries.Select(e => e.TrackId).OfType<Guid>().Distinct().ToList();
         var files = await db.LibraryFiles.AsNoTracking()
             .Where(f => f.HiddenAt == null && (fileIds.Contains(f.Id) || f.TrackId != null && trackIds.Contains(f.TrackId.Value)))
-            .Select(f => new FoundFile(f.Id, f.TrackId, f.EditionId, f.Edition == null ? null : f.Edition.AlbumId, f.Edition == null ? null : f.Edition.Album.Title, f.Duration))
-            .ToListAsync(ct);
+            .Select(f => new
+            {
+                Found = new FoundFile(f.Id, f.TrackId, f.EditionId, f.Edition == null ? null : f.Edition.AlbumId, f.Edition == null ? null : f.Edition.Album.Title, f.Duration),
+                Tags = f.EditionId == null && f.TrackId != null ? f.TagsJson : null,
+            })
+            .ToListAsync(ct)
+            is var rows ? await PlaceLooseAsync(rows.Select(r => (r.Found, r.Tags)).ToList(), ct) : [];
         var byId = files.ToDictionary(f => f.Id);
         var byTrack = files.Where(f => f.TrackId is not null).GroupBy(f => f.TrackId!.Value).ToDictionary(g => g.Key, g => g.OrderBy(f => f.Id).First());
         var found = new Dictionary<Guid, FoundFile>();
@@ -389,6 +422,23 @@ public sealed class PlaylistService(MelodexDbContext db, SettingsService setting
                 found[e.Id] = best;
         }
         return found;
+    }
+
+    // Songs matched on their own show on the album their tag names, or their first, as the library's track list does.
+    private async Task<List<FoundFile>> PlaceLooseAsync(List<(FoundFile Found, string? Tags)> files, CancellationToken ct)
+    {
+        var loose = files.Where(f => f.Found.EditionId is null && f.Found.TrackId is not null).GroupBy(f => f.Found.TrackId!.Value)
+            .ToDictionary(g => g.Key, g => g.Select(f => FileTags.Parse(f.Tags ?? "{}").Album).FirstOrDefault(a => a is not null));
+        var places = await LooseSongs.PlacesAsync(db, loose, ct);
+        // With none known yet, its tag's album, to read.
+        return files.Select(f => f.Found switch
+            {
+                { EditionId: null, TrackId: { } track } when places.TryGetValue(track, out var place) =>
+                    f.Found with { EditionId = place.EditionId, AlbumId = place.AlbumId, AlbumTitle = place.AlbumTitle },
+                { EditionId: null, TrackId: not null } => f.Found with { AlbumTitle = FileTags.Parse(f.Tags ?? "{}").Album },
+                _ => f.Found,
+            })
+            .ToList();
     }
 
     // Each entry's cover, for the mosaics on the list.

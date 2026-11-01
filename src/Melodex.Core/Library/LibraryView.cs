@@ -329,13 +329,18 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
             .ToListAsync(ct);
 
         var own = await local.LoadAsync(ct);
+        // Songs matched on their own show on an album they're on.
+        var places = await LooseSongs.PlacesAsync(db, rows.Where(r => r.EditionId is null).GroupBy(r => r.TrackId)
+            .ToDictionary(g => g.Key, g => g.Select(r => FileTags.Parse(r.TagsJson).Album).FirstOrDefault(a => a is not null)), ct);
         return rows
             .Select(r =>
             {
                 var tags = settings.PreferFileTags ? FileTags.Parse(r.TagsJson) : null;
-                return new LibraryTrack(r.Id, r.TrackId, tags?.Title ?? r.Title, tags?.Artist ?? r.ArtistCredit, r.ArtistId, r.AlbumId, tags?.Album ?? r.AlbumTitle,
+                var place = r.EditionId is null ? places.GetValueOrDefault(r.TrackId) : null;
+                var albumId = r.AlbumId ?? place?.AlbumId;
+                return new LibraryTrack(r.Id, r.TrackId, tags?.Title ?? r.Title, tags?.Artist ?? r.ArtistCredit, r.ArtistId, albumId, tags?.Album ?? r.AlbumTitle ?? place?.AlbumTitle ?? FileTags.Parse(r.TagsJson).Album,
                     r.Listing?.Disc, r.Listing?.Number, (r.Duration ?? r.TrackDuration)?.TotalSeconds, r.Path, r.Format,
-                    settings.PreferFileCovers ? LocalMusic.CoverUrl(r.Id) : r.AlbumId is { } album ? CoverUrl(album, r.EditionId) : null);
+                    settings.PreferFileCovers ? LocalMusic.CoverUrl(r.Id) : albumId is { } album ? CoverUrl(album, r.EditionId ?? place?.EditionId) : null);
             })
             .Concat(own.Albums.SelectMany(a => a.Songs.Select(song => new LibraryTrack(song.File.Id, song.File.Id, song.Title, song.Artist,
                 a.ArtistLocal ? null : a.ArtistId, a.Id, a.Title, song.Tags.Disc, song.Tags.Track?.ToString(), song.File.Duration?.TotalSeconds,

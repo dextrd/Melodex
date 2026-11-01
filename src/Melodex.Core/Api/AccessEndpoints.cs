@@ -137,6 +137,8 @@ public static class AccessEndpoints
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["appearance"] = ["That isn't a theme Melodex has."] });
                 if (body.PlaylistFolders is null || body.PlaylistFolders.Length > 3 || body.PlaylistFolders.Any(char.IsWhiteSpace))
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["playlistFolders"] = ["Separate folders with up to 3 characters, not spaces, or none."] });
+                if (body.ListPage is < 20 or > 500)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["listPage"] = ["Show from 20 to 500 at a time."] });
                 user.Appearance = JsonSerializer.Serialize(body, MelodexJson.Options);
                 await db.SaveChangesAsync(ct);
                 access.UsersChanged();

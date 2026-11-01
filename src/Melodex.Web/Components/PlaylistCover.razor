@@ -1,10 +1,11 @@
 @* A playlist's picture: its first album's cover, or four of them in a square once it has that many. *@
 @if (Covers.Count >= 4)
 {
-    <div class="cover playlist-mosaic @Class" aria-hidden="true">
+    @* Shimmering until all four are in, then shown together; the browser's own copies come at once. *@
+    <div @key="string.Join('|', Covers.Take(4))" class="cover playlist-mosaic pending @Class" aria-hidden="true">
         @foreach (var url in Covers.Take(4))
         {
-            <img src="@url" alt="" loading="lazy" />
+            <img src="@url" alt="" loading="lazy" onload="melodexMosaicPart(this)" onerror="melodexMosaicPart(this)" />
         }
     </div>
 }

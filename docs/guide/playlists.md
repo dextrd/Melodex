@@ -26,7 +26,8 @@ button in the toolbar hides and shows again. Pins are yours alone and stay in Me
 
 ## Pictures
 
-A playlist shows the covers of the albums in it, or four of them in a square once it has that many. Give it a
+A playlist shows the covers of the albums in it, or four of them in a square once it has that many, which appear
+together once all four are in. Give it a
 picture of its own with **Picture** on its page (a JPEG, PNG, WebP or GIF, up to 10 MB), and take it away the same way
 to have its albums' covers back.
 
@@ -67,7 +68,7 @@ public playlists from other users aren't brought over.
   back to Navidrome with it. Songs are recognised by their MusicBrainz IDs where the files have them, and otherwise by
   their title, artist and length as the files' own tags or the catalogue have them, however they're written: "Don't"
   is "Don’t", and "(feat. …)" doesn't count. Songs marked only on the media server are looked for again when the
-  library changes.
+  library changes. One that looks to be a file waiting in **Review** says so, with a link to it there, to match it.
 
 Formatting can move files, which can give them new IDs in Navidrome. Playlists with songs that moved look for them
 again once Navidrome has scanned them, and aren't sent until it's found them all, so nothing drops out of the

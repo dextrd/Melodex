@@ -3,6 +3,7 @@
 @inject LibraryStore Store
 @inject Preferences Prefs
 @inject Player Player
+@inject AuthState Auth
 @using Microsoft.AspNetCore.Components.Web.Virtualization
 @inject NavigationManager Nav
 @inject ViewTransitions Transitions
@@ -252,7 +253,8 @@
     private static double Ratio(int? part, int? whole) => whole is > 0 ? (double)(part ?? 0) / whole.Value : 0;
 
     // Tiles and tracks are drawn a page at a time as the page is scrolled: drawing hundreds at once makes every change slow.
-    private const int Page = 60;
+    // How many of a list are drawn at a time, as the user chose.
+    private int Page => Auth.Status?.Appearance?.ListPage ?? Appearance.DefaultListPage;
 
     [SupplyParameterFromQuery(Name = "view")] public string? ViewParameter { get; set; }
 
@@ -265,7 +267,7 @@
     private ElementReference _filterDrop;
     private string _filter = "";
     private string? _error;
-    private int _limit = Page;
+    private int _limit = Appearance.DefaultListPage;
     private (LibraryItemKind Kind, Guid Id, string Name)? _removing;
 
     private static string LoadingText => ScanStatus.Preparing
@@ -355,6 +357,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        _limit = Page;
         ScanStatus.LibraryChanged += Reload;
         // The song playing is marked in the Tracks view.
         Player.Changed += Redraw;

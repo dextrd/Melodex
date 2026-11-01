@@ -27,8 +27,12 @@ public enum ThemeMode { Auto, Light, Dark, Black }
 /// What separates folders in playlist names, such as <c>/</c> making <c>Moods/Calm</c> a playlist Calm in a folder
 /// Moods. Empty for no folders.
 /// </param>
+/// <param name="ListPage">How many of a long list (the Library's, a playlist's songs) are shown at first, and then more each time as you scroll: 20 to 500.</param>
 public sealed record Appearance(ThemeColor Color = ThemeColor.Pink, ThemeMode Mode = ThemeMode.Auto, bool HighContrast = false,
-    string PlaylistFolders = "/");
+    string PlaylistFolders = "/", int ListPage = Appearance.DefaultListPage)
+{
+    public const int DefaultListPage = 60;
+}
 
 /// <summary>Body of <c>POST /auth/setup</c>: the admin account, made the first time Melodex runs.</summary>
 public sealed record SetUpLogin(string Username, string Password);

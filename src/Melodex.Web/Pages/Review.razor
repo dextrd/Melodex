@@ -252,6 +252,9 @@ else
         _ => "Take it out of the library altogether. It stays in your music folder.",
     };
     private string _filter = "";
+
+    /// <summary>Opened filtered, such as to the file a playlist's song looks to be.</summary>
+    [SupplyParameterFromQuery(Name = "filter")] public string? Filter { get; set; }
     private bool _busy;
     private bool _filterOpen, _focusFilter;
     private ElementReference _filterDrop;
@@ -345,6 +348,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        _filter = Filter ?? "";
         Tracker.Changed += Refresh;
         _sort = await Preferences.GetAsync("review.sort", "path");
         if (Sorts.All(s => s.Key != _sort))

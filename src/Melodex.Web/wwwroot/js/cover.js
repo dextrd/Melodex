@@ -51,3 +51,11 @@ async function check() {
     }
     timer = waiting.size > 0 ? setTimeout(check, every) : null;
 }
+
+// A playlist's four covers show together once they're all in (or given up on), not one by one as each arrives.
+window.melodexMosaicPart = function (img) {
+    const mosaic = img.parentElement;
+    if (!mosaic || [...mosaic.querySelectorAll('img')].some(part => !part.complete))
+        return;
+    mosaic.classList.replace('pending', 'loaded');
+};

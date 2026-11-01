@@ -53,6 +53,10 @@ public enum PlaylistSongState
 
 /// <summary>A song in a playlist.</summary>
 /// <param name="EntryId">This place in the playlist: the same song can be in it more than once.</param>
+/// <param name="ReviewPath">
+/// For a song only the media server has, the path of a file waiting for review that looks to be it (the same title, artist and
+/// length), to match it there.
+/// </param>
 public sealed record PlaylistSong(
     Guid EntryId,
     Guid? TrackId,
@@ -64,7 +68,8 @@ public sealed record PlaylistSong(
     string? AlbumTitle,
     string? CoverUrl,
     double? DurationSeconds,
-    PlaylistSongState State);
+    PlaylistSongState State,
+    string? ReviewPath = null);
 
 public sealed record PlaylistDetail(PlaylistSummary Playlist, IReadOnlyList<PlaylistSong> Songs);
 

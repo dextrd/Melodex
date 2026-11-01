@@ -702,6 +702,8 @@ td.actions > .icon-button + .icon-button, td.actions > .icon-button + .badge, td
 .album-actions { gap: .4rem; }
 .track-list col.icons-2-col { width: 5.5rem; }
 .track-list col.icons-3-col { width: 9.5rem; }
+.track-list col.icons-4-col { width: 12.5rem; }
+@media (max-width: 640px) { .track-list col.icons-4-col { width: 5.5rem; } }
 /* Room between the last button and the card's edge. */
 .table tr > td:last-child.actions { padding-right: 1rem; }
 
@@ -1110,6 +1112,8 @@ input[type=search]:disabled { opacity: .6; }
 /* Playlists: a tree of folders, each playlist with a small cover; four album covers in a square once it has them. */
 .playlist-mosaic { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
 .playlist-mosaic img { position: static; width: 100%; height: 100%; }
+.playlist-mosaic.pending img { opacity: 0; }
+.playlist-mosaic.loaded img { animation: fade-in .25s ease-out; }
 .cover.small { width: 2.75rem; flex: none; }
 .playlist-tree { padding: .35rem; }
 .playlist-list { list-style: none; margin: 0; padding: 0; }

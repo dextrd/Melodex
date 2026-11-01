@@ -22,6 +22,9 @@ public static class LibraryEndpoints
     /// <summary>How long a request for a picture waits for it to be fetched before answering 503.</summary>
     private static readonly TimeSpan ArtworkPatience = TimeSpan.FromMilliseconds(100);
 
+    // Covers show from the browser's cache straight away, and are checked with the server behind: a week of that.
+    private const string CoverCaching = "max-age=0, stale-while-revalidate=604800";
+
     /// <summary>How long the artwork status waits for pictures it was asked about before answering.</summary>
     private static readonly TimeSpan ArtworkStatusPatience = TimeSpan.FromMilliseconds(250);
 
@@ -450,7 +453,7 @@ public static class LibraryEndpoints
                 if (path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal) && File.Exists(path)
                     && FileArt.Find(path) is { } picture)
                 {
-                    http.Response.Headers.CacheControl = "no-cache";
+                    http.Response.Headers.CacheControl = CoverCaching;
                     return Results.File(picture.Data, picture.ContentType, lastModified: row.ModifiedAt,
                         entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{row.ModifiedAt.Ticks:x}-{picture.Data.Length:x}\""));
                 }
@@ -480,8 +483,9 @@ public static class LibraryEndpoints
                 }
                 if (await finding is not { } found)
                     return Results.NotFound();
-                // Revalidated every time, so a change of artwork plugins shows at once; unchanged pictures are a 304.
-                http.Response.Headers.CacheControl = "no-cache";
+                // Shown from the browser's cache at once, and checked behind, so a change of artwork plugins shows the
+                // next time; unchanged pictures are a 304.
+                http.Response.Headers.CacheControl = CoverCaching;
                 return Results.File(found.Path, found.ContentType, lastModified: found.UpdatedAt,
                     entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{found.UpdatedAt.Ticks:x}\""));
             })

@@ -90,6 +90,12 @@ public sealed class NavSections : IDisposable
             if (Bare(path) == "")
                 _browse = path;
         }
+        // A playlist is the Library's, however it was opened: its page shows the Library's tabs.
+        else if (Bare(path).StartsWith("playlists/"))
+        {
+            Current = NavSection.Library;
+            _last[NavSection.Library] = path;
+        }
         else if (IsDeep(path) && Current is { } within)
             _last[within] = path;
         else

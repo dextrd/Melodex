@@ -67,10 +67,13 @@ else
     else
     {
         <div class="card">
-            <table class="table">
+            <table class="table track-list playlist-songs">
+                @* Fixed widths, so the columns stay put as more rows are drawn. *@
+                <colgroup><col class="num-col" /><col class="cover-col" /><col /><col class="album-col hide-narrow" /><col class="length-col hide-narrow" /><col class="icons-4-col" /></colgroup>
                 <thead>
                     <tr>
                         <th class="num">#</th>
+                        <th class="cover-col"></th>
                         <th>Title</th>
                         <th class="hide-narrow">Album</th>
                         <th class="num hide-narrow">Length</th>
@@ -78,19 +81,28 @@ else
                     </tr>
                 </thead>
                 <tbody>
-                    @for (var i = 0; i < _playlist.Songs.Count; i++)
+                    @for (var i = 0; i < Math.Min(_limit, _playlist.Songs.Count); i++)
                     {
                         var index = i;
                         var song = _playlist.Songs[i];
                         var canPlay = song.State is PlaylistSongState.Library or PlaylistSongState.Local;
-                        <tr class="@(canPlay ? "" : "dim") @(canPlay && Player.Now is { } now && now.TrackId == (song.TrackId ?? song.FileId) ? "playing" : "")">
+                        var albumHref = song.AlbumId is { } album ? $"{(song.State == PlaylistSongState.Local ? "local/albums" : "albums")}/{album}" : null;
+                        <tr @key="song.EntryId" class="@(canPlay ? "" : "dim") @(canPlay && Player.Now is { } now && now.TrackId == (song.TrackId ?? song.FileId) ? "playing" : "")">
                             <td class="num muted">@(i + 1)</td>
-                            <td>
-                                @if (song.State == PlaylistSongState.Library) { <a href="tracks/@song.TrackId" class="plain">@song.Title</a> } else { @song.Title }
-                                <div class="muted small">
+                            <td class="cover-col">
+                                @if (albumHref is not null) { <a href="@albumHref" tabindex="-1"><Cover Url="@song.CoverUrl" /></a> } else { <Cover Url="@song.CoverUrl" /> }
+                            </td>
+                            <td class="track-main">
+                                <div class="ellipsis">
+                                    @if (song.State == PlaylistSongState.Library) { <a href="tracks/@song.TrackId" class="plain">@song.Title</a> } else { @song.Title }
+                                </div>
+                                <div class="muted small ellipsis">
                                     @if (song.ArtistId is { } artist) { <a class="muted" href="@(song.State == PlaylistSongState.Local ? "local/artists" : "artists")/@artist">@song.Artist</a> } else { @song.Artist }
                                     @switch (song.State)
                                     {
+                                        case PlaylistSongState.ServerOnly when song.ReviewPath is { } path && Auth.May(UserPermissions.Review):
+                                            <span> · only on the media server, </span><a href="@($"review?filter={Uri.EscapeDataString(path)}")" title="@path">waiting in Review</a>
+                                            break;
                                         case PlaylistSongState.ServerOnly:
                                             <span> · only on the media server</span>
                                             break;
@@ -100,8 +112,8 @@ else
                                     }
                                 </div>
                             </td>
-                            <td class="hide-narrow muted small">
-                                @if (song.AlbumId is { } album) { <a class="muted" href="@(song.State == PlaylistSongState.Local ? "local/albums" : "albums")/@album">@song.AlbumTitle</a> } else { @song.AlbumTitle }
+                            <td class="hide-narrow muted small ellipsis">
+                                @if (albumHref is not null) { <a class="muted" href="@albumHref">@song.AlbumTitle</a> } else { @song.AlbumTitle }
                             </td>
                             <td class="num hide-narrow muted">@Format.Duration(song.DurationSeconds)</td>
                             <td class="num actions">
@@ -109,14 +121,15 @@ else
                                 {
                                     <IconButton Icon="play" Requires="@UserPermissions.Listen" Title="Play the playlist from here" OnClick="() => PlayFromAsync(song)" />
                                 }
-                                <IconButton Icon="up" Title="Move up" Disabled="index == 0 || _busy" OnClick="() => MoveAsync(index, -1)" />
-                                <IconButton Icon="down" Title="Move down" Disabled="index == _playlist.Songs.Count - 1 || _busy" OnClick="() => MoveAsync(index, 1)" />
+                                <IconButton Icon="up" Class="hide-narrow" Title="Move up" Disabled="index == 0 || _busy" OnClick="() => MoveAsync(index, -1)" />
+                                <IconButton Icon="down" Class="hide-narrow" Title="Move down" Disabled="index == _playlist.Songs.Count - 1 || _busy" OnClick="() => MoveAsync(index, 1)" />
                                 <IconButton Icon="cancel" Title="Take it out of the playlist" Disabled="_busy" OnClick="() => RemoveAsync(index)" />
                             </td>
                         </tr>
                     }
                 </tbody>
             </table>
+            @if (_playlist.Songs.Count > _limit) { <MoreOnScroll OnMore="() => _limit += Page" Remaining="_playlist.Songs.Count - _limit" /> }
         </div>
     }
 }
@@ -176,6 +189,11 @@ else
 
     private PlaylistDetail? _playlist;
     private bool _notFound, _busy, _renaming, _deleting;
+
+    // A long playlist is drawn a page at a time, as many as the user chose, and more as they scroll.
+    private int Page => Auth.Status?.Appearance?.ListPage ?? Appearance.DefaultListPage;
+    private int _limit = Appearance.DefaultListPage;
+    private Guid _shown;
     private string _name = "";
     private string? _comment, _error, _renameError;
 
@@ -191,6 +209,11 @@ else
         Player.Changed += Redraw;
         ScanStatus.LibraryChanged -= Reload;
         ScanStatus.LibraryChanged += Reload;
+        if (_shown != Id)
+        {
+            _shown = Id;
+            _limit = Page;
+        }
         await LoadAsync();
     }
 

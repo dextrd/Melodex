@@ -157,6 +157,44 @@ public sealed class PlaylistTests : IDisposable
         Assert.Equal(a.TrackId, (await _api.GetPlaylistAsync(loose.Id))!.Songs[0].TrackId);
     }
 
+    [TestLibraryFact]
+    public async Task Every_song_shows_an_album_and_songs_waiting_for_review_lead_there()
+    {
+        await ScanAsync();
+        var (a, b) = await TwoTracksAsync();
+        Guid albumA;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MelodexDbContext>();
+            // Matched as a song on its own, with no release: still on the album its tag names.
+            var file = await db.LibraryFiles.Include(f => f.Edition).SingleAsync(f => f.Id == a.FileId);
+            albumA = file.Edition!.AlbumId;
+            file.EditionId = null;
+            // Not matched at all: waiting for review.
+            var waiting = await db.LibraryFiles.SingleAsync(f => f.Id == b.FileId);
+            (waiting.TrackId, waiting.EditionId, waiting.ReviewReason) = (null, null, "Not sure");
+            await db.SaveChangesAsync();
+        }
+
+        var made = await _api.CreatePlaylistAsync(new CreatePlaylist("Mixed", Songs: [new PlaylistItem(a.TrackId)]));
+        var song = Assert.Single(made.Songs);
+        Assert.Equal(albumA, song.AlbumId);
+        Assert.Equal(a.AlbumTitle, song.AlbumTitle);
+        Assert.NotNull(song.CoverUrl);
+        Assert.Equal(albumA, (await _api.GetLibraryTracksAsync()).Single(t => t.FileId == a.FileId).AlbumId);
+
+        // A song only the server has, which is the file waiting for review, says where it is.
+        var server = new FakePlaylistServer();
+        server.Add("From the server", [new ServerTrack("s:b", null, b.Title, b.ArtistCredit, null, b.DurationSeconds is { } length ? TimeSpan.FromSeconds(length) : null, null),
+            new ServerTrack("s:x", null, "Nothing Like It", b.ArtistCredit, null, null, null)]);
+        await SyncAsync(server);
+        var pulled = (await _api.ListPlaylistsAsync()).Single(p => p.Name == "From the server");
+        var songs = (await _api.GetPlaylistAsync(pulled.Id))!.Songs;
+        Assert.All(songs, s => Assert.Equal(PlaylistSongState.ServerOnly, s.State));
+        Assert.Equal(b.Path, songs[0].ReviewPath);
+        Assert.Null(songs[1].ReviewPath);
+    }
+
     [Fact]
     public void Names_are_compared_by_their_letters_and_artists()
     {
