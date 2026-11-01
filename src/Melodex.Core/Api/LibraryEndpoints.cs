@@ -560,6 +560,33 @@ public static class LibraryEndpoints
             })
             .WithName("SaveLibrarySettings").WithSummary("Takes effect at once for the missing view; a new threshold applies from the next scan.");
 
+        settings.MapGet("/artists/{id:guid}/showing", async (Guid id, SettingsService s, MelodexDbContext db, CancellationToken ct) =>
+            {
+                if (await db.Artists.FindAsync([id], ct) is null)
+                    return Results.NotFound();
+                var library = await s.GetLibraryAsync(ct);
+                return Results.Ok(new ArtistShowing(library.ArtistShowing.GetValueOrDefault(id),
+                    Enum.GetValues<ReleaseKind>().ToDictionary(k => k, library.ShowingOf)));
+            })
+            .WithName("GetArtistShowing").WithSummary("Which releases the missing view shows for an artist: their own choices, if they have them, and the library's.")
+            .Produces<ArtistShowing>().Produces(StatusCodes.Status404NotFound);
+        settings.MapPut("/artists/{id:guid}/showing", async (Guid id, Dictionary<ReleaseKind, ReleaseShowing> value, SettingsService s, MelodexDbContext db, CancellationToken ct) =>
+            {
+                if (await db.Artists.FindAsync([id], ct) is null)
+                    return Results.NotFound();
+                await s.SaveArtistShowingAsync(id, value, ct);
+                return Results.NoContent();
+            })
+            .WithName("SaveArtistShowing").WithSummary("Give an artist their own choices for the missing view, in place of the library's. A kind left out is as the defaults say.")
+            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
+        settings.MapDelete("/artists/{id:guid}/showing", async (Guid id, SettingsService s, CancellationToken ct) =>
+            {
+                await s.SaveArtistShowingAsync(id, null, ct);
+                return Results.NoContent();
+            })
+            .WithName("ResetArtistShowing").WithSummary("Have an artist follow the library's choices for the missing view again.")
+            .Produces(StatusCodes.Status204NoContent);
+
         return api;
     }
 

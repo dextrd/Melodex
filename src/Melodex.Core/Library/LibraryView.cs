@@ -363,7 +363,7 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
         var ids = await db.Crosswalk.Where(m => m.EntityKind == EntityKind.Artist && m.EntityId == id)
             .Select(m => new ProviderId(m.Provider, m.Value)).ToListAsync(ct);
         return new ArtistDetail(artist.Id, artist.Name, artist.SortName, artist.Disambiguation, artist.Country, ids,
-            artist.InLibrary, artist.AlbumsRefreshedAt, albums, ArtistImageUrl(artist.Id));
+            artist.InLibrary, artist.AlbumsRefreshedAt, albums, ArtistImageUrl(artist.Id)) { OwnShowing = s.Settings.ArtistShowing.ContainsKey(id) };
     }
 
     public async Task<AlbumDetail?> GetAlbumAsync(Guid id, Guid? editionId, CancellationToken ct)

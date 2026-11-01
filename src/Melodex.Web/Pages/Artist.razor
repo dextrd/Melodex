@@ -49,6 +49,8 @@ else
             {
                 <IconButton Icon="format" Requires="@UserPermissions.Format" Label="Format" Title="Rewrite this artist's files: their tags, covers and where they live" OnClick="() => _formatting = true" />
             }
+            <IconButton Icon="hide" Requires="@UserPermissions.Settings" On="_artist.OwnShowing" Label="@(_artist.OwnShowing ? "Releases shown: their own" : "Releases shown")"
+                        Title="Which kinds of release are listed for this artist: the choices in Settings, or their own" OnClick="() => _showingDialog = true" />
         </fieldset>
         <OwnershipFilter OnChange="StateHasChanged" OwnedHint="Only albums you have" MissingHint="Only missing albums, and albums with tracks missing" />
     </div>
@@ -108,7 +110,7 @@ else
     @if (Prefs.Ownership == OwnershipView.All && Hidden.Any())
     {
         <details>
-            <summary>@Hidden.Count() more hidden by the default filters (live, compilations, remixes, bootlegs…)</summary>
+            <summary>@Hidden.Count() more hidden by @(_artist.OwnShowing ? $"{_artist.Name}'s own choices of releases shown" : "the default filters (live, compilations, remixes, bootlegs…)")</summary>
             <AlbumTable Albums="Hidden.ToList()" OnIgnore="ToggleIgnoreAsync" ShowSecondary="true" />
         </details>
     }
@@ -126,8 +128,15 @@ else
     <FormatDialog Scope="new FormatScope(FormatScopeKind.Artist, _artist.Id)" Name="@_artist.Name" OnClose="() => _formatting = false" />
 }
 
+@if (_showingDialog && _artist is not null)
+{
+    <ArtistShowingDialog ArtistId="_artist.Id" Name="@_artist.Name" OnClose="() => _showingDialog = false"
+                         OnSaved="async () => _artist = Pages.Keep(Key, await Api.GetArtistAsync(Id, quick: true))" />
+}
+
 @code {
     private bool _formatting;
+    private bool _showingDialog;
 
     [Parameter] public Guid Id { get; set; }
 

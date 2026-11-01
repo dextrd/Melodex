@@ -5,16 +5,19 @@
 @inject MelodexClient Api
 @inject NavigationManager Nav
 @inject NavSections Sections
+@using Microsoft.JSInterop
+@inject IJSRuntime Js
 
-<header class="topbar">
+@* On a phone, the pages and Scan go on a line under the rest. Where the pages' names don't fit on their line, they're icons. *@
+<header class="topbar" @ref="_topbar">
     <a class="brand" href=""><Logo />Melodex</a>
     <nav class="nav">
         @SectionLink(NavSection.Library, "Library")
-        <NavLink href="activity">Activity</NavLink>
-        <NavLink href="downloads">Downloads</NavLink>
+        <NavLink href="activity" title="Activity">@PageIcon("activity")<span class="nav-label">Activity</span></NavLink>
+        <NavLink href="downloads" title="Downloads">@PageIcon("downloads")<span class="nav-label">Downloads</span></NavLink>
         @if (Auth.May(UserPermissions.Review))
         {
-            <NavLink href="review">Review</NavLink>
+            <NavLink href="review" title="Review">@PageIcon("review")<span class="nav-label">Review</span></NavLink>
         }
         @SectionLink(NavSection.Search, "Search")
     </nav>
@@ -43,7 +46,37 @@
     // Library and Search go back to where you were in them; see NavSections.
     private RenderFragment SectionLink(NavSection section, string name) =>
         @<a href="@Sections.Href(section)" class="@(Sections.Current == section ? "active" : null)" aria-current="@(Sections.Current == section ? "page" : null)"
-            @onclick="() => Sections.Go(section)" @onclick:preventDefault="true">@name</a>;
+            title="@name" @onclick="() => Sections.Go(section)" @onclick:preventDefault="true">@PageIcon(name.ToLowerInvariant())<span class="nav-label">@name</span></a>;
+
+    private static RenderFragment PageIcon(string page) =>
+        @<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+            @switch (page)
+            {
+                case "library":
+                    <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
+                    break;
+                case "activity":
+                    <path d="M3 12h4l3-8 4 16 3-8h4" />
+                    break;
+                case "downloads":
+                    <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+                    break;
+                case "review":
+                    <path d="M9 11l3 3 8-8" /><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9" />
+                    break;
+                case "search":
+                    <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
+                    break;
+            }
+        </svg>;
+
+    private ElementReference _topbar;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await Js.InvokeVoidAsync("melodexTopbar.watch", _topbar);
+    }
 
     // The first settings tab they may open.
     private string SettingsHref => Auth.May(UserPermissions.Settings) ? "settings"

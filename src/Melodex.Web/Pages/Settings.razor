@@ -33,30 +33,15 @@ else
         one you have (the same recording, or the same title leaving aside notes like "(Live)"), and only those count as missing. Their songs are
         looked up at the next scan, so they show from then.
     </p>
-    <div class="card settings-card release-kinds">
-        @foreach (var (heading, note, kinds) in KindGroups)
-        {
-            <div class="release-group">
-                <div class="release-group-head">
-                    <h3>@heading</h3>
-                    <span class="muted small">@note</span>
-                </div>
-                @foreach (var (kind, name, hint) in kinds)
-                {
-                    var showing = _settings.ShowingOf(kind);
-                    <div class="release-row">
-                        <span class="release-name">@name@if (hint is not null) { <span class="muted small">@hint</span> }</span>
-                        <Segmented T="ReleaseShowing" Value="showing" Options="ShowingOptions" Label="@name" Class="@($"showing {showing.ToString().ToLowerInvariant()}")"
-                                   OnChange="value => SetShowing(kind, value)" />
-                    </div>
-                }
-            </div>
-        }
+    <p class="muted small">
+        These are for every artist. An artist can have their own instead, from <strong>Releases shown</strong> on their page.
+    </p>
+    <ReleaseKindsEditor ShowingOf="_settings.ShowingOf" OnChange="c => SetShowing(c.Kind, c.Showing)">
         @if (!IsDefaultShowing)
         {
             <button class="link small" @onclick="ResetShowing">Back to the defaults: albums, EPs and singles in full, nothing else</button>
         }
-    </div>
+    </ReleaseKindsEditor>
 
     <h2>Matching</h2>
     <div class="card settings-card">
@@ -215,44 +200,6 @@ else
         _log = await Api.GetLogSettingsAsync();
         _fetchTemplate = _fetch.PathTemplate;
     }
-
-    private static readonly IReadOnlyList<(ReleaseShowing, string, string?)> ShowingOptions =
-    [
-        (ReleaseShowing.Show, "Show", "List it, with every song on it"),
-        (ReleaseShowing.NewSongsOnly, "New songs only", "List it only for songs that aren't on a release shown in full or one you have"),
-        (ReleaseShowing.Hide, "Hide", "Don't list it"),
-    ];
-
-    private static readonly (string Heading, string Note, (ReleaseKind Kind, string Name, string? Hint)[] Kinds)[] KindGroups =
-    [
-        ("Main types", "Every release is one of these.",
-        [
-            (ReleaseKind.Album, "Albums", null),
-            (ReleaseKind.Ep, "EPs", null),
-            (ReleaseKind.Single, "Singles", null),
-            (ReleaseKind.Broadcast, "Broadcasts", "Radio sessions and the like"),
-            (ReleaseKind.Other, "Other", "Anything the catalogue gives no main type"),
-        ]),
-        ("Kinds of release", "A release can also be any of these.",
-        [
-            (ReleaseKind.Live, "Live", null),
-            (ReleaseKind.Compilation, "Compilations", "Best-ofs, collections, anthologies"),
-            (ReleaseKind.Remix, "Remixes", null),
-            (ReleaseKind.Demo, "Demos", null),
-            (ReleaseKind.Soundtrack, "Soundtracks", null),
-            (ReleaseKind.DjMix, "DJ mixes", null),
-            (ReleaseKind.Mixtape, "Mixtapes", "And street albums"),
-            (ReleaseKind.Spokenword, "Spoken word", null),
-            (ReleaseKind.Interview, "Interviews", null),
-            (ReleaseKind.Audiobook, "Audiobooks", null),
-            (ReleaseKind.AudioDrama, "Audio dramas", null),
-            (ReleaseKind.FieldRecording, "Field recordings", null),
-        ]),
-        ("Unofficial", "Releases that never came out officially.",
-        [
-            (ReleaseKind.Bootleg, "Bootlegs", "Releases with no official edition at all"),
-        ]),
-    ];
 
     private bool IsDefaultShowing => Enum.GetValues<ReleaseKind>().All(k => _settings!.ShowingOf(k) == ReleaseKinds.Default(k));
 

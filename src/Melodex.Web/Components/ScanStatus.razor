@@ -6,7 +6,7 @@
     Shows the scan button, or what the running task is doing, with a menu of the other things done to the whole library:
     matching files again and formatting. Polls while a task runs.
 *@
-<div class="row small">
+<div class="row small scan-status">
     @if (_status?.CurrentTask is { } task)
     {
         <a class="muted scan-progress" href="activity" title="See what it's doing">@(task.Progress ?? "Starting…")</a>

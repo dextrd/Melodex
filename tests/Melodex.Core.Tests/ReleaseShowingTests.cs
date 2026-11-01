@@ -128,6 +128,59 @@ public sealed class ReleaseShowingTests : IDisposable
     }
 
     [Fact]
+    public async Task An_artist_with_their_own_choices_follows_them_until_put_back_to_the_defaults()
+    {
+        Guid ownId, otherId, ownLiveId, otherLiveId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MelodexDbContext>();
+            var own = new Artist { Name = "Own", InLibrary = true, AlbumsRefreshedAt = DateTime.UtcNow };
+            var other = new Artist { Name = "Other", InLibrary = true, AlbumsRefreshedAt = DateTime.UtcNow };
+            db.Artists.AddRange(own, other);
+            var ownLive = Album(own, "Own Live", [AlbumSecondaryType.Live], (Track(own, "Encore"), "Encore"));
+            var otherLive = Album(other, "Other Live", [AlbumSecondaryType.Live], (Track(other, "Encore"), "Encore"));
+            await db.SaveChangesAsync();
+            (ownId, otherId, ownLiveId, otherLiveId) = (own.Id, other.Id, ownLive.Id, otherLive.Id);
+
+            // Live hidden for everyone but this one artist.
+            var settings = scope.ServiceProvider.GetRequiredService<SettingsService>();
+            await settings.SaveArtistShowingAsync(ownId, new Dictionary<ReleaseKind, ReleaseShowing> { [ReleaseKind.Live] = ReleaseShowing.Show }, default);
+            // Saving the settings for everyone leaves the artist's own alone.
+            await settings.SaveLibraryAsync(await settings.GetLibraryAsync(default) with { MatchThreshold = 0.9 }, default);
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var view = scope.ServiceProvider.GetRequiredService<LibraryView>();
+            var own = (await view.GetArtistAsync(ownId, default))!;
+            Assert.True(own.OwnShowing);
+            Assert.False(own.Albums.Single(a => a.Id == ownLiveId).HiddenByDefault);
+            var other = (await view.GetArtistAsync(otherId, default))!;
+            Assert.False(other.OwnShowing);
+            Assert.True(other.Albums.Single(a => a.Id == otherLiveId).HiddenByDefault);
+            Assert.Equal("Own Live", Assert.Single(await view.GetMissingAsync(default)).Album.Title);
+
+            // Every kind is written out: the ones not chosen are as the defaults were.
+            var settings = scope.ServiceProvider.GetRequiredService<SettingsService>();
+            var library = await settings.GetLibraryAsync(default);
+            Assert.Equal(Enum.GetValues<ReleaseKind>().Length, library.ArtistShowing[ownId].Count);
+            Assert.Equal(ReleaseShowing.Hide, library.ShowingOf(ownId, ReleaseKind.Compilation));
+            Assert.Equal(0.9, library.MatchThreshold);
+
+            await settings.SaveArtistShowingAsync(ownId, null, default);
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var view = scope.ServiceProvider.GetRequiredService<LibraryView>();
+            var own = (await view.GetArtistAsync(ownId, default))!;
+            Assert.False(own.OwnShowing);
+            Assert.True(own.Albums.Single(a => a.Id == ownLiveId).HiddenByDefault);
+            Assert.Empty(await view.GetMissingAsync(default));
+        }
+    }
+
+    [Fact]
     public async Task A_song_is_owned_when_a_recording_sharing_its_ISRC_is_in_the_library()
     {
         Guid singleId, otherId, takeId;

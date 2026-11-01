@@ -69,6 +69,11 @@ mixtapes, spoken word, interviews, audiobooks, audio dramas, field recordings), 
 A release can be more than one kind, such as a live compilation, and then follows the strictest. By default albums,
 EPs and singles are shown in full and nothing else is.
 
+These choices are for every artist. To have one artist's live albums listed, say, without anyone else's, use
+**Releases shown** on the artist's page (it needs the permission to change settings): the same choices, just for them.
+Once they have their own, the button says so, and changes in Settings no longer reach them. **Back to the defaults from
+Settings** there has them follow Settings again.
+
 **Songs on more than one release** decides whether a song that's on several (an album and its singles, a standard and
 a deluxe edition, a compilation) is fetched once or for each, and whether owning it on one counts for the rest.
 

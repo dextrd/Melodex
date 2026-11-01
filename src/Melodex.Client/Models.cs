@@ -237,6 +237,18 @@ public sealed record LibrarySettings
     /// <summary>How the missing view treats a release that's all these kinds: as the strictest says.</summary>
     public ReleaseShowing ShowingOf(IEnumerable<ReleaseKind> kinds) => kinds.Select(ShowingOf).DefaultIfEmpty().Max();
 
+    /// <summary>
+    /// Artists with choices of their own for the missing view, in place of <see cref="Showing"/> for their albums. They're
+    /// kept and changed apart from these settings (see <see cref="ArtistShowing"/>), so they aren't sent with them.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyDictionary<Guid, IReadOnlyDictionary<ReleaseKind, ReleaseShowing>> ArtistShowing { get; init; } =
+        new Dictionary<Guid, IReadOnlyDictionary<ReleaseKind, ReleaseShowing>>();
+
+    /// <summary>How the missing view treats a kind of release of this artist's: as their own choices say, else as for everyone.</summary>
+    public ReleaseShowing ShowingOf(Guid artistId, ReleaseKind kind) =>
+        ArtistShowing.TryGetValue(artistId, out var own) && own.TryGetValue(kind, out var showing) ? showing : ShowingOf(kind);
+
     /// <summary>Whether owning a recording on any album counts for every album it appears on.</summary>
     [JsonIgnore]
     public bool CountsOwnedAnywhere => DuplicateTracks != DuplicateTracks.KeepBoth;
@@ -277,7 +289,15 @@ public sealed record ArtistDetail(
 {
     /// <summary>Its discography is being fetched: look again shortly for the rest.</summary>
     public bool Fetching { get; init; }
+
+    /// <summary>The artist has their own choices of which releases the missing view shows, rather than the ones in Settings.</summary>
+    public bool OwnShowing { get; init; }
 }
+
+/// <summary>Which releases the missing view shows for one artist.</summary>
+/// <param name="Own">The artist's own choice for every kind, or null when they follow <paramref name="Default"/>.</param>
+/// <param name="Default">The choices in Settings, for every artist without their own.</param>
+public sealed record ArtistShowing(IReadOnlyDictionary<ReleaseKind, ReleaseShowing>? Own, IReadOnlyDictionary<ReleaseKind, ReleaseShowing> Default);
 
 /// <param name="HiddenByDefault">The missing view's settings hide it when it isn't owned: its kind is hidden, or shown for new songs only and it has none.</param>
 /// <param name="OwnedTracks">Tracks owned (here or elsewhere) on the owned edition, or the best-covered edition.</param>

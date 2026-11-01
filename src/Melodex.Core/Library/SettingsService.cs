@@ -8,7 +8,7 @@ public static class LibrarySettingsExtensions
 {
     /// <summary>How the missing view treats this album when it isn't owned, by the strictest of its kinds.</summary>
     public static ReleaseShowing ShowingOf(this LibrarySettings settings, Album album) =>
-        settings.ShowingOf(ReleaseKinds.Of(album.Type, album.SecondaryTypes, album.HasOfficialRelease));
+        ReleaseKinds.Of(album.Type, album.SecondaryTypes, album.HasOfficialRelease).Select(k => settings.ShowingOf(album.ArtistId, k)).DefaultIfEmpty().Max();
 }
 
 public sealed class SettingsService(MelodexDbContext db)
@@ -16,8 +16,28 @@ public sealed class SettingsService(MelodexDbContext db)
     private const string LibraryKey = "library";
     private const string FetchKey = "fetch";
     private const string LogKey = "log";
+    private const string ArtistShowingKey = "artistShowing";
 
-    public Task<LibrarySettings> GetLibraryAsync(CancellationToken ct) => GetAsync<LibrarySettings>(LibraryKey, ct);
+    /// <summary>The library's settings, with the artists that have their own choices for the missing view.</summary>
+    public async Task<LibrarySettings> GetLibraryAsync(CancellationToken ct)
+    {
+        var artists = await GetAsync<Dictionary<Guid, Dictionary<ReleaseKind, ReleaseShowing>>>(ArtistShowingKey, ct);
+        return await GetAsync<LibrarySettings>(LibraryKey, ct) with
+        {
+            ArtistShowing = artists.ToDictionary(a => a.Key, a => (IReadOnlyDictionary<ReleaseKind, ReleaseShowing>)a.Value),
+        };
+    }
+
+    /// <summary>An artist's own choices for the missing view, every kind written out; null to follow the library's again.</summary>
+    public async Task SaveArtistShowingAsync(Guid artistId, IReadOnlyDictionary<ReleaseKind, ReleaseShowing>? showing, CancellationToken ct)
+    {
+        var artists = await GetAsync<Dictionary<Guid, Dictionary<ReleaseKind, ReleaseShowing>>>(ArtistShowingKey, ct);
+        if (showing is null)
+            artists.Remove(artistId);
+        else
+            artists[artistId] = Enum.GetValues<ReleaseKind>().ToDictionary(k => k, k => showing.TryGetValue(k, out var s) ? s : ReleaseKinds.Default(k));
+        await SaveAsync(ArtistShowingKey, artists, ct);
+    }
 
     public Task SaveLibraryAsync(LibrarySettings value, CancellationToken ct) => SaveAsync(LibraryKey, value, ct);
 

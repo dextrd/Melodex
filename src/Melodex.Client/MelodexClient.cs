@@ -190,6 +190,18 @@ public sealed class MelodexClient(HttpClient http)
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<ArtistShowing> GetArtistShowingAsync(Guid artistId, CancellationToken ct = default) =>
+        (await http.GetFromJsonAsync<ArtistShowing>($"{Api}/settings/artists/{artistId}/showing", MelodexJson.Options, ct))!;
+
+    /// <summary>The artist's own choices for the missing view; null to have them follow the library's again.</summary>
+    public async Task SaveArtistShowingAsync(Guid artistId, IReadOnlyDictionary<ReleaseKind, ReleaseShowing>? showing, CancellationToken ct = default)
+    {
+        using var response = showing is null
+            ? await http.DeleteAsync($"{Api}/settings/artists/{artistId}/showing", ct)
+            : await http.PutAsJsonAsync($"{Api}/settings/artists/{artistId}/showing", showing, MelodexJson.Options, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
     /// <summary>Activity log entries newer than <paramref name="after"/>, oldest first.</summary>
     /// <param name="since">The <see cref="ScanFeedPage.Latest"/> from the last call, to get only what changed; 0 for every file.</param>
     public async Task<ScanFeedPage> GetScanFilesAsync(long since = 0, CancellationToken ct = default) =>

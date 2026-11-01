@@ -27,6 +27,8 @@ Everything on the way to 1.0.
 - **About**, under Settings: the version, what it was built from, and links to GitHub.
 - **Missing view**: each kind of release (live, compilations, remixes, demos, soundtracks, bootlegs and the rest) has
   its own choice of Show, Hide or **New songs only**, which lists a release just for the songs found nowhere else.
+  An artist can have their own choices instead, from **Releases shown** on their page, and go back to the ones in
+  Settings from there (`/api/v1/settings/artists/{id}/showing`).
 - **File metadata**: your files' tags and their cover art can each be preferred on their own.
 - **Library and Search remember where you were**, until you close the tab. Their links in the top bar take you back
   to the artist, album or song you were last on there; click again for the Library or your search as you left it, and
@@ -80,6 +82,8 @@ Everything on the way to 1.0.
 ### Changed
 
 - Settings is a gear beside your account button, top right, instead of a link in the bar.
+- On a phone, the top bar is two lines: Melodex, Settings and your account on the first, the pages and Scan on the
+  second. Wherever the pages' names don't fit on their line, at any width, they're shown as icons instead of wrapping.
 - The scan button says just **Scan**, and its menu is greyed out with it while a task is running.
 - A scan's files on the Activity page open at the file being read or matched, and follow the scan along while you
   leave the list alone.

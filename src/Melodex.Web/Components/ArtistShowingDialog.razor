@@ -1,0 +1,92 @@
+@inject MelodexClient Api
+
+@*
+    Which releases an artist's page and the missing view list for them: the choices in Settings, or their own.
+*@
+<Dialog Title="@($"Releases shown for {Name}")" Class="showing-dialog" OnClose="OnClose">
+    @if (_showing is null)
+    {
+        <Loading Inline="true" />
+    }
+    else
+    {
+        <p class="muted small">
+            @if (_followsDefault)
+            {
+                <span>Following the choices for every artist, in <a href="settings">Settings</a>. Change any here to give @Name their own.</span>
+            }
+            else
+            {
+                <span>@Name's own choices, in place of the ones for every artist in <a href="settings">Settings</a>.</span>
+            }
+            Songs of releases newly shown for new songs only are looked up at the next scan.
+        </p>
+        <ReleaseKindsEditor ShowingOf="k => _showing[k]" OnChange="Change">
+            @if (!_followsDefault)
+            {
+                <button class="link small" @onclick="BackToDefault">Back to the defaults from Settings</button>
+            }
+        </ReleaseKindsEditor>
+        @if (_error is not null) { <div class="error small">@_error</div> }
+        <div class="toolbar dialog-buttons">
+            <button @onclick="OnClose">Cancel</button>
+            <button class="primary" disabled="@_saving" @onclick="SaveAsync">Save</button>
+        </div>
+    }
+</Dialog>
+
+@code {
+    [Parameter, EditorRequired] public Guid ArtistId { get; set; }
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>After saving, so the page can show the artist's releases as they are now.</summary>
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private Dictionary<ReleaseKind, ReleaseShowing>? _showing;
+    private IReadOnlyDictionary<ReleaseKind, ReleaseShowing> _default = new Dictionary<ReleaseKind, ReleaseShowing>();
+    private bool _followsDefault;
+    private bool _saving;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var showing = await Api.GetArtistShowingAsync(ArtistId);
+        _default = showing.Default;
+        _followsDefault = showing.Own is null;
+        _showing = Enum.GetValues<ReleaseKind>().ToDictionary(k => k, k => (showing.Own ?? showing.Default).TryGetValue(k, out var s) ? s : ReleaseKinds.Default(k));
+    }
+
+    // Any change makes the choices the artist's own, even one that matches Settings: they stay put when Settings change.
+    private void Change((ReleaseKind Kind, ReleaseShowing Showing) change)
+    {
+        _showing![change.Kind] = change.Showing;
+        _followsDefault = false;
+    }
+
+    private void BackToDefault()
+    {
+        _showing = Enum.GetValues<ReleaseKind>().ToDictionary(k => k, k => _default.TryGetValue(k, out var s) ? s : ReleaseKinds.Default(k));
+        _followsDefault = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _error = null;
+        try
+        {
+            await Api.SaveArtistShowingAsync(ArtistId, _followsDefault ? null : _showing);
+            await OnSaved.InvokeAsync();
+            await OnClose.InvokeAsync();
+        }
+        catch (HttpRequestException e)
+        {
+            _error = $"Couldn't save: {e.Message}";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

@@ -137,8 +137,13 @@ h2 { font-size: 1.15rem; margin: 1.75rem 0 .5rem; }
 .brand { display: inline-flex; align-items: center; gap: .5rem; font-weight: 700; font-size: 1.1rem; color: var(--text); }
 .brand:hover { text-decoration: none; }
 .logo { width: 1.6rem; height: 1.6rem; flex: none; }
-.nav { display: flex; gap: .25rem; flex-wrap: wrap; }
-.nav a { padding: .3rem .6rem; border-radius: 6px; color: var(--muted); }
+.nav { display: flex; gap: .25rem; flex-wrap: nowrap; }
+.nav a { display: inline-flex; align-items: center; padding: .3rem .6rem; border-radius: 6px; color: var(--muted); white-space: nowrap; }
+/* Where the pages' names don't fit on their line, each is its icon (topbar.js says when), its name kept for screen readers. */
+.nav-icon { display: none; width: 1.15rem; height: 1.15rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.topbar.compact .nav-icon { display: block; }
+.topbar.compact .nav a { padding: .4rem .55rem; }
+.topbar.compact .nav-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .nav a.active { background: var(--bg); color: var(--text); font-weight: 600; }
 .nav a:hover { text-decoration: none; color: var(--text); }
 /* Between a phone and a wide screen, everything closer together, and the file count left to the Library page, so the bar stays one line. */
@@ -147,8 +152,19 @@ h2 { font-size: 1.15rem; margin: 1.75rem 0 .5rem; }
     .nav a { padding: .3rem .45rem; }
     .topbar .scan-count { display: none; }
 }
-/* On a phone, what a task is doing is left to Activity (its greyed button says something is), so the bar keeps the account on its line. */
+/*
+    On a phone, two lines: Melodex, Settings and the account on the first, the pages and Scan on the second. The empty
+    ::after, a whole line wide, is what breaks them. What a task is doing is left to Activity (its greyed button says
+    something is).
+*/
 @media (max-width: 640px) {
+    .topbar { row-gap: .3rem; }
+    .topbar::after { content: ""; order: 4; flex-basis: 100%; }
+    .topbar > .spacer { order: 1; }
+    .topbar > .topbar-icon { order: 2; }
+    .topbar > .account-menu { order: 3; margin-left: 0; }
+    .topbar > .nav { order: 5; }
+    .topbar > .scan-status { order: 6; margin-left: auto; }
     .topbar .scan-progress { display: none; }
 }
 .spacer { flex: 1; }
@@ -1078,6 +1094,8 @@ svg.flip { transform: scaleY(-1); }
 .segmented.showing.newsongsonly button.selected { color: var(--covered); }
 .segmented.showing.hide .thumb { background: var(--bg); }
 .release-kinds > .link { align-self: flex-start; }
+/* An artist's own choices: wide enough for each kind's choices beside its name, as in Settings. */
+.showing-dialog { width: min(44rem, 100%); }
 @media (max-width: 640px) {
     .release-row { flex-direction: column; align-items: stretch; }
     .release-row .segmented { align-self: stretch; }
