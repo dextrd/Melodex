@@ -7,6 +7,10 @@
 
 <PageTitle>@(_playlist is null ? "Playlist" : PlaylistNames.Leaf(_playlist.Playlist.Name, Delimiter)) · Melodex</PageTitle>
 
+@* A playlist is part of the Library: its heading and tabs stay, as they don't on pages that can lead outside it. *@
+<h1>Library</h1>
+<LibraryTabs Current="playlists" />
+
 @if (_notFound)
 {
     <div class="empty card">That playlist isn't yours, or it's been deleted.</div>
@@ -25,7 +29,7 @@ else
     <div class="page-head">
         <PlaylistCover Covers="summary.Covers" />
         <div>
-            <h1>@PlaylistNames.Leaf(summary.Name, Delimiter)</h1>
+            <h2 class="title">@PlaylistNames.Leaf(summary.Name, Delimiter)</h2>
             @if (summary.Comment is not null) { <p class="muted">@summary.Comment</p> }
             <div class="row muted small">
                 <span>@PlaylistNames.Length(summary.Count, summary.DurationSeconds)</span>

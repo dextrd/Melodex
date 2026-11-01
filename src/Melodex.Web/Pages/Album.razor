@@ -101,21 +101,23 @@ else
 
     @if (_album is null || _switching is not null || _album.Editions.Count == 0 && _album.Fetching)
     {
+        @if (_album is null)
+        {
+            @* Where the editions will be, so the tracks don't move down when they arrive. *@
+            <div class="toolbar">
+                <label class="small">
+                    Edition
+                    <select disabled><option>Loading editions…</option></select>
+                </label>
+            </div>
+        }
         @if (_album is { Editions.Count: 0, Fetching: true })
         {
             <Loading Inline="true" Text="Fetching its editions and tracks from MusicBrainz…" />
         }
         <div class="card">
-            <table class="table" aria-busy="true">
-                <thead>
-                    <tr>
-                        <th class="num">#</th>
-                        <th>Title</th>
-                        <th class="num hide-narrow">Length</th>
-                        <th>Status</th>
-                        <th></th>
-                    </tr>
-                </thead>
+            <table class="table track-list album-tracks" aria-busy="true">
+                @TrackHead
                 <tbody>
                     @foreach (var slot in Slots())
                     {
@@ -124,9 +126,11 @@ else
                             @if (slot.Owned is { } track)
                             {
                                 <td>
-                                    <a href="tracks/@track.TrackId" class="plain">@track.Title</a>
-                                    @if (track.ArtistCredit != album.ArtistCredit) { <span class="muted small"> · @track.ArtistCredit</span> }
-                                    <div class="muted small">@track.Path</div>
+                                    <div class="ellipsis">
+                                        <a href="tracks/@track.TrackId" class="plain">@track.Title</a>
+                                        @if (track.ArtistCredit != album.ArtistCredit) { <span class="muted small"> · @track.ArtistCredit</span> }
+                                    </div>
+                                    <div class="muted small ellipsis">@track.Path</div>
                                 </td>
                                 <td class="num hide-narrow muted">@Format.Duration(track.DurationSeconds)</td>
                                 <td><StatusBadge Track="TrackStatus.Owned" /></td>
@@ -151,25 +155,19 @@ else
     else
     {
         <div class="card">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th class="num">#</th>
-                        <th>Title</th>
-                        <th class="num hide-narrow">Length</th>
-                        <th>Status</th>
-                        <th></th>
-                    </tr>
-                </thead>
+            <table class="table track-list album-tracks">
+                @TrackHead
                 <tbody>
                     @foreach (var track in _album.Tracks)
                     {
                         <tr class="@(track.Status is TrackStatus.Ignored or TrackStatus.Elsewhere ? "dim" : "") @(Player.IsNow(track.TrackId) ? "playing" : "")">
                             <td class="num muted nowrap">@(MultiDisc ? $"{track.Disc}-" : "")@track.Number</td>
                             <td>
-                                <a href="tracks/@track.TrackId" class="plain">@track.Title</a>
-                                @if (track.ArtistCredit != album.ArtistCredit) { <span class="muted small"> · @track.ArtistCredit</span> }
-                                @if (track.FilePath is not null) { <div class="muted small">@track.FilePath</div> }
+                                <div class="ellipsis" title="@track.Title">
+                                    <a href="tracks/@track.TrackId" class="plain">@track.Title</a>
+                                    @if (track.ArtistCredit != album.ArtistCredit) { <span class="muted small"> · @track.ArtistCredit</span> }
+                                </div>
+                                @if (track.FilePath is not null) { <div class="muted small ellipsis" title="@track.FilePath">@track.FilePath</div> }
                             </td>
                             <td class="num hide-narrow muted">@Format.Duration(track.DurationSeconds)</td>
                             <td><StatusBadge Track="track.Status" /></td>
@@ -187,11 +185,11 @@ else
                                     <FetchButton Kind="RequestKind.Track" Id="track.TrackId" EditionId="_album.ShownEditionId" Hint="Get it into your library">
                                         <IconButton Icon="listen" Requires="@UserPermissions.Listen" Title="Listen: fetch it to play now, without adding it to your library"
                                                     OnClick="() => Player.ListenAsync(track.TrackId, _album.ShownEditionId)" />
-                                        <IconButton Icon="queue" Requires="@UserPermissions.Listen" Title="Add to the queue, fetching it to listen to" Confirm="true"
+                                        <IconButton Icon="queue" Requires="@UserPermissions.Listen" Class="hide-narrow" Title="Add to the queue, fetching it to listen to" Confirm="true"
                                                     OnClick="() => Player.ListenAsync(track.TrackId, _album.ShownEditionId, next: true)" />
                                         @if (track.Status == TrackStatus.Missing)
                                         {
-                                            <IconButton Icon="ignore" Requires="@UserPermissions.Request" Title="Ignore: stop counting this song as missing, on every album it's on"
+                                            <IconButton Icon="ignore" Requires="@UserPermissions.Request" Class="hide-narrow" Title="Ignore: stop counting this song as missing, on every album it's on"
                                                         OnClick="() => ToggleTrackIgnoredAsync(track)" />
                                         }
                                     </FetchButton>
@@ -227,6 +225,20 @@ else
 
 @code {
     [Parameter] public Guid Id { get; set; }
+
+    // The same for the tracks on their way and those arrived, so they slot in without anything moving.
+    private static readonly RenderFragment TrackHead = @<text>
+        <colgroup><col class="num-col" /><col /><col class="length-col hide-narrow" /><col class="status-col" /><col class="wide-action-col" /></colgroup>
+        <thead>
+            <tr>
+                <th class="num">#</th>
+                <th>Title</th>
+                <th class="num hide-narrow">Length</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+    </text>;
 
     private AlbumDetail? _album;
     private AlbumGlimpse? _glimpse;

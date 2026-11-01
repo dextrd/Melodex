@@ -65,6 +65,10 @@
         else
         {
             var albums = VisibleAlbums.ToList();
+            <div class="legend small muted">
+                <span><i class="complete"></i>Tracks you have</span>
+                <span><i class="missing"></i>Tracks missing</span>
+            </div>
             @if (albums.Count == 0) { <div class="empty card">@(Prefs.Ownership switch { OwnershipView.Missing => "No partly owned albums", OwnershipView.Owned => "No complete albums", _ => "No albums" }) @(_filter.Length > 0 ? "match that filter." : "right now.")</div> }
             <div class="tiles">
                 @foreach (var item in albums.Take(_limit))
@@ -101,13 +105,23 @@
         {
             var tracks = VisibleTracks.ToList();
             <div class="card">
+                @* Laid out as a playlist's songs are: the album in a column of its own. *@
                 <table class="table track-list">
                     @* Fixed widths, so the columns stay put as more rows are drawn. *@
-                    <colgroup><col class="cover-col" /><col /><col class="format-col hide-narrow" /><col class="length-col" /><col class="icons-3-col" /></colgroup>
+                    <colgroup><col class="cover-col" /><col /><col class="album-col hide-narrow" /><col class="length-col hide-narrow" /><col class="icons-3-col" /></colgroup>
+                    <thead>
+                        <tr>
+                            <th class="cover-col"></th>
+                            <th>Title</th>
+                            <th class="hide-narrow">Album</th>
+                            <th class="num hide-narrow">Length</th>
+                            <th></th>
+                        </tr>
+                    </thead>
                     <tbody>
                         @foreach (var track in tracks.Take(_limit))
                         {
-                            <tr @key="track.FileId">
+                            <tr @key="track.FileId" class="@(Player.IsNow(track.TrackId) ? "playing" : "")">
                                 <td class="cover-col">
                                     @if (Format.AlbumHref(track) is { } albumHref) { <a href="@albumHref" tabindex="-1"><Cover Url="@track.CoverUrl" /></a> }
                                     else { <Cover Url="@track.CoverUrl" /> }
@@ -115,12 +129,13 @@
                                 <td class="track-main">
                                     <div class="ellipsis"><a href="@(track.Local ? Format.AlbumHref(track) : $"tracks/{track.TrackId}")" class="plain">@track.Title</a></div>
                                     <div class="muted small ellipsis">
-                                        @if (track.ArtistId is { } artistId) { <a href="artists/@artistId">@track.ArtistCredit</a> } else { @track.ArtistCredit }
-                                        @if (Format.AlbumHref(track) is { } href) { <span> · <a href="@href">@track.AlbumTitle</a></span> }
+                                        @if (track.ArtistId is { } artistId) { <a class="muted" href="artists/@artistId">@track.ArtistCredit</a> } else { @track.ArtistCredit }
                                     </div>
                                 </td>
-                                <td class="num muted small hide-narrow">@track.Format</td>
-                                <td class="num muted">@Format.Duration(track.DurationSeconds)</td>
+                                <td class="hide-narrow muted small ellipsis">
+                                    @if (Format.AlbumHref(track) is { } href) { <a class="muted" href="@href">@track.AlbumTitle</a> } else { @track.AlbumTitle }
+                                </td>
+                                <td class="num hide-narrow muted">@Format.Duration(track.DurationSeconds)</td>
                                 <td class="num actions">
                                     <IconButton Icon="play" Requires="@UserPermissions.Listen" Title="Play the tracks listed from here" OnClick="() => PlayFromAsync(track)" />
                                     <IconButton Icon="queue" Requires="@UserPermissions.Listen" Title="Add to the queue" Confirm="true" OnClick="() => Player.AddAsync([PlayerEntry.Owned(track)])" />
@@ -142,13 +157,14 @@
         else
         {
             var artists = VisibleArtists.ToList();
-            @if (artists.Count == 0) { <div class="empty card">@(Prefs.Ownership switch { OwnershipView.Missing => "Nothing missing", OwnershipView.Owned => "No artist you have everything of", _ => "No artists" }) @(_filter.Length > 0 ? "matches that filter." : "right now.")</div> }
+            @* The key to the meters comes first, so it's never left under an empty list. *@
             <div class="legend small muted">
                 <span><i class="complete"></i>Owned</span>
                 <span><i class="partial"></i>Partly owned</span>
                 <span><i class="covered"></i>Covered by other albums</span>
                 <span><i class="missing"></i>Missing</span>
             </div>
+            @if (artists.Count == 0) { <div class="empty card">@(Prefs.Ownership switch { OwnershipView.Missing => "Nothing missing", OwnershipView.Owned => "No artist you have everything of", _ => "No artists" }) @(_filter.Length == 0 ? "right now." : Prefs.Ownership == OwnershipView.All ? "match that filter." : "matches that filter.")</div> }
             <div class="tiles">
                 @foreach (var artist in artists.Take(_limit))
                 {
@@ -340,6 +356,8 @@
     protected override async Task OnInitializedAsync()
     {
         ScanStatus.LibraryChanged += Reload;
+        // The song playing is marked in the Tracks view.
+        Player.Changed += Redraw;
         ScanStatus.PreparingChanged += Redraw;
         await Prefs.LoadAsync();
     }
@@ -433,9 +451,11 @@
 
     private void Redraw() => InvokeAsync(StateHasChanged);
 
+
     public void Dispose()
     {
         ScanStatus.LibraryChanged -= Reload;
+        Player.Changed -= Redraw;
         ScanStatus.PreparingChanged -= Redraw;
     }
 }

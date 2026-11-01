@@ -55,6 +55,10 @@ Everything on the way to 1.0.
 
 ### Fixed
 
+- The Library's colour key sits above the artists, with room beneath it, rather than under a "No artists match" box,
+  and the Albums view has one too.
+- An album's tracks arriving no longer move the page: rows on their way are as tall and as wide as those arrived.
+- On a phone, buttons meant to give way to the title (add to playlist, queue and ignore on an album's tracks) do.
 - Browsers could keep an old copy of the web app's page, showing *Loading Navidex* and failing to change the theme.
 - The ownership meters and legend use brighter colours in light themes.
 - The Log page's Info, Warnings and Errors toggles have tick boxes in their own colours, not black.
@@ -83,6 +87,8 @@ Everything on the way to 1.0.
   albums you have; a song's title and cover. Buttons that need the whole page, such as Get missing tracks and Get
   everything missing, are greyed until it's there, and while MusicBrainz is still being asked. Changing an album's
   edition shows its tracks shimmering until they arrive.
+- The Library's Tracks view is laid out as a playlist's songs are, with the album in a column of its own, and marks the
+  song playing. A playlist's page keeps the Library heading and tabs.
 - Album and song pages, and search results, work out what you own from just their own songs, not the whole library
   and every album the artist has, so they answer several times faster on a big library.
 - The library's lists of artists, albums and tracks are kept on disk, so they show at once after a restart, and carry
