@@ -26,7 +26,7 @@ NAVIDROME_IMAGE="docker.io/deluan/navidrome:0.64.2"
 NETWORK="melodex-sandbox"
 NAVIDROME_PORT="${NAVIDROME_PORT:-4533}"
 MELODEX_PORT="${MELODEX_PORT:-8787}"
-CONTAINERS=(melodex-sandbox-navidrome melodex-sandbox-core melodex-sandbox-beets melodex-sandbox-ytdlp melodex-sandbox-inbox)
+CONTAINERS=(melodex-sandbox-navidrome melodex-sandbox-core melodex-sandbox-beets melodex-sandbox-ytdlp melodex-sandbox-inbox melodex-sandbox-archive)
 VOLUMES=(melodex-sandbox-navidrome melodex-sandbox-config melodex-sandbox-staging)
 
 # Image, then build context and Dockerfile.
@@ -35,6 +35,7 @@ IMAGES=(
   "localhost/melodex/beets-worker:dev|$ROOT/beets-worker|$ROOT/beets-worker/Dockerfile"
   "localhost/melodex/retriever-ytdlp:dev|$ROOT/plugins/retriever-ytdlp|$ROOT/plugins/retriever-ytdlp/Dockerfile"
   "localhost/melodex/retriever-inbox:dev|$ROOT/plugins/retriever-inbox|$ROOT/plugins/retriever-inbox/Dockerfile"
+  "localhost/melodex/retriever-archive:dev|$ROOT/plugins/retriever-archive|$ROOT/plugins/retriever-archive/Dockerfile"
 )
 
 ENGINE="$(command -v podman || command -v docker || true)"
@@ -121,7 +122,7 @@ configure() {
   if ! grep -q '"melodex.connector.navidrome"' <<<"$plugins"; then
     melodex POST /plugins -o /dev/null -d "{\"pluginId\":\"melodex.connector.navidrome\",\"settings\":{\"url\":\"http://navidrome:4533\",\"username\":\"$NAVIDROME_USER\",\"password\":\"$NAVIDROME_PASSWORD\"}}"
   fi
-  for endpoint in http://retriever-inbox:8080 http://retriever-ytdlp:8080; do
+  for endpoint in http://retriever-inbox:8080 http://retriever-ytdlp:8080 http://retriever-archive:8080; do
     grep -q "\"$endpoint\"" <<<"$plugins" && continue
     # The plugin may still be starting.
     for _ in $(seq 1 30); do
@@ -192,6 +193,9 @@ up() {
   "$ENGINE" run -d --name melodex-sandbox-inbox "${SHARED[@]}" --network-alias retriever-inbox "${AS_YOU[@]}" \
     -v "$INBOX:/inbox:z" -v melodex-sandbox-staging:/staging \
     localhost/melodex/retriever-inbox:dev >/dev/null
+  "$ENGINE" run -d --name melodex-sandbox-archive "${SHARED[@]}" --network-alias retriever-archive "${AS_YOU[@]}" \
+    -v melodex-sandbox-staging:/staging \
+    localhost/melodex/retriever-archive:dev >/dev/null
 
   wait_for Navidrome "$navidrome_url/ping"
   # First run only: Navidrome accepts creating the admin while it has no users.
