@@ -276,7 +276,7 @@ public sealed class LibraryMatcher(
     }
 
     private sealed record Listing(Guid EditionId, int Disc, int Position, string Title, TimeSpan? Duration, Guid TrackId,
-        string TrackTitle, string ArtistCredit, TimeSpan? TrackDuration, HashSet<string> Recordings, HashSet<string> Isrcs);
+        string TrackTitle, string ArtistCredit, Guid? TrackArtistId, TimeSpan? TrackDuration, HashSet<string> Recordings, HashSet<string> Isrcs);
 
     private sealed record Assignment(Candidate File, Listing Listing, double Score, MatchMethod Method);
 
@@ -298,10 +298,13 @@ public sealed class LibraryMatcher(
         var releaseTag = files.Select(f => f.Tags.MusicBrainzReleaseId).FirstOrDefault(id => id is not null);
         var yearTag = files.Select(f => f.Tags.Date?[..Math.Min(4, f.Tags.Date.Length)]).FirstOrDefault(d => d is not null);
 
+        var artistId = files[0].File.ArtistId;
         (Edition Edition, List<Assignment> Assignments, double Score)? best = null;
         foreach (var edition in editions)
         {
-            var assignments = Assign(files, listings.GetValueOrDefault(edition.Id, []));
+            var album = albums.First(a => a.Id == edition.AlbumId);
+            var live = album.SecondaryTypes.Contains(AlbumSecondaryType.Live) || TextMatch.Normalise(album.Title).Split(' ').Contains("live");
+            var assignments = Assign(files, listings.GetValueOrDefault(edition.Id, []), artistId, live);
             var score = assignments.Sum(a => a.Score)
                         + (releaseTag is not null && editionMbids.GetValueOrDefault(edition.Id) == releaseTag ? 5 : 0)
                         + (yearTag is not null && edition.ReleaseDate?.StartsWith(yearTag) == true ? 0.1 : 0)
@@ -339,7 +342,7 @@ public sealed class LibraryMatcher(
     private async Task<Dictionary<Guid, List<Listing>>> LoadListingsAsync(List<Guid> editionIds, CancellationToken ct)
     {
         var rows = await db.EditionTracks.Where(et => editionIds.Contains(et.EditionId))
-            .Select(et => new { et.EditionId, et.Disc, et.Position, et.Title, et.Duration, et.TrackId, TrackTitle = et.Track.Title, et.Track.ArtistCredit, TrackDuration = et.Track.Duration })
+            .Select(et => new { et.EditionId, et.Disc, et.Position, et.Title, et.Duration, et.TrackId, TrackTitle = et.Track.Title, et.Track.ArtistCredit, TrackArtistId = (Guid?)et.Track.ArtistId, TrackDuration = et.Track.Duration })
             .ToListAsync(ct);
         var trackIds = rows.Select(r => r.TrackId).Distinct().ToList();
         var ids = (await db.Crosswalk
@@ -348,7 +351,7 @@ public sealed class LibraryMatcher(
             .ToLookup(m => m.EntityId);
 
         return rows
-            .Select(r => new Listing(r.EditionId, r.Disc, r.Position, r.Title, r.Duration, r.TrackId, r.TrackTitle, r.ArtistCredit, r.TrackDuration,
+            .Select(r => new Listing(r.EditionId, r.Disc, r.Position, r.Title, r.Duration, r.TrackId, r.TrackTitle, r.ArtistCredit, r.TrackArtistId, r.TrackDuration,
                 ids[r.TrackId].Where(m => m.Provider == Providers.MusicBrainz).Select(m => m.Value).ToHashSet(StringComparer.OrdinalIgnoreCase),
                 ids[r.TrackId].Where(m => m.Provider == Providers.Isrc).Select(m => m.Value).ToHashSet(StringComparer.OrdinalIgnoreCase)))
             .GroupBy(l => l.EditionId)
@@ -356,13 +359,13 @@ public sealed class LibraryMatcher(
     }
 
     /// <summary>Greedy one-to-one assignment of files to listings, best pairs first.</summary>
-    private static List<Assignment> Assign(List<Candidate> files, List<Listing> listings)
+    private static List<Assignment> Assign(List<Candidate> files, List<Listing> listings, Guid? artistId, bool liveAlbum)
     {
         var pairs = new List<Assignment>();
         foreach (var file in files)
         foreach (var listing in listings)
         {
-            var (score, method) = Score(file, listing);
+            var (score, method) = Score(file, listing, artistId, liveAlbum);
             if (score > 0.3)
                 pairs.Add(new Assignment(file, listing, score, method));
         }
@@ -381,13 +384,16 @@ public sealed class LibraryMatcher(
         return result;
     }
 
-    private static (double Score, MatchMethod Method) Score(Candidate file, Listing listing)
+    private static (double Score, MatchMethod Method) Score(Candidate file, Listing listing, Guid? artistId, bool liveAlbum)
     {
         if (file.Tags.MusicBrainzRecordingId is { } recording && listing.Recordings.Contains(recording))
             return (PositionBonus(file, listing) + 1, MatchMethod.MusicBrainzTags);
         if (file.Tags.Isrc is { } isrc && listing.Isrcs.Contains(isrc))
             return (PositionBonus(file, listing) + 1, MatchMethod.IsrcOrUpc);
-        var fuzzy = Fuzzy(file.Tags, file.File.Duration, listing.Title, listing.TrackTitle, listing.ArtistCredit, listing.Duration ?? listing.TrackDuration);
+        // Where the catalogue doesn't know a track's length, its place on the album stands in for it.
+        var expected = listing.Duration ?? listing.TrackDuration ?? (PositionBonus(file, listing) > 0 ? file.File.Duration : null);
+        var fuzzy = Fuzzy(file.Tags, file.File.Duration, listing.Title, listing.TrackTitle, listing.ArtistCredit, expected,
+            artistId is not null && listing.TrackArtistId == artistId, liveAlbum);
         return (Math.Min(1, fuzzy + PositionBonus(file, listing)), MatchMethod.Fuzzy);
     }
 
@@ -396,16 +402,19 @@ public sealed class LibraryMatcher(
         file.Tags.Track == listing.Position && (file.Tags.Disc ?? 1) == listing.Disc ? 0.05 : 0;
 
     /// <summary>
-    /// Fuzzy confidence from 0 to 1: title counts most, then duration, then artist. A title that isn't close, or a
-    /// length more than 20 seconds out, caps the score below any sensible threshold.
+    /// Fuzzy confidence from 0 to 1: title counts most, then duration, then artist. A title that isn't close, a
+    /// different artist, or a length more than 20 seconds out, caps the score below any sensible threshold.
     /// </summary>
-    public static double Fuzzy(FileTags tags, TimeSpan? fileDuration, string listingTitle, string trackTitle, string artistCredit, TimeSpan? expected)
+    /// <param name="sameArtist">Whether the track is by the artist the file's tags were resolved to, whatever the credit's spelling or script.</param>
+    /// <param name="liveAlbum">Whether the listing is on a live album, where a venue in the title doesn't count against it.</param>
+    public static double Fuzzy(FileTags tags, TimeSpan? fileDuration, string listingTitle, string trackTitle, string artistCredit, TimeSpan? expected,
+        bool sameArtist = false, bool liveAlbum = false)
     {
-        var fileTitle = TextMatch.NormaliseTitle(tags.Title);
-        var title = Math.Max(TextMatch.Similarity(fileTitle, TextMatch.NormaliseTitle(listingTitle)),
-                             TextMatch.Similarity(fileTitle, TextMatch.NormaliseTitle(trackTitle)));
+        var fileTitle = TextMatch.NormaliseTitle(tags.Title, liveAlbum);
+        var title = Math.Max(TextMatch.Similarity(fileTitle, TextMatch.NormaliseTitle(listingTitle, liveAlbum)),
+                             TextMatch.Similarity(fileTitle, TextMatch.NormaliseTitle(trackTitle, liveAlbum)));
         var fileArtist = tags.Artist ?? tags.AlbumArtist;
-        var artist = fileArtist is null ? 0.5 : TextMatch.Similarity(TextMatch.NormaliseArtist(fileArtist), TextMatch.NormaliseArtist(artistCredit));
+        var artist = sameArtist ? 1 : fileArtist is null ? 0.5 : TextMatch.ArtistSimilarity(fileArtist, artistCredit);
 
         // An unknown length is weak evidence against, not neutral: title and artist alone stay under the default
         // threshold, so they go to review rather than matching.
@@ -421,6 +430,9 @@ public sealed class LibraryMatcher(
         if (difference > 20)
             score = Math.Min(score, 0.6);
         if (title < 0.6)
+            score = Math.Min(score, 0.5);
+        // The same song by someone else is another recording, usually a cover.
+        if (artist < 0.5)
             score = Math.Min(score, 0.5);
         return score;
     }
@@ -459,10 +471,14 @@ public sealed class LibraryMatcher(
 
         var artistName = tags.Artist ?? tags.AlbumArtist ?? artist?.Name;
         var results = await plugin.SearchAsync(new IndexSearchQuery($"{tags.Title} {artistName}".Trim(), new HashSet<SearchKind> { SearchKind.Track }, 10), ct);
-        var best = results.Tracks
-            .Select(t => (Track: t, Score: Fuzzy(tags, file.File.Duration, t.Title, t.Title, t.ArtistCredit, t.Duration)))
-            .OrderByDescending(x => x.Score)
-            .FirstOrDefault();
+        var scored = new List<(IndexTrack Track, double Score)>();
+        foreach (var t in results.Tracks)
+        {
+            // By the artist the tags resolved to, even when the credit is spelled or written differently (岩崎琢 for Taku Iwasaki).
+            var sameArtist = artist is not null && await catalogue.FindAsync(EntityKind.Artist, t.Artist.Id, ct) == artist.Id;
+            scored.Add((t, Fuzzy(tags, file.File.Duration, t.Title, t.Title, t.ArtistCredit, t.Duration, sameArtist)));
+        }
+        var best = scored.OrderByDescending(x => x.Score).FirstOrDefault();
 
         if (best.Track is null)
         {

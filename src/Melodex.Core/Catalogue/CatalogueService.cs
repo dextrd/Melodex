@@ -121,7 +121,7 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
 
     /// <summary>
     /// Finds an artist by name: first among cached artists, then through the index plugin's search, accepting only
-    /// an exact match on the normalised name. Returns null rather than guessing.
+    /// an exact match on the normalised name or sort name. Returns null rather than guessing.
     /// </summary>
     public async Task<Artist?> ResolveArtistByNameAsync(string name, CancellationToken ct)
     {
@@ -135,7 +135,9 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
 
         var (_, plugin) = await IndexAsync(ct);
         var results = await plugin.SearchAsync(new IndexSearchQuery(name, new HashSet<SearchKind> { SearchKind.Artist }, 10), ct);
-        var match = results.Artists.FirstOrDefault(a => TextMatch.NormaliseArtist(a.Name) == key);
+        // A name in another script matches by its sort name: "Iwasaki, Taku" for 岩崎琢.
+        var match = results.Artists.FirstOrDefault(a => TextMatch.NormaliseArtist(a.Name) == key)
+                    ?? results.Artists.FirstOrDefault(a => TextMatch.SortNameAsName(a.SortName) == key);
         if (match is null)
         {
             logger.LogInformation("No artist named {Name} in the catalogue", name);
