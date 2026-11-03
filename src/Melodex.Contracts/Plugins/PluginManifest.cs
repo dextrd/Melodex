@@ -74,6 +74,12 @@ public sealed record PluginManifest
     /// <summary>The highest request rate the core may send through this plugin, if the upstream service has one.</summary>
     public double? MaxRequestsPerSecond { get; init; }
 
+    /// <summary>
+    /// Index plugins only: the provider scheme of the IDs the plugin hands out and takes, for example <c>musicbrainz</c>
+    /// (see <see cref="Catalogue.Providers"/>). With several catalogues, the core asks each about its own IDs.
+    /// </summary>
+    public string? Provider { get; init; }
+
     /// <summary>Retrieval plugins only: the formats and quality the plugin can produce.</summary>
     public RetrievalOutput? Retrieval { get; init; }
 }

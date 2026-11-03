@@ -7,27 +7,39 @@ using Melodex.Core.Plugins;
 namespace Melodex.Core.Catalogue;
 
 /// <summary>
-/// The catalogue cache. Reads go to the database; the index plugin is only called when something is unknown or
+/// The catalogue cache. Reads go to the database; the index plugins are only called when something is unknown or
 /// stale. Everything imported is keyed through the crosswalk, so provider IDs never leak into the rest of the core.
+/// With several catalogues, each entity is fetched from the first catalogue that has an ID for it, so one that only a
+/// gap-filling catalogue knows is kept up to date from that one.
 /// </summary>
 public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlugins, ILogger<CatalogueService> logger)
 {
     public static readonly TimeSpan DiscographyTtl = TimeSpan.FromDays(7);
     public static readonly TimeSpan EditionsTtl = TimeSpan.FromDays(30);
 
-    private (Guid InstanceId, IIndexPlugin Plugin)? _index;
+    private IReadOnlyList<CatalogueIndex>? _indexes;
 
-    private async Task<(Guid InstanceId, IIndexPlugin Plugin)> IndexAsync(CancellationToken ct)
-    {
-        if (_index is null)
-        {
-            var (instance, plugin) = await indexPlugins.GetPrimaryAsync(ct);
-            _index = (instance.Id, plugin);
-        }
-        return _index.Value;
-    }
+    /// <summary>The catalogues that are on, core catalogue first.</summary>
+    public async Task<IReadOnlyList<CatalogueIndex>> IndexesAsync(CancellationToken ct) => _indexes ??= await indexPlugins.GetAllAsync(ct);
 
+    private async Task<CatalogueIndex> IndexAsync(CancellationToken ct) => (await IndexesAsync(ct))[0];
+
+    /// <summary>The core catalogue's plugin.</summary>
     public async Task<IIndexPlugin> PluginAsync(CancellationToken ct) => (await IndexAsync(ct)).Plugin;
+
+    /// <summary>The catalogue whose IDs are in this scheme, if one is on.</summary>
+    private async Task<CatalogueIndex?> IndexForAsync(string provider, CancellationToken ct) =>
+        (await IndexesAsync(ct)).FirstOrDefault(i => i.Provider == provider);
+
+    /// <summary>The entity's ID in the first catalogue, in the user's order, that has one for it.</summary>
+    private async Task<(CatalogueIndex Index, ProviderId Id)?> SourceAsync(EntityKind kind, Guid entityId, CancellationToken ct)
+    {
+        var ids = await ProviderIdsAsync(kind, entityId, ct);
+        foreach (var index in await IndexesAsync(ct))
+            if (ids.FirstOrDefault(p => p.Provider == index.Provider) is { } id)
+                return (index, id);
+        return null;
+    }
 
     // ---- Crosswalk ----
 
@@ -49,8 +61,20 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
             db.Crosswalk.Add(new ProviderIdMapping
             {
                 EntityKind = kind, EntityId = entityId, Provider = id.Provider, Value = id.Value,
-                SourcePluginInstanceId = _index?.InstanceId,
+                SourcePluginInstanceId = (_indexes?.FirstOrDefault(i => i.Provider == id.Provider) ?? _indexes?.FirstOrDefault())?.Instance.Id,
             });
+    }
+
+    /// <summary>
+    /// Records that an entity Melodex already has is the one with this ID in another catalogue, so importing from that
+    /// catalogue adds to it instead of making a second one.
+    /// </summary>
+    public async Task PairAsync(EntityKind kind, Guid entityId, ProviderId id, CancellationToken ct)
+    {
+        if (await FindTrackedAsync(kind, id, ct) is not null)
+            return;
+        await MapAsync(kind, entityId, id, ct);
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>
@@ -71,6 +95,21 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
         }
     }
 
+    /// <summary>
+    /// Whether an entity is also in a catalogue earlier in the user's order than this provider's. Its details then stand:
+    /// a gap-filling catalogue only adds its ID, so it can find the entity again.
+    /// </summary>
+    private async Task<bool> OutrankedAsync(EntityKind kind, Guid entityId, string provider, CancellationToken ct)
+    {
+        var indexes = await IndexesAsync(ct);
+        var rank = indexes.Select(i => i.Provider).ToList().IndexOf(provider);
+        if (rank <= 0)
+            return false;
+        var earlier = indexes.Take(rank).Select(i => i.Provider).ToList();
+        return Tracked(db.Crosswalk).Any(m => m.EntityKind == kind && m.EntityId == entityId && earlier.Contains(m.Provider))
+               || await db.Crosswalk.AnyAsync(m => m.EntityKind == kind && m.EntityId == entityId && earlier.Contains(m.Provider), ct);
+    }
+
     private async Task<Guid?> FindTrackedAsync(EntityKind kind, ProviderId id, CancellationToken ct) =>
         Tracked(db.Crosswalk).FirstOrDefault(m => m.EntityKind == kind && m.Provider == id.Provider && m.Value == id.Value)?.EntityId
         ?? await FindAsync(kind, id, ct);
@@ -85,6 +124,11 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
         {
             artist = new Artist { Name = source.Name };
             db.Artists.Add(artist);
+        }
+        else if (await OutrankedAsync(EntityKind.Artist, artist.Id, source.Id.Provider, ct))
+        {
+            await MapAsync(EntityKind.Artist, artist.Id, source.Id, ct);
+            return artist;
         }
         artist.Name = source.Name;
         artist.SortName = source.SortName ?? artist.SortName;
@@ -102,8 +146,9 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
     {
         if (await FindTrackedAsync(EntityKind.Artist, id, ct) is { } known)
             return await db.Artists.FindAsync([known], ct);
-        var (_, plugin) = await IndexAsync(ct);
-        var source = await plugin.GetArtistAsync(id.Value, ct);
+        if (await IndexForAsync(id.Provider, ct) is not { } index)
+            return null;
+        var source = await index.Plugin.GetArtistAsync(id.Value, ct);
         if (source is null)
             return null;
         var artist = await ImportArtistAsync(source, ct);
@@ -125,19 +170,14 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
     /// </summary>
     public async Task<Artist?> ResolveArtistByNameAsync(string name, CancellationToken ct)
     {
-        var key = TextMatch.NormaliseArtist(name);
-        if (key.Length == 0)
+        if (TextMatch.NormaliseArtist(name).Length == 0)
             return null;
 
         var cached = await db.Artists.Where(a => a.Name == name).OrderByDescending(a => a.InLibrary).FirstOrDefaultAsync(ct);
         if (cached is not null)
             return cached;
 
-        var (_, plugin) = await IndexAsync(ct);
-        var results = await plugin.SearchAsync(new IndexSearchQuery(name, new HashSet<SearchKind> { SearchKind.Artist }, 10), ct);
-        // A name in another script matches by its sort name: "Iwasaki, Taku" for 岩崎琢.
-        var match = results.Artists.FirstOrDefault(a => TextMatch.NormaliseArtist(a.Name) == key)
-                    ?? results.Artists.FirstOrDefault(a => TextMatch.SortNameAsName(a.SortName) == key);
+        var match = await FindArtistAsync((await IndexAsync(ct)).Plugin, name, ct);
         if (match is null)
         {
             logger.LogInformation("No artist named {Name} in the catalogue", name);
@@ -148,6 +188,16 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
         return artist;
     }
 
+    /// <summary>The artist a catalogue has with exactly this name, ignoring case, accents and punctuation, or its sort name.</summary>
+    public static async Task<IndexArtist?> FindArtistAsync(IIndexPlugin plugin, string name, CancellationToken ct)
+    {
+        var key = TextMatch.NormaliseArtist(name);
+        var results = await plugin.SearchAsync(new IndexSearchQuery(name, new HashSet<SearchKind> { SearchKind.Artist }, 10), ct);
+        // A name in another script matches by its sort name: "Iwasaki, Taku" for 岩崎琢.
+        return results.Artists.FirstOrDefault(a => TextMatch.NormaliseArtist(a.Name) == key)
+               ?? results.Artists.FirstOrDefault(a => TextMatch.SortNameAsName(a.SortName) == key);
+    }
+
     // ---- Albums ----
 
     /// <summary>Fetches the artist's discography if it was never fetched or is older than the TTL.</summary>
@@ -155,13 +205,11 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
     {
         if (!force && artist.AlbumsRefreshedAt > DateTime.UtcNow - DiscographyTtl)
             return;
-        var providerId = (await ProviderIdsAsync(EntityKind.Artist, artist.Id, ct)).FirstOrDefault(p => p.Provider == Providers.MusicBrainz);
-        if (providerId is null)
+        if (await SourceAsync(EntityKind.Artist, artist.Id, ct) is not var (index, providerId))
             return;
 
-        var (_, plugin) = await IndexAsync(ct);
         var imported = 0;
-        foreach (var source in await plugin.GetArtistAlbumsAsync(providerId.Value, ct))
+        foreach (var source in await index.Plugin.GetArtistAlbumsAsync(providerId.Value, ct))
         {
             await ImportAlbumAsync(source, artist, ct);
             // Saved as it goes, so a page showing the artist meanwhile fills in.
@@ -183,6 +231,11 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
             artist ??= await ArtistForRefAsync(source.Artist, ct);
             album = new Album { ArtistId = artist.Id, Title = source.Title, ArtistCredit = source.ArtistCredit };
             db.Albums.Add(album);
+        }
+        else if (await OutrankedAsync(EntityKind.Album, album.Id, source.Id.Provider, ct))
+        {
+            await MapAsync(EntityKind.Album, album.Id, source.Id, ct);
+            return album;
         }
         album.Title = source.Title;
         album.ArtistCredit = source.ArtistCredit;
@@ -216,10 +269,26 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
             return album;
         }
 
-        var (_, plugin) = await IndexAsync(ct);
-        var detail = await plugin.GetAlbumAsync(id.Value, ct);
+        if (await IndexForAsync(id.Provider, ct) is not { } index)
+            return null;
+        var detail = await index.Plugin.GetAlbumAsync(id.Value, ct);
         if (detail is null)
             return null;
+
+        // An edition Melodex already has under this barcode is the same album from another catalogue: the album is
+        // paired with it, and keeps the editions it has.
+        foreach (var upc in detail.Editions.Select(e => e.Upc).OfType<string>())
+        {
+            if (await FindTrackedAsync(EntityKind.Edition, new ProviderId(Providers.Upc, upc), ct) is not { } editionId
+                || await db.Editions.FindAsync([editionId], ct) is not { } edition)
+                continue;
+            var paired = (await db.Albums.FindAsync([edition.AlbumId], ct))!;
+            await MapAsync(EntityKind.Album, paired.Id, detail.Album.Id, ct);
+            await db.SaveChangesAsync(ct);
+            await RefreshEditionsAsync(paired, false, ct);
+            return paired;
+        }
+
         var imported = await ImportAlbumAsync(detail.Album, null, ct);
         await ImportEditionsAsync(imported, detail.Editions, ct);
         await db.SaveChangesAsync(ct);
@@ -231,12 +300,10 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
     {
         if (!force && album.EditionsRefreshedAt > DateTime.UtcNow - EditionsTtl)
             return;
-        var providerId = (await ProviderIdsAsync(EntityKind.Album, album.Id, ct)).FirstOrDefault(p => p.Provider == Providers.MusicBrainz);
-        if (providerId is null)
+        if (await SourceAsync(EntityKind.Album, album.Id, ct) is not var (index, providerId))
             return;
 
-        var (_, plugin) = await IndexAsync(ct);
-        var detail = await plugin.GetAlbumAsync(providerId.Value, ct);
+        var detail = await index.Plugin.GetAlbumAsync(providerId.Value, ct);
         if (detail is null)
             return;
         await ImportAlbumAsync(detail.Album, null, ct);
@@ -300,6 +367,16 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
     public async Task<Track> ImportTrackAsync(IndexTrack source, CancellationToken ct)
     {
         var id = await FindTrackedAsync(EntityKind.Track, source.Id, ct);
+        // The same recording from another catalogue, by its ISRC: unless that track already has an ID of this
+        // catalogue's own, which makes it a different recording that shares the code.
+        foreach (var isrc in id is null ? source.Isrcs : [])
+            if (await FindTrackedAsync(EntityKind.Track, new ProviderId(Providers.Isrc, isrc), ct) is { } byIsrc
+                && !Tracked(db.Crosswalk).Any(m => m.EntityKind == EntityKind.Track && m.EntityId == byIsrc && m.Provider == source.Id.Provider)
+                && !await db.Crosswalk.AnyAsync(m => m.EntityKind == EntityKind.Track && m.EntityId == byIsrc && m.Provider == source.Id.Provider, ct))
+            {
+                id = byIsrc;
+                break;
+            }
         var track = id is { } existing
             ? Tracked(db.Tracks).FirstOrDefault(t => t.Id == existing) ?? await db.Tracks.FindAsync([existing], ct)
             : null;
@@ -308,6 +385,12 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
             var artist = await ArtistForRefAsync(source.Artist, ct);
             track = new Track { ArtistId = artist.Id, Title = source.Title, ArtistCredit = source.ArtistCredit };
             db.Tracks.Add(track);
+        }
+        else if (await OutrankedAsync(EntityKind.Track, track.Id, source.Id.Provider, ct))
+        {
+            track.Duration ??= source.Duration;
+            await MapAsync(EntityKind.Track, track.Id, source.Id, ct);
+            return track;
         }
         track.Title = source.Title;
         track.ArtistCredit = source.ArtistCredit;

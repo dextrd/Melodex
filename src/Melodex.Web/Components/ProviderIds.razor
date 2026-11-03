@@ -1,4 +1,4 @@
-@* Lists provider IDs, linking MusicBrainz ones. *@
+@* Lists provider IDs, linking MusicBrainz and Deezer ones. *@
 @if (Ids.Count > 0)
 {
     <div class="ids">
@@ -7,6 +7,10 @@
             @if (id.Provider == Providers.MusicBrainz && Entity is not null)
             {
                 <a href="https://musicbrainz.org/@Entity/@id.Value" target="_blank" rel="noopener"><code>musicbrainz</code></a>
+            }
+            else if (id.Provider == Providers.Deezer && DeezerEntity is { } deezer)
+            {
+                <a href="https://www.deezer.com/@deezer/@id.Value" target="_blank" rel="noopener"><code>deezer</code></a>
             }
             else
             {
@@ -21,4 +25,13 @@
 
     /// <summary>MusicBrainz entity path: artist, release-group, release or recording.</summary>
     [Parameter] public string? Entity { get; set; }
+
+    // A Deezer album is both the album and its one edition.
+    private string? DeezerEntity => Entity switch
+    {
+        "artist" => "artist",
+        "release-group" or "release" => "album",
+        "recording" => "track",
+        _ => null,
+    };
 }

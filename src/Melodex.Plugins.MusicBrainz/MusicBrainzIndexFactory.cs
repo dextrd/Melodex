@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MetaBrainz.MusicBrainz;
+using Melodex.Contracts.Catalogue;
 using Melodex.Contracts.Plugins;
 using Melodex.Contracts.Plugins.Index;
 
@@ -26,6 +27,7 @@ public sealed class MusicBrainzIndexFactory : IPluginFactory
         Description = "Catalogue data from MusicBrainz, the open music encyclopedia.",
         Homepage = "https://musicbrainz.org",
         Capabilities = [IndexCapabilities.IsrcLookup],
+        Provider = Providers.MusicBrainz,
         Access = new PluginAccess { Network = ["musicbrainz.org (or the server set in its settings)"] },
         MaxRequestsPerSecond = 1,
         SettingsSchema = JsonDocument.Parse("""

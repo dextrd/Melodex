@@ -208,6 +208,128 @@ public sealed class LibraryMatcher(
 
         foreach (var file in unplaced)
             await MatchLooseAsync(file, artist, ct);
+
+        // What the core catalogue doesn't have, the ones after it may.
+        foreach (var index in (await catalogue.IndexesAsync(ct)).Skip(1))
+        {
+            var left = files.Where(f => f.File.TrackId is null && (f.Tags.Title is not null || f.Tags.Isrc is not null)).ToList();
+            if (left.Count == 0)
+                break;
+            await FillGapsAsync(left, artist, index, ct);
+        }
+    }
+
+    // ---- Gap-filling catalogues ----
+
+    private readonly Dictionary<(Guid Index, string Name), Artist?> _gapArtists = [];
+
+    /// <summary>
+    /// Matches files the core catalogue had nothing confident for against a catalogue after it: the album first, then
+    /// each song on its own, by ISRC or by title, artist and length. A suggestion only replaces one that was surer.
+    /// </summary>
+    private async Task FillGapsAsync(List<Candidate> files, Artist? artist, CatalogueIndex index, CancellationToken ct)
+    {
+        var tags = files[0].Tags;
+        var name = tags.AlbumArtist ?? tags.Artist;
+        if (name is not null && await GapArtistAsync(name, artist, index, ct) is { } found)
+        {
+            artist ??= found;
+            foreach (var file in files)
+                file.File.ArtistId ??= found.Id;
+        }
+
+        var left = files;
+        if (tags.Album is not null)
+        {
+            var title = TextMatch.NormaliseAlbum(tags.Album);
+            var results = await index.Plugin.SearchAsync(new IndexSearchQuery($"{tags.Album} {name}".Trim(), new HashSet<SearchKind> { SearchKind.Album }, 10), ct);
+            var albums = new List<Album>();
+            foreach (var hit in results.Albums
+                         .Where(a => TextMatch.Similarity(TextMatch.NormaliseAlbum(a.Title), title) >= 0.9
+                                     && (name is null || TextMatch.ArtistSimilarity(name, a.ArtistCredit) >= 0.8))
+                         .Take(2))
+                if (await catalogue.GetAlbumAsync(hit.Id, ct) is { } album)
+                    albums.Add(album);
+            left = await MatchToAlbumsAsync(files, albums, ct, index);
+        }
+
+        foreach (var file in left)
+            await MatchLooseInAsync(file, artist, index, ct);
+    }
+
+    /// <summary>
+    /// The artist as this catalogue has them, by exact name: the one the core catalogue knows when there is one, paired
+    /// with this catalogue's ID so their albums from either catalogue go together, or otherwise new.
+    /// </summary>
+    private async Task<Artist?> GapArtistAsync(string name, Artist? artist, CatalogueIndex index, CancellationToken ct)
+    {
+        var key = (index.Instance.Id, TextMatch.NormaliseArtist(name));
+        if (_gapArtists.TryGetValue(key, out var cached))
+            return cached;
+
+        Artist? result = null;
+        if (artist is not null && (await catalogue.ProviderIdsAsync(EntityKind.Artist, artist.Id, ct)).Any(p => p.Provider == index.Provider))
+            result = artist;
+        else if (await CatalogueService.FindArtistAsync(index.Plugin, name, ct) is { } hit)
+        {
+            if (await catalogue.FindAsync(EntityKind.Artist, hit.Id, ct) is { } known)
+                result = await db.Artists.FindAsync([known], ct);
+            else if (artist is not null)
+            {
+                await catalogue.PairAsync(EntityKind.Artist, artist.Id, hit.Id, ct);
+                result = artist;
+            }
+            else
+            {
+                result = await catalogue.ImportArtistAsync(hit, ct);
+                await db.SaveChangesAsync(ct);
+            }
+        }
+        return _gapArtists[key] = result;
+    }
+
+    /// <summary>One song against a gap-filling catalogue, filed with its album when that fits the file's, so it has a page.</summary>
+    private async Task MatchLooseInAsync(Candidate file, Artist? artist, CatalogueIndex index, CancellationToken ct)
+    {
+        var tags = file.Tags;
+        (IndexTrack Track, double Score, MatchMethod Method)? best = null;
+        if (tags.Isrc is { } isrc && index.Plugin is IIsrcLookup lookup && (await lookup.LookupIsrcAsync(isrc, ct)).FirstOrDefault() is { } byIsrc)
+            best = (byIsrc, 1, MatchMethod.IsrcOrUpc);
+        else if (tags.Title is not null)
+        {
+            var artistName = tags.Artist ?? tags.AlbumArtist ?? artist?.Name;
+            var results = await index.Plugin.SearchAsync(new IndexSearchQuery($"{tags.Title} {artistName}".Trim(), new HashSet<SearchKind> { SearchKind.Track }, 10), ct);
+            foreach (var t in results.Tracks)
+            {
+                var sameArtist = artist is not null && await catalogue.FindAsync(EntityKind.Artist, t.Artist.Id, ct) == artist.Id;
+                var score = Fuzzy(tags, file.File.Duration, t.Title, t.Title, t.ArtistCredit, t.Duration, sameArtist);
+                if (best is null || score > best.Value.Score)
+                    best = (t, score, MatchMethod.Fuzzy);
+            }
+        }
+        if (best is not { } found)
+            return;
+
+        if (found.Score >= _threshold)
+        {
+            var album = found.Track.Album is { } from && (tags.Album is null || TextMatch.Similarity(TextMatch.NormaliseAlbum(from.Title), TextMatch.NormaliseAlbum(tags.Album)) >= 0.9)
+                ? await catalogue.GetAlbumAsync(from.Id, ct)
+                : null;
+            var track = await catalogue.ImportTrackAsync(found.Track, ct);
+            Match(file.File, track.Id, found.Method, found.Score);
+            file.File.EditionId = album is null
+                ? null
+                : await db.EditionTracks.Where(et => et.TrackId == track.Id && et.Edition.AlbumId == album.Id).Select(et => (Guid?)et.EditionId).FirstOrDefaultAsync(ct);
+            file.File.ArtistId ??= track.ArtistId;
+        }
+        else if (file.File.SuggestedTrackId is null || found.Score > (file.File.MatchConfidence ?? 0))
+        {
+            var track = await catalogue.ImportTrackAsync(found.Track, ct);
+            file.File.SuggestedTrackId = track.Id;
+            file.File.SuggestedEditionId = null;
+            file.File.MatchConfidence = Math.Round(found.Score, 3);
+            Review(file.File, $"Closest match, {found.Track.Title} by {found.Track.ArtistCredit} from {index.Instance.Name}, is only {found.Score:P0} confident.");
+        }
     }
 
     // ---- Artist ----
@@ -281,7 +403,8 @@ public sealed class LibraryMatcher(
     private sealed record Assignment(Candidate File, Listing Listing, double Score, MatchMethod Method);
 
     /// <summary>Picks the edition that best fits the files and assigns files to its tracks. Returns files left over.</summary>
-    private async Task<List<Candidate>> MatchToAlbumsAsync(List<Candidate> files, List<Album> albums, CancellationToken ct)
+    /// <param name="gapFiller">The catalogue the albums are from when it isn't the core one: then a suggestion only replaces a surer one.</param>
+    private async Task<List<Candidate>> MatchToAlbumsAsync(List<Candidate> files, List<Album> albums, CancellationToken ct, CatalogueIndex? gapFiller = null)
     {
         if (albums.Count == 0)
             return files;
@@ -328,12 +451,19 @@ public sealed class LibraryMatcher(
                 file.SuggestedTrackId = file.SuggestedEditionId = null;
                 leftovers.Remove(assignment.File);
             }
-            else
+            else if (gapFiller is null)
             {
                 // Keep the album's best guess as the suggestion; matching on its own may still do better.
                 file.SuggestedTrackId = assignment.Listing.TrackId;
                 file.SuggestedEditionId = assignment.Listing.EditionId;
                 file.MatchConfidence = Math.Round(assignment.Score, 3);
+            }
+            else if (file.SuggestedTrackId is null || assignment.Score > (file.MatchConfidence ?? 0))
+            {
+                file.SuggestedTrackId = assignment.Listing.TrackId;
+                file.SuggestedEditionId = assignment.Listing.EditionId;
+                file.MatchConfidence = Math.Round(assignment.Score, 3);
+                Review(file, $"Closest match, {assignment.Listing.TrackTitle} by {assignment.Listing.ArtistCredit} from {gapFiller.Instance.Name}, is only {assignment.Score:P0} confident.");
             }
         }
         return leftovers;

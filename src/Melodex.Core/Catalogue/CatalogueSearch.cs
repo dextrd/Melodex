@@ -9,7 +9,7 @@ using Melodex.Core.Plugins;
 namespace Melodex.Core.Catalogue;
 
 /// <summary>
-/// Searching for artists, albums and tracks: through the index plugin, whose answers are kept a while so a search
+/// Searching for artists, albums and tracks: through the catalogues, whose answers are kept a while so a search
 /// made again comes back at once, or only in the catalogue Melodex already holds, which answers in a moment.
 /// </summary>
 public sealed class CatalogueSearch(MelodexDbContext db, CatalogueService service, LibraryView view)
@@ -34,8 +34,21 @@ public sealed class CatalogueSearch(MelodexDbContext db, CatalogueService servic
         {
             // Someone is waiting on this: it goes ahead of background catalogue updates under the rate limit.
             PluginHttp.Interactive.Value = true;
-            var plugin = await service.PluginAsync(ct);
-            return await plugin.SearchAsync(new IndexSearchQuery(text, kinds, Limit), ct);
+            var indexes = await service.IndexesAsync(ct);
+            var query = new IndexSearchQuery(text, kinds, Limit);
+            var answers = await Task.WhenAll(indexes.Select(async (index, i) =>
+            {
+                try
+                {
+                    return await index.Plugin.SearchAsync(query, ct);
+                }
+                // A gap-filling catalogue that isn't answering leaves the core catalogue's results to stand on their own.
+                catch (Exception e) when (i > 0 && LibraryMatcher.IsUnavailable(e, ct))
+                {
+                    return IndexSearchResults.Empty;
+                }
+            }));
+            return Merge(answers);
         });
 
         var artists = new List<Artist>();
@@ -59,6 +72,30 @@ public sealed class CatalogueSearch(MelodexDbContext db, CatalogueService servic
             Importing.Release();
         }
         return await ResultsAsync(artists, albumIds, tracks, ct);
+    }
+
+    /// <summary>
+    /// The core catalogue's answers, then up to half as many again from the catalogues after it, leaving out what the
+    /// core catalogue already found: the same name, or the same title by the same artist.
+    /// </summary>
+    public static IndexSearchResults Merge(IReadOnlyList<IndexSearchResults> answers)
+    {
+        if (answers.Count == 1)
+            return answers[0];
+        static string Artist(string name) => TextMatch.NormaliseArtist(name);
+        static string Titled(string title, string credit) => $"{TextMatch.NormaliseTitle(title)}|{TextMatch.NormaliseArtist(credit)}";
+        List<T> Combine<T>(Func<IndexSearchResults, IReadOnlyList<T>> kind, Func<T, string> key)
+        {
+            var list = kind(answers[0]).ToList();
+            var seen = list.Select(key).ToHashSet();
+            foreach (var answer in answers.Skip(1))
+                list.AddRange(kind(answer).Where(x => seen.Add(key(x))).Take(Limit / 2));
+            return list;
+        }
+        return new IndexSearchResults(
+            Combine(r => r.Artists, a => Artist(a.Name)),
+            Combine(r => r.Albums, a => Titled(a.Title, a.ArtistCredit)),
+            Combine(r => r.Tracks, t => Titled(t.Title, t.ArtistCredit)));
     }
 
     /// <summary>Matches in the catalogue Melodex already holds: artists, albums and tracks it has seen before.</summary>

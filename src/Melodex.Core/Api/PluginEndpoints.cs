@@ -197,7 +197,8 @@ public static class PluginEndpoints
     {
         var lent = changed.Type != PluginType.Artwork && (await db.PluginInstances.Where(p => p.Type == PluginType.Artwork).Select(p => p.PluginId).ToListAsync(ct))
             .Any(id => catalog.Find(id)?.Manifest.UsesSettingsOf == changed.PluginId);
-        if (changed.Type == PluginType.Artwork || lent)
+        // A catalogue changing changes which IDs albums have, and so which covers can be found for them.
+        if (changed.Type is PluginType.Artwork or PluginType.Index || lent)
             await artwork.ResetAsync(ct);
     }
 

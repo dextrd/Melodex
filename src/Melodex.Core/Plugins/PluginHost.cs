@@ -74,17 +74,27 @@ public sealed class PluginHost(
     }
 }
 
-/// <summary>The active index plugin. v1 runs one index plugin at a time: the enabled instance with the lowest priority.</summary>
-public sealed class IndexPlugins(MelodexDbContext db, PluginHost host)
+/// <summary>A catalogue that's on, with the provider scheme of its IDs.</summary>
+public sealed record CatalogueIndex(PluginInstance Instance, IIndexPlugin Plugin, string Provider);
+
+/// <summary>
+/// The catalogues that are on, in the user's order. The first is the core catalogue; the ones after it fill in what
+/// it doesn't have, and each is asked about entities by its own IDs.
+/// </summary>
+public sealed class IndexPlugins(MelodexDbContext db, PluginHost host, PluginCatalog catalog)
 {
-    public async Task<(PluginInstance Instance, IIndexPlugin Plugin)> GetPrimaryAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<CatalogueIndex>> GetAllAsync(CancellationToken cancellationToken)
     {
-        var instance = await db.PluginInstances
-                           .Where(p => p.Type == PluginType.Index && p.Enabled)
-                           .OrderBy(p => p.Priority)
-                           .FirstOrDefaultAsync(cancellationToken)
-                       ?? throw new InvalidOperationException("No index plugin is set up.");
-        return (instance, host.Get<IIndexPlugin>(instance));
+        var instances = await db.PluginInstances
+            .Where(p => p.Type == PluginType.Index && p.Enabled)
+            .OrderBy(p => p.Priority)
+            .ToListAsync(cancellationToken);
+        if (instances.Count == 0)
+            throw new InvalidOperationException("No index plugin is set up.");
+        // A plugin that doesn't say is taken to use MusicBrainz IDs, as every index plugin did before the field existed.
+        return instances
+            .Select(i => new CatalogueIndex(i, host.Get<IIndexPlugin>(i), catalog.Find(i.PluginId)?.Manifest.Provider ?? Melodex.Contracts.Catalogue.Providers.MusicBrainz))
+            .ToList();
     }
 
     /// <summary>On first run, sets up MusicBrainz as the index plugin, so the catalogue works out of the box.</summary>

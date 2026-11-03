@@ -173,7 +173,7 @@ public class PluginCatalogTests
                 Melodex.Plugins.MusicBrainz.CoverArtArchiveFactory.PluginId, MusicBrainzIndexFactory.PluginId,
                 Melodex.Plugins.Navidrome.NavidromeArtworkFactory.PluginId, Melodex.Plugins.Navidrome.NavidromeConnectorFactory.PluginId,
                 Melodex.Plugins.FanartTv.FanartTvFactory.PluginId, Melodex.Plugins.Wikimedia.WikimediaCommonsFactory.PluginId,
-                Melodex.Plugins.Deezer.DeezerFactory.PluginId, Melodex.Plugins.Lrclib.LrclibFactory.PluginId,
+                Melodex.Plugins.Deezer.DeezerFactory.PluginId, Melodex.Plugins.Deezer.DeezerIndexFactory.PluginId, Melodex.Plugins.Lrclib.LrclibFactory.PluginId,
             ], Catalog(root).All.Select(p => p.Manifest.Id));
         }
         finally

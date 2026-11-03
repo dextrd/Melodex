@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <RootNamespace>Melodex.Plugins.Deezer</RootNamespace>
-    <Description>Melodex artwork plugin for artist pictures from Deezer.</Description>
+    <Description>Melodex plugins for Deezer: its public catalogue, and artist pictures.</Description>
   </PropertyGroup>
 
   <ItemGroup>

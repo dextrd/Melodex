@@ -23,7 +23,7 @@ else
             "Told to scan when music is filed, so it shows up there. The first one that's on is used.",
             "No media server yet. Music is still filed, but nothing is told about it.")
         @Section(PluginType.Index, "Catalogue",
-            "Where Melodex learns what each artist has released, to tell what's missing.",
+            "Where Melodex learns what each artist has released, to tell what's missing. The first is the core catalogue; the ones after it fill in what it doesn't have.",
             "No catalogue. Melodex can't tell what's missing without one.")
         @Section(PluginType.Artwork, "Artwork",
             "Pictures of artists and album covers. For each picture, Melodex asks these in order and keeps the first one found.",
@@ -176,7 +176,7 @@ else
         _ => "Artwork",
     };
 
-    private static bool Ordered(PluginType type) => type is PluginType.Retrieval or PluginType.Artwork or PluginType.Lyrics;
+    private static bool Ordered(PluginType type) => type is PluginType.Retrieval or PluginType.Artwork or PluginType.Lyrics or PluginType.Index;
 
     private RenderFragment Section(PluginType type, string title, string about, string empty) => __builder =>
     {
@@ -247,7 +247,7 @@ else
                 {
                     <IconButton Icon="settings" Title="Settings" OnClick="() => Edit(plugin)" />
                 }
-                @if (plugin.Type != PluginType.Index)
+                @if (plugin.Type != PluginType.Index || list.Count > 1)
                 {
                     <IconButton Icon="remove" Class="remove" Title="Remove" Disabled="_busy" OnClick="() => _removing = plugin" />
                 }
