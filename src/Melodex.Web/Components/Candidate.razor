@@ -3,7 +3,7 @@
 <span class="muted">
     @if (Value.Artist is not null) { <span> · @Value.Artist</span> }
     @if (Value.Album is not null) { <span> · @Value.Album</span> }
-    <span> · @Format.Duration(Value.DurationSeconds)</span>
+    @if (Value.DurationSeconds is not null) { <span> · @Format.Duration(Value.DurationSeconds)</span> }
     <span> · @(Value.Url is null ? Value.Source : "")</span>
     @if (Value.Url is not null) { <a href="@Value.Url" target="_blank" rel="noopener noreferrer">@Value.Source</a> }
     @if (Value.Format is not null) { <span> · @Value.Format@(Value.BitrateKbps is { } kbps ? $" {kbps} kbps" : "")</span> }

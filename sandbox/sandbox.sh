@@ -9,6 +9,7 @@
 #   sandbox/sandbox.sh reset    down, and throw away the library copy and the inbox
 #
 # Works with podman or docker. Navidrome's and Melodex's credentials are generated on first run into sandbox/.env.
+# Prowlarr and qBittorrent come too, for the Prowlarr plugin, with PandaCD (Creative Commons music) as the indexer.
 
 set -euo pipefail
 
@@ -23,11 +24,17 @@ ENV_FILE="$SANDBOX/.env"
 COOKIES="$SANDBOX/.cookies"
 
 NAVIDROME_IMAGE="docker.io/deluan/navidrome:0.64.2"
+PROWLARR_IMAGE="lscr.io/linuxserver/prowlarr:2.6.5.5623-ls165"
+QBITTORRENT_IMAGE="lscr.io/linuxserver/qbittorrent:5.1.4-r3-ls451"
 NETWORK="melodex-sandbox"
 NAVIDROME_PORT="${NAVIDROME_PORT:-4533}"
 MELODEX_PORT="${MELODEX_PORT:-8787}"
-CONTAINERS=(melodex-sandbox-navidrome melodex-sandbox-core melodex-sandbox-beets melodex-sandbox-ytdlp melodex-sandbox-inbox melodex-sandbox-archive)
-VOLUMES=(melodex-sandbox-navidrome melodex-sandbox-config melodex-sandbox-staging)
+PROWLARR_PORT="${PROWLARR_PORT:-9696}"
+QBITTORRENT_PORT="${QBITTORRENT_PORT:-8090}"
+CONTAINERS=(melodex-sandbox-navidrome melodex-sandbox-core melodex-sandbox-beets melodex-sandbox-ytdlp melodex-sandbox-inbox melodex-sandbox-archive
+  melodex-sandbox-prowlarr melodex-sandbox-qbittorrent melodex-sandbox-torrents)
+VOLUMES=(melodex-sandbox-navidrome melodex-sandbox-config melodex-sandbox-staging melodex-sandbox-prowlarr
+  melodex-sandbox-qbittorrent melodex-sandbox-downloads)
 
 # Image, then build context and Dockerfile.
 IMAGES=(
@@ -36,6 +43,7 @@ IMAGES=(
   "localhost/melodex/retriever-ytdlp:dev|$ROOT/plugins/retriever-ytdlp|$ROOT/plugins/retriever-ytdlp/Dockerfile"
   "localhost/melodex/retriever-inbox:dev|$ROOT/plugins/retriever-inbox|$ROOT/plugins/retriever-inbox/Dockerfile"
   "localhost/melodex/retriever-archive:dev|$ROOT/plugins/retriever-archive|$ROOT/plugins/retriever-archive/Dockerfile"
+  "localhost/melodex/retriever-prowlarr:dev|$ROOT/plugins/retriever-prowlarr|$ROOT/plugins/retriever-prowlarr/Dockerfile"
 )
 
 ENGINE="$(command -v podman || command -v docker || true)"
@@ -132,10 +140,38 @@ configure() {
     echo "couldn't add the plugin at $endpoint" >&2
     exit 1
   done
+  configure_torrents "$plugins"
   # Test each, so Settings shows how they're doing.
   for id in $(melodex GET /plugins | grep -o '"id":"[^"]*"' | cut -d'"' -f4); do
     melodex POST "/plugins/$id/test" -o /dev/null || true
   done
+}
+
+# Prowlarr's API key, which it makes on first start.
+prowlarr_key() {
+  "$ENGINE" exec melodex-sandbox-prowlarr sed -n 's/.*<ApiKey>\([^<]*\).*/\1/p' /config/config.xml
+}
+
+# PandaCD in Prowlarr, then the Prowlarr plugin in Melodex with Prowlarr's key and the sandbox's qBittorrent.
+configure_torrents() {
+  local plugins="$1" key prowlarr_url="http://localhost:$PROWLARR_PORT/api/v1"
+  wait_for Prowlarr "http://localhost:$PROWLARR_PORT/ping"
+  key="$(prowlarr_key)"
+  if ! curl -sf -H "X-Api-Key: $key" "$prowlarr_url/indexer" | grep -q '"definitionName": *"pandacd"'; then
+    curl -sf -H "X-Api-Key: $key" "$prowlarr_url/indexer/schema" | python3 -I -c '
+import json, sys
+schema = next(s for s in json.load(sys.stdin) if s.get("definitionName") == "pandacd")
+json.dump({**schema, "enable": True, "appProfileId": 1}, sys.stdout)' |
+      curl -sf -o /dev/null -H "X-Api-Key: $key" -H 'Content-Type: application/json' -d @- "$prowlarr_url/indexer" ||
+      echo "couldn't add PandaCD to Prowlarr; add an indexer at http://localhost:$PROWLARR_PORT" >&2
+  fi
+  grep -q '"http://retriever-prowlarr:8080"' <<<"$plugins" && return 0
+  for _ in $(seq 1 30); do
+    melodex POST /plugins -o /dev/null -d "{\"endpoint\":\"http://retriever-prowlarr:8080\",\"settings\":{\"prowlarrUrl\":\"http://prowlarr:9696\",\"prowlarrApiKey\":\"$key\",\"qbittorrentUrl\":\"http://qbittorrent:8080\"}}" && return 0
+    sleep 1
+  done
+  echo "couldn't add the Prowlarr plugin" >&2
+  exit 1
 }
 
 status() {
@@ -151,6 +187,8 @@ import json, sys
 for p in json.load(sys.stdin):
     message = p.get("healthMessage")
     print("  " + p["name"] + ": " + (p.get("health") or "not tested") + (" (" + message + ")" if message else ""))' || true
+  echo "Prowlarr:    http://localhost:$PROWLARR_PORT"
+  echo "qBittorrent: http://localhost:$QBITTORRENT_PORT (no login from this computer)"
   echo "Library copy: $MUSIC"
   echo "Inbox:        $INBOX (drop files here, then Retry the request)"
 }
@@ -196,6 +234,28 @@ up() {
   "$ENGINE" run -d --name melodex-sandbox-archive "${SHARED[@]}" --network-alias retriever-archive "${AS_YOU[@]}" \
     -v melodex-sandbox-staging:/staging \
     localhost/melodex/retriever-archive:dev >/dev/null
+
+  # qBittorrent lets anyone it can reach in without a login: its port is only open to this computer, and the
+  # plugin reaches it inside the sandbox network.
+  # The downloads volume starts out root's; qBittorrent runs as PUID.
+  "$ENGINE" run --rm --entrypoint sh -v melodex-sandbox-qbittorrent:/config -v melodex-sandbox-downloads:/downloads \
+    -e PUID="$(id -u)" -e PGID="$(id -g)" "$QBITTORRENT_IMAGE" -c '
+    mkdir -p /config/qBittorrent /downloads/melodex && chown -R "$PUID:$PGID" /downloads
+    [ -f /config/qBittorrent/qBittorrent.conf ] || printf "%s\n" "[Preferences]" \
+      "WebUI\\AuthSubnetWhitelistEnabled=true" "WebUI\\AuthSubnetWhitelist=0.0.0.0/0, ::/0" \
+      "WebUI\\LocalHostAuth=false" "WebUI\\HostHeaderValidation=false" \
+      "Downloads\\SavePath=/downloads/" > /config/qBittorrent/qBittorrent.conf' >/dev/null
+  "$ENGINE" run -d --name melodex-sandbox-qbittorrent "${SHARED[@]}" --network-alias qbittorrent \
+    -p "127.0.0.1:$QBITTORRENT_PORT:8080" -e WEBUI_PORT=8080 -e PUID="$(id -u)" -e PGID="$(id -g)" \
+    -v melodex-sandbox-qbittorrent:/config -v melodex-sandbox-downloads:/downloads \
+    "$QBITTORRENT_IMAGE" >/dev/null
+  "$ENGINE" run -d --name melodex-sandbox-prowlarr "${SHARED[@]}" --network-alias prowlarr \
+    -p "127.0.0.1:$PROWLARR_PORT:9696" -e PUID="$(id -u)" -e PGID="$(id -g)" \
+    -v melodex-sandbox-prowlarr:/config \
+    "$PROWLARR_IMAGE" >/dev/null
+  "$ENGINE" run -d --name melodex-sandbox-torrents "${SHARED[@]}" --network-alias retriever-prowlarr "${AS_YOU[@]}" \
+    -v melodex-sandbox-staging:/staging -v melodex-sandbox-downloads:/downloads:ro \
+    localhost/melodex/retriever-prowlarr:dev >/dev/null
 
   wait_for Navidrome "$navidrome_url/ping"
   # First run only: Navidrome accepts creating the admin while it has no users.

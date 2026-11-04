@@ -54,7 +54,11 @@ public sealed class RequestFixture : IAsyncLifetime
                     http.PrimaryHandler = () => new FakeLrclib(new ReplayHandler(TestLibrary.MusicBrainzFixtures), Lyrics);
                     http.RateLimit = false;
                 });
-                services.Configure<RequestPipelineOptions>(o => o.PollInterval = TimeSpan.FromMilliseconds(20));
+                services.Configure<RequestPipelineOptions>(o =>
+                {
+                    o.PollInterval = TimeSpan.FromMilliseconds(20);
+                    o.FetchTimeout = TimeSpan.FromSeconds(1);
+                });
                 services.AddHttpClient(RetrievalPlugins.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Retrieval);
                 services.RemoveAll<IImportWorker>();
                 services.AddSingleton<IImportWorker>(Importer);
@@ -249,6 +253,45 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
 
         Assert.Equal(RequestState.InLibrary, done.State);
         Assert.Equal(["broken", "broken", "good"], done.Jobs!.Select(j => j.Plugin));
+    }
+
+    [TestLibraryFact]
+    public async Task A_slow_fetch_runs_past_the_limit_while_it_moves_and_is_cancelled_once_it_stalls()
+    {
+        // 80 steps of 20 ms is longer than the fixture's one-second limit; then it stays at 80 %.
+        var stalls = new FakeSource("stalls") { Candidates = 1, ProgressSteps = Enumerable.Range(1, 80).Select(i => i / 100.0).ToList() };
+        var good = new FakeSource("good");
+        await fixture.AddSourceAsync(stalls);
+        await fixture.AddSourceAsync(good);
+        var track = await MissingTrackAsync("Portishead", "Magic Doors");
+
+        var done = await fixture.WaitAsync((await Api.CreateRequestAsync(new CreateRequest(RequestKind.Track, track))).Id);
+        Dump(done);
+
+        Assert.Equal(RequestState.InLibrary, done.State);
+        Assert.Equal(["stalls", "good"], done.Jobs!.Select(j => j.Plugin));
+        Assert.Contains("made no progress for 1 seconds at 80", done.Jobs![0].Log);
+        Assert.Equal(1, stalls.Cancels);
+    }
+
+    [TestLibraryFact]
+    public async Task A_request_cancelled_while_its_fetch_reports_progress_stays_cancelled()
+    {
+        var slow = new FakeSource("slow") { Candidates = 1, ProgressSteps = Enumerable.Range(1, 1000).Select(i => i / 1000.0).ToList() };
+        await fixture.AddSourceAsync(slow);
+        var track = await MissingTrackAsync("Portishead", "Magic Doors");
+        var id = (await Api.CreateRequestAsync(new CreateRequest(RequestKind.Track, track))).Id;
+        while ((await Api.GetRequestAsync(id))!.Detail?.Contains('%') != true)
+            await Task.Delay(20);
+
+        await Api.CancelRequestAsync(id);
+        await Task.Delay(300);
+
+        var done = (await Api.GetRequestAsync(id))!;
+        Dump(done);
+        Assert.Equal(RequestState.Cancelled, done.State);
+        Assert.Equal(JobState.Cancelled, done.Jobs!.Single().State);
+        Assert.Equal(1, slow.Cancels);
     }
 
     [TestLibraryFact]

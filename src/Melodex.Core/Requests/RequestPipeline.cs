@@ -165,15 +165,31 @@ public sealed class RequestPipeline(
         try
         {
             status = await plugin.Plugin.StartFetchAsync(job.Id.ToString(), target.ToRetrieval(), candidate, job.StagingDirectory, ct);
+            // A torrent can take hours and still be fine, so the limit is on time without progress.
             var deadline = DateTime.UtcNow + pipelineOptions.Value.FetchTimeout;
+            var lastProgress = status.Progress;
             while (status.State is FetchState.Queued or FetchState.Running)
             {
                 if (DateTime.UtcNow > deadline)
-                    throw new TimeoutException($"The fetch took longer than {pipelineOptions.Value.FetchTimeout.TotalMinutes:0} minutes");
+                {
+                    if (plugin.Capabilities.Contains(RetrievalCapabilities.Cancel))
+                        await IgnoreErrors(() => plugin.Plugin.CancelFetchAsync(job.Id.ToString(), CancellationToken.None));
+                    var done = lastProgress is { } p ? $" at {p:P0}" : "";
+                    var limit = pipelineOptions.Value.FetchTimeout;
+                    var span = limit.TotalMinutes >= 1 ? $"{limit.TotalMinutes:0} minutes" : $"{limit.TotalSeconds:0} seconds";
+                    throw new TimeoutException($"The fetch made no progress for {span}{done}");
+                }
                 await Task.Delay(pipelineOptions.Value.PollInterval, ct);
                 status = await plugin.Plugin.GetFetchStatusAsync(job.Id.ToString(), ct);
                 if (status.Progress is { } progress)
+                {
+                    if (progress > (lastProgress ?? -1))
+                    {
+                        lastProgress = progress;
+                        deadline = DateTime.UtcNow + pipelineOptions.Value.FetchTimeout;
+                    }
                     await SetAsync(request, RequestStatus.Fetching, $"Fetching from {plugin.Instance.Name} ({progress:P0})", ct);
+                }
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -482,6 +498,11 @@ public sealed class RequestPipeline(
             return;
         request.Status = status;
         request.Detail = detail;
+        // Already written; left marked as changed, the next save would write them again over a cancel made meanwhile.
+        var entry = db.Entry(request);
+        if (entry.State != EntityState.Detached)
+            foreach (var property in new[] { nameof(Request.Status), nameof(Request.Detail), nameof(Request.UpdatedAt) })
+                entry.Property(property).IsModified = false;
         if (status is RequestStatus.InLibrary or RequestStatus.NeedsReview or RequestStatus.Failed or RequestStatus.InProgress)
             await requests.UpdateAncestorsAsync(request.ParentRequestId, CancellationToken.None);
     }
@@ -559,7 +580,7 @@ public sealed class RequestPipelineOptions
     /// <summary>How often a running fetch, and the media server, are polled at first.</summary>
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(2);
 
-    /// <summary>Longest a single fetch may take.</summary>
+    /// <summary>Longest a fetch may go without making progress.</summary>
     public TimeSpan FetchTimeout { get; set; } = TimeSpan.FromMinutes(30);
 
     /// <summary>How long to wait for the media server to have the new files.</summary>

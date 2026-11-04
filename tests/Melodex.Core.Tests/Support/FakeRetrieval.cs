@@ -17,6 +17,7 @@ public sealed class FakeRetrieval(string stagingRoot) : HttpMessageHandler
     public ConcurrentDictionary<string, FakeSource> Sources { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly ConcurrentDictionary<string, FetchStatus> _jobs = new();
+    private readonly ConcurrentDictionary<string, (FakeSource Source, int Polls)> _running = new();
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
@@ -64,11 +65,25 @@ public sealed class FakeRetrieval(string stagingRoot) : HttpMessageHandler
             }
             var status = new FetchStatus(fetch.JobId, FetchState.Completed, 1, files);
             _jobs[fetch.JobId] = status;
-            return Json(request, status with { State = FetchState.Running, Files = null }, HttpStatusCode.Accepted);
+            if (source.ProgressSteps is not null)
+                _running[fetch.JobId] = (source, 0);
+            return Json(request, status with { State = FetchState.Running, Progress = null, Files = null }, HttpStatusCode.Accepted);
         }
         if (path.StartsWith("/v1/fetch/", StringComparison.Ordinal))
         {
             var id = Uri.UnescapeDataString(path["/v1/fetch/".Length..]);
+            if (request.Method == HttpMethod.Delete && _running.TryRemove(id, out var cancelled))
+            {
+                Interlocked.Increment(ref cancelled.Source.Cancels);
+                return Json(request, _jobs[id] = new FetchStatus(id, FetchState.Cancelled));
+            }
+            // A slow fetch moves through its steps, a poll each, and then stays on the last one.
+            if (_running.TryGetValue(id, out var running))
+            {
+                _running[id] = running with { Polls = running.Polls + 1 };
+                var steps = running.Source.ProgressSteps!;
+                return Json(request, new FetchStatus(id, FetchState.Running, steps[Math.Min(running.Polls, steps.Count - 1)]));
+            }
             return _jobs.TryGetValue(id, out var status)
                 ? Json(request, status)
                 : Json(request, new RetrievalError("unknown job", "unknown-job"), HttpStatusCode.NotFound);
@@ -94,8 +109,12 @@ public sealed class FakeSource(string name, bool albums = false)
     /// <summary>How far each candidate's file is from the target's length, by candidate index.</summary>
     public Func<int, double> OffBySeconds { get; set; } = _ => 0;
 
+    /// <summary>When set, a fetch reports these progress values one poll at a time and then never finishes.</summary>
+    public IReadOnlyList<double>? ProgressSteps { get; set; }
+
     public int Searches;
     public int Fetches;
+    public int Cancels;
 
     public PluginManifest Manifest { get; } = new()
     {
@@ -105,8 +124,8 @@ public sealed class FakeSource(string name, bool albums = false)
         Type = PluginType.Retrieval,
         ContractVersion = "1.0",
         Capabilities = albums
-            ? [RetrievalCapabilities.FetchTrack, RetrievalCapabilities.FetchAlbum]
-            : [RetrievalCapabilities.FetchTrack],
+            ? [RetrievalCapabilities.FetchTrack, RetrievalCapabilities.FetchAlbum, RetrievalCapabilities.Cancel]
+            : [RetrievalCapabilities.FetchTrack, RetrievalCapabilities.Cancel],
         SettingsSchema = JsonDocument.Parse("""{"type":"object","properties":{"format":{"type":"string","enum":["wav"],"default":"wav"}}}""").RootElement,
     };
 }
