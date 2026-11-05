@@ -120,6 +120,8 @@ else
         new("ytdlp", "YouTube (yt-dlp)", "Finds songs and albums on YouTube Music and downloads the audio.", PluginType.Retrieval, "http://retriever-ytdlp:8080"),
         new("archive", "Internet Archive", "Finds concerts in the Live Music Archive and netlabel releases, and downloads them in FLAC where there is one.", PluginType.Retrieval, "http://retriever-archive:8080"),
         new("prowlarr", "Prowlarr", "Searches the torrent indexers you've set up in Prowlarr and downloads with your qBittorrent.", PluginType.Retrieval, "http://retriever-prowlarr:8080"),
+        new("qobuz", "Qobuz", "Downloads from Qobuz with your own subscription, in FLAC up to 24-bit/192 kHz.", PluginType.Retrieval, "http://retriever-qobuz:8080"),
+        new("tidal", "Tidal", "Downloads from Tidal with your own subscription, in FLAC up to 24-bit/192 kHz.", PluginType.Retrieval, "http://retriever-tidal:8080"),
         new("inbox", "Inbox folder", "Offers audio files you drop into a folder, matched to requests by their tags.", PluginType.Retrieval, "http://retriever-inbox:8080"),
         new("other", "Another plugin", "Any plugin that speaks the retrieval contract, by its address.", PluginType.Retrieval, ""),
     ];
@@ -234,7 +236,7 @@ else
             <div class="muted small plugin-about" title="@(plugin.Endpoint ?? plugin.Manifest?.Description)">
                 @(plugin.Endpoint ?? plugin.Manifest?.Description)@(plugin.Manifest is { } m ? $" · v{m.Version}" : "")
             </div>
-            <div class="small plugin-message" title="@problem">@problem</div>
+            <div class="small plugin-message" title="@problem"><LinkedText Value="@problem" /></div>
             <div class="plugin-actions">
                 @if (Ordered(plugin.Type) && list.Count > 1)
                 {

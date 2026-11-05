@@ -10,6 +10,7 @@
 #
 # Works with podman or docker. Navidrome's and Melodex's credentials are generated on first run into sandbox/.env.
 # Prowlarr and qBittorrent come too, for the Prowlarr plugin, with PandaCD (Creative Commons music) as the indexer.
+# The Qobuz and Tidal plugins talk to stand-ins for those services (sandbox/standins), which play tones.
 
 set -euo pipefail
 
@@ -31,10 +32,12 @@ NAVIDROME_PORT="${NAVIDROME_PORT:-4533}"
 MELODEX_PORT="${MELODEX_PORT:-8787}"
 PROWLARR_PORT="${PROWLARR_PORT:-9696}"
 QBITTORRENT_PORT="${QBITTORRENT_PORT:-8090}"
+STANDIN_PORT="${STANDIN_PORT:-8095}"
 CONTAINERS=(melodex-sandbox-navidrome melodex-sandbox-core melodex-sandbox-beets melodex-sandbox-ytdlp melodex-sandbox-inbox melodex-sandbox-archive
-  melodex-sandbox-prowlarr melodex-sandbox-qbittorrent melodex-sandbox-torrents)
+  melodex-sandbox-prowlarr melodex-sandbox-qbittorrent melodex-sandbox-torrents melodex-sandbox-standin melodex-sandbox-qobuz
+  melodex-sandbox-tidal)
 VOLUMES=(melodex-sandbox-navidrome melodex-sandbox-config melodex-sandbox-staging melodex-sandbox-prowlarr
-  melodex-sandbox-qbittorrent melodex-sandbox-downloads)
+  melodex-sandbox-qbittorrent melodex-sandbox-downloads melodex-sandbox-tidal)
 
 # Image, then build context and Dockerfile.
 IMAGES=(
@@ -44,6 +47,8 @@ IMAGES=(
   "localhost/melodex/retriever-inbox:dev|$ROOT/plugins/retriever-inbox|$ROOT/plugins/retriever-inbox/Dockerfile"
   "localhost/melodex/retriever-archive:dev|$ROOT/plugins/retriever-archive|$ROOT/plugins/retriever-archive/Dockerfile"
   "localhost/melodex/retriever-prowlarr:dev|$ROOT/plugins/retriever-prowlarr|$ROOT/plugins/retriever-prowlarr/Dockerfile"
+  "localhost/melodex/retriever-qobuz:dev|$ROOT/plugins/retriever-qobuz|$ROOT/plugins/retriever-qobuz/Dockerfile"
+  "localhost/melodex/retriever-tidal:dev|$ROOT/plugins/retriever-tidal|$ROOT/plugins/retriever-tidal/Dockerfile"
 )
 
 ENGINE="$(command -v podman || command -v docker || true)"
@@ -141,10 +146,20 @@ configure() {
     exit 1
   done
   configure_torrents "$plugins"
+  configure_streaming "$plugins"
   # Test each, so Settings shows how they're doing.
   for id in $(melodex GET /plugins | grep -o '"id":"[^"]*"' | cut -d'"' -f4); do
     melodex POST "/plugins/$id/test" -o /dev/null || true
   done
+}
+
+# The Qobuz and Tidal plugins, with the stand-ins' app keys. Tidal still needs signing in: its status gives the link.
+configure_streaming() {
+  local plugins="$1"
+  grep -q '"http://retriever-qobuz:8080"' <<<"$plugins" ||
+    melodex POST /plugins -o /dev/null -d '{"endpoint":"http://retriever-qobuz:8080","settings":{"appId":"standin","appSecret":"standin-secret","email":"listener@sandbox.invalid","password":"sandbox"}}'
+  grep -q '"http://retriever-tidal:8080"' <<<"$plugins" ||
+    melodex POST /plugins -o /dev/null -d '{"endpoint":"http://retriever-tidal:8080","settings":{"clientId":"standin"}}'
 }
 
 # Prowlarr's API key, which it makes on first start.
@@ -189,6 +204,7 @@ for p in json.load(sys.stdin):
     print("  " + p["name"] + ": " + (p.get("health") or "not tested") + (" (" + message + ")" if message else ""))' || true
   echo "Prowlarr:    http://localhost:$PROWLARR_PORT"
   echo "qBittorrent: http://localhost:$QBITTORRENT_PORT (no login from this computer)"
+  echo "Qobuz and Tidal stand-ins: http://localhost:$STANDIN_PORT"
   echo "Library copy: $MUSIC"
   echo "Inbox:        $INBOX (drop files here, then Retry the request)"
 }
@@ -256,6 +272,19 @@ up() {
   "$ENGINE" run -d --name melodex-sandbox-torrents "${SHARED[@]}" --network-alias retriever-prowlarr "${AS_YOU[@]}" \
     -v melodex-sandbox-staging:/staging -v melodex-sandbox-downloads:/downloads:ro \
     localhost/melodex/retriever-prowlarr:dev >/dev/null
+
+  # Stand-ins for Qobuz and Tidal, run with the Tidal plugin's image, which has ffmpeg to make their tones.
+  "$ENGINE" run -d --name melodex-sandbox-standin "${SHARED[@]}" --network-alias streaming-standin \
+    -p "127.0.0.1:$STANDIN_PORT:8080" -e PUBLIC_URL="http://localhost:$STANDIN_PORT" \
+    -e INTERNAL_URL=http://streaming-standin:8080 -v "$SANDBOX/standins:/standin:ro,z" \
+    localhost/melodex/retriever-tidal:dev uvicorn streaming:app --app-dir /standin --host 0.0.0.0 --port 8080 >/dev/null
+  "$ENGINE" run -d --name melodex-sandbox-qobuz "${SHARED[@]}" --network-alias retriever-qobuz "${AS_YOU[@]}" \
+    -v melodex-sandbox-staging:/staging -e QOBUZ_API=http://streaming-standin:8080/qobuz/api.json/0.2 \
+    localhost/melodex/retriever-qobuz:dev >/dev/null
+  "$ENGINE" run -d --name melodex-sandbox-tidal "${SHARED[@]}" --network-alias retriever-tidal "${AS_YOU[@]}" \
+    -v melodex-sandbox-staging:/staging -v melodex-sandbox-tidal:/data \
+    -e TIDAL_API=http://streaming-standin:8080/tidal/v1 -e TIDAL_AUTH=http://streaming-standin:8080/tidal/oauth2 \
+    localhost/melodex/retriever-tidal:dev >/dev/null
 
   wait_for Navidrome "$navidrome_url/ping"
   # First run only: Navidrome accepts creating the admin while it has no users.
