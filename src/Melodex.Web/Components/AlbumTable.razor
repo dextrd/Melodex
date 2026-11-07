@@ -8,7 +8,7 @@
                 <th class="cover-col"></th>
                 <th>Title</th>
                 <th class="hide-narrow">Year</th>
-                <th>Status</th>
+                <th class="hide-narrow">Status</th>
                 <th class="num hide-narrow">Tracks</th>
                 <th></th>
             </tr>
@@ -24,9 +24,10 @@
                         {
                             <span class="muted small"> · @Format.Secondary(album.SecondaryTypes)</span>
                         }
+                        <div class="show-narrow"><StatusBadge Album="album.Status" /></div>
                     </td>
                     <td class="hide-narrow muted">@Format.Year(album.FirstReleaseDate)</td>
-                    <td><StatusBadge Album="album.Status" /></td>
+                    <td class="hide-narrow"><StatusBadge Album="album.Status" /></td>
                     <td class="num hide-narrow muted">@Format.Tracks(album)</td>
                     <td class="num actions">
                         @{
@@ -34,7 +35,7 @@
                             RenderFragment play = @<text>
                                 <IconButton Icon="@(missing ? "listen" : "play")" Requires="@UserPermissions.Listen" Title="@(missing ? "Listen: fetch it to play now, without adding it to your library" : album.Status == AlbumStatus.Partial ? "Play, fetching the tracks you don't have to listen to" : "Play")"
                                             OnClick="() => Player.PlayAlbumAsync(album.Id)" />
-                                <IconButton Icon="queue" Requires="@UserPermissions.Listen" Title="Add to the queue" Confirm="true" OnClick="() => Player.QueueAlbumAsync(album.Id)" />
+                                <IconButton Icon="queue" Requires="@UserPermissions.Listen" Class="@(album.Status is AlbumStatus.Partial or AlbumStatus.Missing ? "hide-narrow" : null)" Title="Add to the queue" Confirm="true" OnClick="() => Player.QueueAlbumAsync(album.Id)" />
                             </text>;
                         }
                         @if (album.Ignored)
@@ -47,7 +48,7 @@
                                 @play
                                 @if (missing)
                                 {
-                                    <IconButton Icon="ignore" Requires="@UserPermissions.Request" Title="Ignore: stop counting this album as missing" OnClick="() => OnIgnore.InvokeAsync(album)" />
+                                    <IconButton Icon="ignore" Requires="@UserPermissions.Request" Class="hide-narrow" Title="Ignore: stop counting this album as missing" OnClick="() => OnIgnore.InvokeAsync(album)" />
                                 }
                             </FetchButton>
                         }

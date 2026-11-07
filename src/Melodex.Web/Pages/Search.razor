@@ -150,7 +150,7 @@ else
     {
         <h2>Albums</h2>
         <div class="card">
-            <table class="table track-list">
+            <table class="table track-list narrow-status">
                 <colgroup><col class="cover-col" /><col /><col class="status-col" /><col class="wide-action-col" /></colgroup>
                 <tbody>
                     @foreach (var album in Albums)
@@ -160,17 +160,18 @@ else
                             <td class="track-main">
                                 <div class="ellipsis"><a href="albums/@album.Id">@album.Title</a></div>
                                 <div class="muted small ellipsis">
+                                    <span class="show-narrow"><StatusBadge Album="album.Status" /></span>
                                     <a href="artists/@album.ArtistId">@album.ArtistCredit</a>@(Format.Year(album.FirstReleaseDate) is { Length: > 0 } year ? $" · {year}" : "") · @Format.TypeLabel(album.Type)
                                 </div>
                             </td>
-                            <td class="num"><StatusBadge Album="album.Status" /></td>
+                            <td class="num hide-narrow"><StatusBadge Album="album.Status" /></td>
                             <td class="num actions">
                                 @{
                                     var missing = album.Status == AlbumStatus.Missing;
                                     RenderFragment play = @<text>
                                         <IconButton Icon="@(missing ? "listen" : "play")" Requires="@UserPermissions.Listen" Title="@(missing ? "Listen: fetch it to play now, without adding it to your library" : album.Status == AlbumStatus.Partial ? "Play, fetching the tracks you don't have to listen to" : "Play")"
                                                     OnClick="() => Player.PlayAlbumAsync(album.Id)" />
-                                        <IconButton Icon="queue" Requires="@UserPermissions.Listen" Title="Add to the queue" Confirm="true" OnClick="() => Player.QueueAlbumAsync(album.Id)" />
+                                        <IconButton Icon="queue" Requires="@UserPermissions.Listen" Class="@(album.Status is AlbumStatus.Missing or AlbumStatus.Partial ? "hide-narrow" : null)" Title="Add to the queue" Confirm="true" OnClick="() => Player.QueueAlbumAsync(album.Id)" />
                                     </text>;
                                 }
                                 @if (album.Status is AlbumStatus.Missing or AlbumStatus.Partial)
@@ -201,7 +202,7 @@ else
             {
                 <FetchButton Kind="RequestKind.Track" Id="track.Id" Hint="Get it into your library">
                     <IconButton Icon="listen" Requires="@UserPermissions.Listen" Title="Listen: fetch it to play now, without adding it to your library" OnClick="() => Player.ListenAsync(track.Id)" />
-                    <IconButton Icon="queue" Requires="@UserPermissions.Listen" Title="Add to the queue, fetching it to listen to" Confirm="true" OnClick="() => Player.ListenAsync(track.Id, next: true)" />
+                    <IconButton Icon="queue" Requires="@UserPermissions.Listen" Class="hide-narrow" Title="Add to the queue, fetching it to listen to" Confirm="true" OnClick="() => Player.ListenAsync(track.Id, next: true)" />
                 </FetchButton>
             }
         </text>)
@@ -613,7 +614,7 @@ else
     private RenderFragment TrackList(RenderFragment<SearchTrack> actions) => __builder =>
     {
         <div class="card">
-            <table class="table track-list">
+            <table class="table track-list narrow-status">
                 <colgroup>
                     <col class="cover-col" /><col /><col class="length-col hide-narrow" />
                     @if (_file is null) { <col class="status-col" /> }
@@ -630,6 +631,7 @@ else
                             <td class="track-main">
                                 <div class="ellipsis"><a href="tracks/@track.Id" class="plain">@track.Title</a></div>
                                 <div class="muted small ellipsis">
+                                    @if (_file is null) { <span class="show-narrow"><StatusBadge Track="track.Owned ? TrackStatus.Owned : TrackStatus.Missing" /></span> }
                                     @if (track.ArtistId is { } artistId) { <a href="artists/@artistId">@track.ArtistCredit</a> } else { @track.ArtistCredit }
                                     @if (track.AlbumId is { } id) { <span> · <a href="albums/@id">@track.AlbumTitle</a></span> }
                                 </div>
@@ -637,7 +639,7 @@ else
                             <td class="num muted hide-narrow">@Format.Duration(track.DurationSeconds)</td>
                             @if (_file is null)
                             {
-                                <td class="num"><StatusBadge Track="track.Owned ? TrackStatus.Owned : TrackStatus.Missing" /></td>
+                                <td class="num hide-narrow"><StatusBadge Track="track.Owned ? TrackStatus.Owned : TrackStatus.Missing" /></td>
                             }
                             <td class="num actions">@actions(track)</td>
                         </tr>

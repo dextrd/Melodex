@@ -226,8 +226,10 @@ details > summary { cursor: pointer; color: var(--muted); margin: 1.5rem 0 .5rem
 }
 #blazor-error-ui .dismiss { cursor: pointer; float: right; }
 
+.show-narrow { display: none; }
 @media (max-width: 640px) {
     .hide-narrow { display: none; }
+    .show-narrow { display: block; }
     .table th, .table td { padding: .45rem .5rem; }
 }
 
@@ -239,8 +241,10 @@ details > summary { cursor: pointer; color: var(--muted); margin: 1.5rem 0 .5rem
 .table.albums td:nth-child(5) { white-space: nowrap; }
 .table.albums th:nth-child(6) { width: 12.5rem; }
 .table.albums td:nth-child(2) { overflow-wrap: anywhere; }
+/* On a phone, the status under the title and two buttons a row, so the title keeps the room. */
 @media (max-width: 640px) {
-    .table.albums th:nth-child(4) { width: 6.5rem; }
+    .table.albums th:nth-child(6) { width: 5.5rem; }
+    .table.albums .show-narrow .badge { font-size: .7rem; padding: 0 .4rem; margin-top: .15rem; }
 }
 .nowrap { white-space: nowrap; }
 
@@ -300,7 +304,14 @@ p.error { max-width: none; white-space: normal; }
 /* The cover's foot level with the buttons' under the title. */
 .page-head { display: flex; gap: 1rem; align-items: flex-end; }
 .page-head > .cover { width: 96px; flex: none; }
-@media (max-width: 640px) { .page-head > .cover { width: 64px; } }
+/* On a phone, the artwork beside the title and what's under it, and the buttons across the page below. */
+@media (max-width: 640px) {
+    .page-head { display: grid; grid-template-columns: 88px minmax(0, 1fr); column-gap: .9rem; row-gap: .25rem; align-items: center; }
+    .page-head > .cover { width: 88px; grid-row: 1 / span 2; align-self: start; }
+    .page-head > div:last-child { display: contents; }
+    .page-head > div:last-child > * { grid-column: 2; margin: 0; }
+    .page-head > div:last-child > .album-actions { grid-column: 1 / -1; margin-top: .6rem !important; }
+}
 /* A list straight under a page's head keeps clear of its buttons. */
 .page-head + .card, .page-head + .notice + .card, .page-head + .error + .card { margin-top: 1rem; }
 .crumbs { margin-bottom: .35rem; }
@@ -459,7 +470,6 @@ code { font-size: .85em; background: var(--bg); padding: .05rem .3rem; border-ra
 /* On a phone, two buttons a row, so the title keeps some room. */
 @media (max-width: 640px) {
     .album-tracks col.num-col { width: 2.25rem; }
-    .album-tracks col.status-col { width: 6.75rem; }
     .album-tracks col.wide-action-col { width: 5.5rem; }
     .album-tracks .badge { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
 }
@@ -470,6 +480,14 @@ code { font-size: .85em; background: var(--bg); padding: .05rem .3rem; border-ra
 .track-list col.action-col { width: 5rem; }
 .track-list col.wide-action-col { width: 11rem; }
 @media (max-width: 640px) { .track-list col.hide-narrow { width: 0; } .track-list col.status-col { width: 6.5rem; } .track-list col.wide-action-col { width: 8.5rem; } }
+/* On a phone, lists that would squeeze their titles show the status beside or under them, with two buttons a row. */
+@media (max-width: 640px) {
+    .narrow-status col.status-col { display: none; }
+    .narrow-status col.wide-action-col { width: 5.5rem; }
+    .narrow-status .show-narrow .badge { font-size: .7rem; padding: 0 .4rem; vertical-align: 1px; }
+    .narrow-status span.show-narrow { display: inline; margin-right: .3rem; }
+    .narrow-status div.show-narrow { margin-top: .1rem; }
+}
 
 /* A heading with a button beside it. */
 .section-head { display: flex; align-items: center; gap: .75rem; margin-top: 1.5rem; }
@@ -629,6 +647,8 @@ button.icon.play svg { fill: currentColor; }
     .np-lyrics { padding: 20vh 1rem; }
     .np-title { font-size: 1.3rem; }
 }
+/* Between five buttons, the album's name alone. */
+@media (max-width: 640px) { .np-from .muted { display: none; } .np-head { padding: .6rem .5rem; gap: .25rem; } }
 @media (prefers-reduced-motion: reduce) {
     .now-playing { animation: none; }
     .np-lyrics .line { transition: none; }
@@ -813,6 +833,11 @@ a.plain:hover { color: var(--accent); }
 .file-tags { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .2rem 1rem; margin: .6rem 0 0; font-size: .9rem; }
 .file-tags dt { color: var(--muted); }
 .file-tags dd { margin: 0; overflow-wrap: anywhere; }
+/* On a phone, each tag's name over its value, so long IDs keep to a line. */
+@media (max-width: 640px) {
+    .file-tags { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .file-tags dt { font-size: .8rem; margin-top: .4rem; }
+}
 
 /* Formatting: where each part of a file's metadata comes from. */
 .notice.warning { border-color: var(--partial); background: var(--partial-bg); color: var(--text); margin: .25rem 0 .75rem; }
@@ -905,8 +930,20 @@ svg.flip { transform: scaleY(-1); }
     .toolbar.one-line { flex-wrap: wrap; }
 }
 
+/* The playlists' toolbar on a phone: the buttons on one line with only their icons, the filter box on the next. */
+@media (max-width: 640px) {
+    .toolbar.one-line.playlists-bar { flex-wrap: wrap; gap: .5rem .4rem; }
+    .toolbar.one-line.playlists-bar .filter { display: block; order: 1; flex: 1 1 100%; max-width: none; }
+    .playlists-bar .icon-button > span:not(.spinner) { display: none; }
+    .playlists-bar .icon-button:has(span:not(.spinner)) { padding: 0; }
+    .playlists-bar .segmented button { padding-left: .5rem; padding-right: .5rem; font-size: .875rem; }
+    .playlists-bar .spacer { display: none; }
+    .playlists-bar > .icon-button.primary { margin-left: auto; }
+}
+
 /* Recent artists and searches on the Search page, before anything's typed. */
 .recent-artists { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); margin: .75rem 0 1.5rem; }
+@media (max-width: 640px) { .recent-artists { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: .6rem; } .recent-artists .tile { padding: .5rem; } }
 .recent-searches { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0 1.5rem; }
 .chip {
     display: inline-flex; align-items: center; gap: .25rem; height: 2.25rem; box-sizing: border-box; max-width: 100%;
@@ -965,7 +1002,9 @@ svg.flip { transform: scaleY(-1); }
 .settings-body > :first-child { margin-top: 0; }
 @media (max-width: 720px) {
     .settings-page { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
-    .settings-nav { flex-direction: row; position: static; overflow-x: auto; }
+    /* Every section in sight, on as many lines as it takes. */
+    .settings-nav { flex-direction: row; flex-wrap: wrap; position: static; }
+    .settings-nav a { padding: .4rem .6rem; }
     .settings-nav a.active { box-shadow: inset 0 -2px 0 var(--accent); }
 }
 

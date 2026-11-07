@@ -116,7 +116,7 @@ else
             <Loading Inline="true" Text="Fetching its editions and tracks from MusicBrainz…" />
         }
         <div class="card">
-            <table class="table track-list album-tracks" aria-busy="true">
+            <table class="table track-list album-tracks narrow-status" aria-busy="true">
                 @TrackHead
                 <tbody>
                     @foreach (var slot in Slots())
@@ -130,16 +130,17 @@ else
                                         <a href="tracks/@track.TrackId" class="plain">@track.Title</a>
                                         @if (track.ArtistCredit != album.ArtistCredit) { <span class="muted small"> · @track.ArtistCredit</span> }
                                     </div>
-                                    <div class="muted small ellipsis">@track.Path</div>
+                                    <div class="muted small ellipsis hide-narrow">@track.Path</div>
+                                    <div class="show-narrow"><StatusBadge Track="TrackStatus.Owned" /></div>
                                 </td>
                                 <td class="num hide-narrow muted">@Format.Duration(track.DurationSeconds)</td>
-                                <td><StatusBadge Track="TrackStatus.Owned" /></td>
+                                <td class="hide-narrow"><StatusBadge Track="TrackStatus.Owned" /></td>
                             }
                             else
                             {
                                 <td><span class="placeholder" style="width: @(7 + slot.Index * 37 % 9)rem"></span></td>
                                 <td class="num hide-narrow"><span class="placeholder short"></span></td>
-                                <td><span class="placeholder badge-size"></span></td>
+                                <td class="hide-narrow"><span class="placeholder badge-size"></span></td>
                             }
                             <td></td>
                         </tr>
@@ -155,7 +156,7 @@ else
     else
     {
         <div class="card">
-            <table class="table track-list album-tracks">
+            <table class="table track-list album-tracks narrow-status">
                 @TrackHead
                 <tbody>
                     @foreach (var track in _album.Tracks)
@@ -167,10 +168,11 @@ else
                                     <a href="tracks/@track.TrackId" class="plain">@track.Title</a>
                                     @if (track.ArtistCredit != album.ArtistCredit) { <span class="muted small"> · @track.ArtistCredit</span> }
                                 </div>
-                                @if (track.FilePath is not null) { <div class="muted small ellipsis" title="@track.FilePath">@track.FilePath</div> }
+                                @if (track.FilePath is not null) { <div class="muted small ellipsis hide-narrow" title="@track.FilePath">@track.FilePath</div> }
+                                <div class="show-narrow"><StatusBadge Track="track.Status" /></div>
                             </td>
                             <td class="num hide-narrow muted">@Format.Duration(track.DurationSeconds)</td>
-                            <td><StatusBadge Track="track.Status" /></td>
+                            <td class="hide-narrow"><StatusBadge Track="track.Status" /></td>
                             <td class="num actions">
                                 @if (track.Status is TrackStatus.Owned or TrackStatus.OwnedElsewhere)
                                 {
@@ -234,7 +236,7 @@ else
                 <th class="num">#</th>
                 <th>Title</th>
                 <th class="num hide-narrow">Length</th>
-                <th>Status</th>
+                <th class="hide-narrow">Status</th>
                 <th></th>
             </tr>
         </thead>
