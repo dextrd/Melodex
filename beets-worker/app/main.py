@@ -121,6 +121,13 @@ async def run_import(body: ImportRequest) -> dict[str, Any]:
     return {"files": [{k: v for k, v in f.items() if v is not None} for f in imported]}
 
 
+@app.post("/v1/reflinks")
+async def check_reflinks() -> dict[str, Any]:
+    """Whether imported files can share their data on disk with the staged ones (see reflinks.py)."""
+    works, reason = await run_in_threadpool(get_importer().check_reflinks)
+    return {"works": works, **({"reason": reason} if reason else {})}
+
+
 @app.post("/v1/format")
 async def run_format(body: FormatRequest) -> dict[str, Any]:
     try:

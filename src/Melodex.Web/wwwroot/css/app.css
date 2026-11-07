@@ -816,6 +816,7 @@ a.plain:hover { color: var(--accent); }
 
 /* Formatting: where each part of a file's metadata comes from. */
 .notice.warning { border-color: var(--partial); background: var(--partial-bg); color: var(--text); margin: .25rem 0 .75rem; }
+.notice.passed { border-color: var(--owned); background: var(--owned-bg); color: var(--text); margin: .25rem 0 .75rem; }
 .format-choices { display: grid; gap: .5rem; margin: .75rem 0; }
 .format-choices label { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 13rem); gap: .75rem; align-items: center; }
 .format-choices label > span { display: flex; flex-direction: column; }

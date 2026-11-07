@@ -9,6 +9,7 @@ checked when fetched.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import time
@@ -16,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from . import reflinks
 from . import torrent as torrents
 from .clients import Prowlarr, QBittorrent, without_key
 from .contract import Candidate, Job, Kind, Target, probe
@@ -258,7 +260,8 @@ def fetch(job: Job, candidate_id: str, target: Target, directory: Path, settings
             # Two discs' files can share a name ("CD1/01.flac", "CD2/01.flac").
             names = [PurePosixPath(path).name for _, _, _, path in picked]
             clash = len(set(names)) < len(names)
-            written = [_copy(folder / path, directory, disc, position, clash) for disc, position, _, path in picked]
+            share = bool(settings.get("reflinks", True))
+            written = [_copy(folder / path, directory, disc, position, clash, share) for disc, position, _, path in picked]
             if added and settings.get("afterwards", "keep") == "remove":
                 qb.delete(info_hash, files=True)
             return written
@@ -324,11 +327,46 @@ def _local_folder(settings: dict[str, Any], info: dict[str, Any]) -> Path:
     return Path(actual)
 
 
-def _copy(source: Path, directory: Path, disc: int | None, position: int | None, prefix: bool) -> dict[str, Any]:
-    # Copied rather than moved, so qBittorrent can keep seeding it.
+def _copy(source: Path, directory: Path, disc: int | None, position: int | None, prefix: bool,
+          share: bool) -> dict[str, Any]:
+    # Copied rather than moved, so qBittorrent can keep seeding it; as a reflink where it can be, so the copy takes
+    # next to no space and tagging it leaves the seeded file alone.
     if ".." in source.parts or not source.is_file():
         raise RuntimeError(f"Can't see {source}; check that this plugin can read qBittorrent's downloads folder.")
     name = f"{disc or 1}-{position:02} {source.name}" if prefix and position is not None else source.name
     target = directory / re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", name)
-    shutil.copyfile(source, target)
+    if share:
+        reflinks.clone(source, target)
+    else:
+        shutil.copyfile(source, target)
     return probe(target, directory, disc, position)
+
+
+def check_reflinks(settings: dict[str, Any], staging: Path) -> tuple[bool, str]:
+    """Whether a file qBittorrent downloaded can be reflinked into staging, tried with one already there."""
+    folder = _local_folder(settings, {})
+    if not folder.is_dir():
+        return False, f"This plugin can't see qBittorrent's downloads folder at {folder}; mount it into its container."
+    sample = next((f for f in _files_under(folder) if f.stat().st_size > 0), None)
+    if sample is None:
+        return False, ("There's nothing in qBittorrent's downloads folder to try it with yet; check again once "
+                       "something has downloaded.")
+    target = staging / f".melodex-reflink-check-{os.getpid()}"
+    try:
+        works, why = reflinks.try_clone(sample, target)
+    finally:
+        target.unlink(missing_ok=True)
+    if works:
+        return True, "From qBittorrent's downloads to staging, files can share their disk space."
+    return False, f"From qBittorrent's downloads to staging, files can't share their disk space: {why}."
+
+
+def _files_under(folder: Path, limit: int = 2000):
+    """Files under the folder, a bounded number of them."""
+    seen = 0
+    for root, _, files in os.walk(folder):
+        for name in files:
+            yield Path(root) / name
+            seen += 1
+            if seen >= limit:
+                return

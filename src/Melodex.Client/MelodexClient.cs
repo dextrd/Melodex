@@ -379,6 +379,13 @@ public sealed class MelodexClient(HttpClient http)
         await EnsureAsync(response, ct);
     }
 
+    public async Task<PluginCheckResult> RunPluginCheckAsync(Guid id, string check, RunPluginCheck body, CancellationToken ct = default)
+    {
+        using var response = await http.PostAsJsonAsync($"{Api}/plugins/{id}/checks/{Uri.EscapeDataString(check)}", body, MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<PluginCheckResult>(MelodexJson.Options, ct))!;
+    }
+
     public async Task<PluginInfo> TestPluginAsync(Guid id, CancellationToken ct = default)
     {
         using var response = await http.PostAsync($"{Api}/plugins/{id}/test", null, ct);

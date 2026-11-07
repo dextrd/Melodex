@@ -29,6 +29,11 @@ public sealed class FakeRetrieval(string stagingRoot) : HttpMessageHandler
             return Json(request, source.Manifest);
         if (path == "/v1/health")
             return Json(request, HealthReport.Healthy());
+        if (path.StartsWith("/v1/checks/"))
+        {
+            source.CheckedWith = (await request.Content!.ReadFromJsonAsync<HealthRequest>(RetrievalJson.Options, ct))!.Settings;
+            return Json(request, source.Reflinks);
+        }
         if (path == "/v1/search")
         {
             var search = (await request.Content!.ReadFromJsonAsync<SearchRequest>(RetrievalJson.Options, ct))!;
@@ -116,6 +121,10 @@ public sealed class FakeSource(string name, bool albums = false)
     public int Fetches;
     public int Cancels;
 
+    /// <summary>What the reflink check answers, and the settings it was last run with.</summary>
+    public CheckResult Reflinks { get; set; } = new(true, "From qBittorrent's downloads to staging, files can share their disk space.");
+    public JsonElement? CheckedWith { get; set; }
+
     public PluginManifest Manifest { get; } = new()
     {
         Id = $"test.retrieval.{name.ToLowerInvariant()}",
@@ -127,6 +136,7 @@ public sealed class FakeSource(string name, bool albums = false)
             ? [RetrievalCapabilities.FetchTrack, RetrievalCapabilities.FetchAlbum, RetrievalCapabilities.Cancel]
             : [RetrievalCapabilities.FetchTrack, RetrievalCapabilities.Cancel],
         SettingsSchema = JsonDocument.Parse("""{"type":"object","properties":{"format":{"type":"string","enum":["wav"],"default":"wav"}}}""").RootElement,
+        Checks = [new PluginCheck("reflinks", "Check reflinks")],
     };
 }
 

@@ -133,6 +133,28 @@ or outside the library, says why, and the rest carry on:
 { "files": [{ "path": "incoming/glory box.flac", "newPath": "Portishead/Dummy/11 Glory Box.flac", "size": 72970 }, { "path": "gone.flac", "error": "It isn't in the music folder any more." }] }
 ```
 
+## `POST /v1/reflinks`
+
+Whether a file in staging can be reflinked into the library, tried with a small file made for the purpose and
+removed again: `{ "works": true }`, or `{ "works": false, "reason": "they're on different filesystems" }`. It
+backs the Check reflinks button of plugins that copy into staging as reflinks.
+
+## Reflinks
+
+A reflink is a copy that shares its data on disk with the original until either is changed. The worker copies
+staged files into its working folder, tags them there and moves them into the library, all as reflinks where the
+filesystem can make them, and as ordinary copies where it can't. Its working folder is `.import` in the staging
+volume for this.
+
+So when a plugin also reflinks into staging, as the Prowlarr plugin does from qBittorrent's downloads, a song you
+keep seeding takes next to no extra space in the library: only the blocks the tags changed. Tagging only changes
+the library's copy. A file whose new tags don't fit the space its format leaves for them is rewritten whole, and
+then takes its full size, as an ordinary copy does.
+
+Reflinks need btrfs, XFS made with reflink support, or ZFS 2.2 or later, and every folder involved on the same
+filesystem: qBittorrent's downloads, the staging volume and the library. A staging volume Docker manages lives
+wherever Docker keeps its volumes, so for reflinks, make it a folder on the same filesystem as the library.
+
 ## `GET /v1/health`
 
 `{ "status": "healthy" | "unhealthy", "message": "..." }`. Unhealthy when the staging or library volume isn't

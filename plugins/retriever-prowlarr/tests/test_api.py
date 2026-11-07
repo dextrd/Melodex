@@ -1,3 +1,4 @@
+import errno
 import hashlib
 import json
 import shutil
@@ -282,3 +283,45 @@ def test_file_names_give_disc_number_and_title(path, artist, expected):
 def test_magnet_links_give_their_hash():
     assert torrent.magnet_hash("magnet:?xt=urn:btih:" + "AB" * 20) == "ab" * 20
     assert torrent.magnet_hash("magnet:?xt=urn:btih:VPVPVPVPVPVPVPVPVPVPVPVPVPVPVPVP") == "abeaf" * 8  # the same hash in base32
+
+
+def test_fetched_files_are_copied_as_reflinks_unless_turned_off(fakes, monkeypatch):
+    client, prowlarr, qb, settings = fakes
+    from app import reflinks
+    cloned = []
+    real = reflinks.clone
+    monkeypatch.setattr(reflinks, "clone", lambda source, target: cloned.append(source.name) or real(source, target))
+    candidate = client.post("/v1/search", json={"settings": settings, "target": ALBUM}).json()["candidates"][0]
+    for job, on in [("job-r1", True), ("job-r2", False)]:
+        client.post("/v1/fetch", json={"settings": {**settings, "reflinks": on}, "jobId": job, "target": ALBUM,
+                                       "candidate": candidate, "stagingDirectory": job})
+        assert wait(client, job)["state"] == "completed"
+        assert len(cloned) == 3  # the second fetch copied as usual
+
+
+def test_the_reflink_check_tries_a_downloaded_file_and_says_why_not(fakes, monkeypatch, tmp_path):
+    client, prowlarr, qb, settings = fakes
+    from app import reflinks
+    check = lambda: client.post("/v1/checks/reflinks", json={"settings": settings}).json()
+    (tmp_path / "downloads").mkdir(exist_ok=True)
+    assert check() == {"passed": False, "message": "There's nothing in qBittorrent's downloads folder to try it with "
+                                                   "yet; check again once something has downloaded."}
+    (tmp_path / "downloads" / "melodex").mkdir()
+    (tmp_path / "downloads" / "melodex" / "01.flac").write_bytes(b"fLaC" * 100)
+
+    def different_disks(fd, request, source):
+        raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+    monkeypatch.setattr(reflinks.fcntl, "ioctl", different_disks)
+    assert check()["message"] == ("From qBittorrent's downloads to staging, files can't share their disk space: "
+                                  "they're on different filesystems.")
+    monkeypatch.setattr(reflinks.fcntl, "ioctl", lambda fd, request, source: None)
+    assert check()["passed"] is True
+    assert not list((tmp_path / "staging").iterdir())
+    assert client.post("/v1/checks/nothing", json={"settings": settings}).status_code == 404
+
+
+def test_the_manifest_offers_the_reflink_check():
+    manifest = TestClient(main.app).get("/v1/manifest").json()
+    assert manifest["checks"][0]["id"] == "reflinks"
+    assert manifest["settingsSchema"]["properties"]["reflinks"]["default"] is True

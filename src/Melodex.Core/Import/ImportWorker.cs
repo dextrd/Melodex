@@ -92,7 +92,14 @@ public interface IImportWorker
     Task<FormatResult> FormatAsync(FormatRequest request, CancellationToken ct);
 
     Task<HealthReport> CheckHealthAsync(CancellationToken ct);
+
+    /// <summary>Whether files can go from staging into the library as reflinks, sharing their data on disk.</summary>
+    Task<ReflinkCheck> CheckReflinksAsync(CancellationToken ct);
 }
+
+/// <summary>Answer to <c>POST /v1/reflinks</c>.</summary>
+/// <param name="Reason">Why not, when they can't.</param>
+public sealed record ReflinkCheck(bool Works, string? Reason = null);
 
 public sealed class ImportWorkerOptions
 {
@@ -137,6 +144,14 @@ public sealed class HttpImportWorker(HttpClient http) : IImportWorker
         if (!response.IsSuccessStatusCode)
             throw new ImportException(await ErrorAsync(response, ct));
         return (await response.Content.ReadFromJsonAsync<FormatResult>(RetrievalJson.Options, ct))!;
+    }
+
+    public async Task<ReflinkCheck> CheckReflinksAsync(CancellationToken ct)
+    {
+        using var response = await http.PostAsync("v1/reflinks", null, ct);
+        if (!response.IsSuccessStatusCode)
+            throw new ImportException(await ErrorAsync(response, ct));
+        return (await response.Content.ReadFromJsonAsync<ReflinkCheck>(RetrievalJson.Options, ct))!;
     }
 
     public async Task<HealthReport> CheckHealthAsync(CancellationToken ct)

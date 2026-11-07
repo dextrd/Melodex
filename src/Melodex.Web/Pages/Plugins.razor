@@ -100,6 +100,19 @@ else
         <Dialog Title="@($"{editing.Name} settings")" OnClose="() => _editing = null" Class="wide">
             @if (_error is not null) { <p class="error">@_error</p> }
             <SchemaForm @ref="_editForm" Schema="editing.Manifest?.SettingsSchema" Settings="editing.Settings" HasSaved="true" />
+            @foreach (var check in editing.Manifest?.Checks ?? [])
+            {
+                <div class="field">
+                    <button disabled="@(_checking is not null)" @onclick="() => CheckAsync(editing, check.Id)">
+                        @if (_checking == check.Id) { <span class="spinner"></span> }@check.Title
+                    </button>
+                    @if (check.Description is not null) { <div class="muted small">@check.Description</div> }
+                    @if (_checks.TryGetValue(check.Id, out var found))
+                    {
+                        <div class="notice @(found.Passed ? "passed" : "warning")"><LinkedText Value="@found.Message" /></div>
+                    }
+                </div>
+            }
             <div class="toolbar dialog-buttons">
                 <button @onclick="() => _editing = null">Cancel</button>
                 <button class="primary" disabled="@_busy" @onclick="() => SaveAsync(editing)">
@@ -133,6 +146,8 @@ else
     private bool _busy;
 
     private Guid? _editing;
+    private string? _checking;
+    private readonly Dictionary<string, PluginCheckResult> _checks = [];
     private PluginInfo? _removing;
     private SchemaForm? _editForm;
 
@@ -266,6 +281,25 @@ else
     {
         _editing = plugin.Id;
         _error = null;
+        _checks.Clear();
+    }
+
+    // A check runs with the settings as they are in the form, so a change can be tried before it's saved.
+    private async Task CheckAsync(PluginInfo plugin, string check)
+    {
+        _checking = check;
+        try
+        {
+            _checks[check] = await Api.RunPluginCheckAsync(plugin.Id, check, new RunPluginCheck(_editForm!.ToJson()));
+        }
+        catch (Exception e) when (e is MelodexApiException or HttpRequestException)
+        {
+            _checks[check] = new PluginCheckResult(false, $"Couldn't check: {e.Message}");
+        }
+        finally
+        {
+            _checking = null;
+        }
     }
 
     private void CloseAdd()

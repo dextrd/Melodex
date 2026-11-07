@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -234,6 +235,32 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
         Assert.Contains(done.Jobs!, j => j.Log.Contains("as tagged"));
         var import = fixture.Importer.Requests.Last(r => r.Files.Any(f => done.Title.StartsWith(f.Title)));
         Assert.Null(import.Release.MusicBrainzId);
+    }
+
+    [TestLibraryFact]
+    public async Task The_reflink_check_answers_for_the_plugin_and_the_import_worker_together()
+    {
+        var source = new FakeSource("linked");
+        var plugin = await fixture.AddSourceAsync(source);
+        var form = JsonDocument.Parse("""{"format":"wav"}""").RootElement;
+
+        var both = await Api.RunPluginCheckAsync(plugin.Id, "reflinks", new RunPluginCheck(form));
+        Assert.True(both.Passed);
+        Assert.Equal("From qBittorrent's downloads to staging, files can share their disk space. From staging to your music library, they can too.", both.Message);
+        Assert.Equal("wav", source.CheckedWith!.Value.GetProperty("format").GetString());
+
+        fixture.Importer.Reflinks = new ReflinkCheck(false, "they're on different filesystems");
+        try
+        {
+            var half = await Api.RunPluginCheckAsync(plugin.Id, "reflinks", new RunPluginCheck());
+            Assert.False(half.Passed);
+            Assert.EndsWith("From staging to your music library, files can't share their disk space: they're on different filesystems.", half.Message);
+        }
+        finally
+        {
+            fixture.Importer.Reflinks = new ReflinkCheck(true);
+        }
+        await Assert.ThrowsAsync<MelodexApiException>(() => Api.RunPluginCheckAsync(plugin.Id, "nothing", new RunPluginCheck()));
     }
 
     [TestLibraryFact]

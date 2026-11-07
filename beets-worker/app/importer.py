@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import datetime
 import os
-import shutil
 import tempfile
 import threading
 from dataclasses import dataclass
@@ -25,6 +24,7 @@ from beets.library import Item, Library
 from beets.util import displayable_path
 from mediafile import MediaFile
 
+from . import reflinks
 from .formatter import FormatFile, format_files
 
 # Beets fields returned to Melodex after an import.
@@ -134,7 +134,11 @@ class Importer:
             raise ImportFailed("stagingDirectory must be inside the staging volume.")
         if destination is not None and (Path(destination).is_absolute() or ".." in Path(destination).parts):
             raise ImportFailed("destinationDirectory must be a folder inside the library.")
-        with self._lock, tempfile.TemporaryDirectory(prefix="import-", dir=self._scratch.name) as scratch:
+        # Worked on in the staging volume, so the copies can share their data with the staged files, and the
+        # library's with theirs, where the filesystem allows it.
+        work_root = self.staging / ".import"
+        work_root.mkdir(exist_ok=True)
+        with self._lock, tempfile.TemporaryDirectory(prefix="import-", dir=work_root) as scratch:
             self._use_server(server)
             # Only the requested files go to beets, under names that can't clash, tagged with what Melodex knows so
             # beets maps each one onto the right track.
@@ -146,7 +150,7 @@ class Importer:
                 if not original.is_file() or source not in original.resolve().parents:
                     raise ImportFailed(f"{staged.path} isn't in the staging directory.")
                 name = f"{index:03d}{original.suffix.lower()}"
-                shutil.copy2(original, work / name)
+                reflinks.clone(original, work / name)
                 self._pretag(work / name, staged, release)
                 by_name[name] = staged
 
@@ -207,7 +211,7 @@ class Importer:
                 relative = Path(destination) / relative.name
             target = self._unique(self.library / relative)
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(displayable_path(item.path), target)
+            reflinks.move(Path(displayable_path(item.path)), target)
             (source / staged.path).unlink(missing_ok=True)
             results.append({
                 "source": staged.path,
@@ -217,6 +221,12 @@ class Importer:
                 "tags": {f: str(item.get(f)) for f in TAG_FIELDS if item.get(f) not in (None, "", 0, [])},
             })
         return results
+
+    def check_reflinks(self) -> tuple[bool, str | None]:
+        """Whether files can go from staging to the library as reflinks."""
+        work_root = self.staging / ".import"
+        work_root.mkdir(exist_ok=True)
+        return reflinks.check(work_root, self.library)
 
     def _use_server(self, server: str | None) -> None:
         """Points beets at the MusicBrainz server Melodex uses, so a mirror applies to imports too."""

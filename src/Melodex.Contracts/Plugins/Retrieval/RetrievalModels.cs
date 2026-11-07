@@ -52,6 +52,11 @@ public sealed record RetrievalTargetTrack(
 /// <param name="Settings">The plugin instance's settings.</param>
 public sealed record HealthRequest(JsonElement Settings);
 
+/// <summary>Answer to <c>POST /v1/checks/{id}</c>, whose body is a <see cref="HealthRequest"/>.</summary>
+/// <param name="Passed">Whether what's checked works.</param>
+/// <param name="Message">What was found, and why not when it doesn't.</param>
+public sealed record CheckResult(bool Passed, string Message);
+
 /// <summary>Body of <c>POST /v1/search</c>.</summary>
 /// <param name="Settings">The plugin instance's settings.</param>
 /// <param name="Target">What to find.</param>

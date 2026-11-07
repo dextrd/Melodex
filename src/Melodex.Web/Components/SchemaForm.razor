@@ -16,7 +16,7 @@
     <div class="field">
         @if (type == "boolean")
         {
-            <label><input type="checkbox" checked="@(Values[name]?.GetValue<bool>() == true)" @onchange="e => Values[name] = (bool)e.Value!" /> @title</label>
+            <label><input type="checkbox" checked="@((Values[name]?.GetValue<bool>() ?? (field.TryGetProperty("default", out var on) && on.ValueKind == JsonValueKind.True)))" @onchange="e => Values[name] = (bool)e.Value!" /> @title</label>
         }
         else
         {

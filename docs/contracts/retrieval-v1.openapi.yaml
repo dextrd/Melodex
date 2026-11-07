@@ -37,6 +37,24 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/HealthReport" }
         default: { $ref: "#/components/responses/Error" }
+  /v1/checks/{checkId}:
+    post:
+      operationId: runCheck
+      summary: Runs one of the checks the manifest offers, with the given settings.
+      parameters:
+        - { name: checkId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HealthRequest" }
+      responses:
+        "200":
+          description: What the check found. A check that fails still answers 200, with passed false.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CheckResult" }
+        default: { $ref: "#/components/responses/Error" }
   /v1/search:
     post:
       operationId: search
@@ -143,11 +161,30 @@ components:
             minBitrateKbps: { type: integer }
             maxBitrateKbps: { type: integer }
             lossless: { type: boolean }
+        checks:
+          description: >-
+            Checks the plugin's settings offer as buttons, each run with POST /v1/checks/{id}. A check with the ID
+            reflinks tests copying into staging as reflinks; Melodex adds whether the import worker can reflink from
+            staging into the library.
+          type: array
+          items:
+            type: object
+            required: [id, title]
+            properties:
+              id: { type: string }
+              title: { type: string }
+              description: { type: string }
     HealthRequest:
       type: object
       required: [settings]
       properties:
         settings: { $ref: "#/components/schemas/Settings" }
+    CheckResult:
+      type: object
+      required: [passed, message]
+      properties:
+        passed: { type: boolean }
+        message: { type: string }
     HealthReport:
       type: object
       required: [status]

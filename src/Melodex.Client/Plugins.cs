@@ -41,5 +41,12 @@ public sealed record AddPlugin(string? PluginId = null, string? Endpoint = null,
 /// <summary>Body of <c>PUT /plugins/{id}</c>. Anything left out stays as it is; a secret left out of the settings keeps its value.</summary>
 public sealed record UpdatePlugin(string? Name = null, JsonElement? Settings = null, bool? Enabled = null, string? Endpoint = null);
 
+/// <summary>Body of <c>POST /plugins/{id}/checks/{check}</c>.</summary>
+/// <param name="Settings">Settings to check with, as in the settings form before saving; left out, the saved ones.</param>
+public sealed record RunPluginCheck(JsonElement? Settings = null);
+
+/// <summary>What a plugin's check found.</summary>
+public sealed record PluginCheckResult(bool Passed, string Message);
+
 /// <summary>Body of <c>PUT /plugins/order</c>: the instances of one type, in the order to use them.</summary>
 public sealed record PluginOrder(IReadOnlyList<Guid> Ids);

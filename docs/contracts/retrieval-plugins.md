@@ -16,6 +16,7 @@ Durations are in seconds (`durationSeconds`).
 | --- | --- |
 | `GET /v1/manifest` | The plugin's manifest |
 | `POST /v1/health` | Health check with the given settings; backs the Test button |
+| `POST /v1/checks/{id}` | One of the checks the manifest's `checks` offer as buttons in the plugin's settings (optional) |
 | `POST /v1/search` | Candidates for a target, best first |
 | `POST /v1/fetch` | Start fetching a chosen candidate into staging; returns `202` at once |
 | `GET /v1/fetch/{jobId}` | Status of a fetch |
@@ -58,6 +59,17 @@ Errors use any 4xx or 5xx status with a body of `{ "error": "message", "code": "
 
 The manifest's `retrieval` block lists the output formats and bitrate range the plugin can produce. The user picks
 within it in the plugin's settings. The core never transcodes.
+
+## Checks
+
+A plugin can offer checks that the health check doesn't cover, listed in the manifest's `checks` as an `id`, a
+`title` for the button and a `description`. The settings dialog shows a button for each; pressing it calls
+`POST /v1/checks/{id}` with the settings in the form, saved or not, and shows the `{ "passed": ..., "message": ... }`
+that comes back.
+
+One ID means something to the core: `reflinks`, for a plugin that copies files it has elsewhere into staging and
+can make those copies [reflinks](../import-worker.md#reflinks). The plugin says whether that works from its side,
+and Melodex adds whether the import worker can reflink from staging into the library.
 
 ## Packaging
 

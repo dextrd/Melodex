@@ -45,6 +45,11 @@ SETTINGS_SCHEMA: dict[str, Any] = {
         "afterwards": {"type": "string", "enum": retrieve.AFTER, "default": "keep", "title": "Once copied",
                        "description": "keep leaves the torrent in qBittorrent to seed. remove takes it out, with "
                                       "its files, once Melodex has a copy."},
+        "reflinks": {"type": "boolean", "default": True, "title": "Share disk space with the seeding files",
+                     "description": "Copies files as reflinks, which share their data on disk with the files "
+                                    "qBittorrent seeds, so music you keep seeding isn't stored twice. Tagging the "
+                                    "library's copy leaves the seeding one alone. Where the filesystem can't make "
+                                    "them, files are copied as usual; Check reflinks says which."},
     },
 }
 
@@ -62,6 +67,9 @@ MANIFEST: dict[str, Any] = {
     "access": {"network": ["your Prowlarr", "your qBittorrent"], "files": ["staging (write)", "qBittorrent's downloads (read)"]},
     "maxRequestsPerSecond": 2,
     "retrieval": {"formats": ["flac", "mp3", "m4a", "ogg", "opus"], "lossless": True},
+    "checks": [{"id": "reflinks", "title": "Check reflinks",
+                "description": "Whether files can share their disk space from qBittorrent's downloads all the way to "
+                               "your music library."}],
 }
 
 app = FastAPI(title="Melodex Prowlarr retriever", version=VERSION)
@@ -92,6 +100,14 @@ def check_settings(settings: dict[str, Any]) -> None:
 @app.get("/v1/manifest")
 def manifest() -> dict[str, Any]:
     return MANIFEST
+
+
+@app.post("/v1/checks/{check}")
+def run_check(check: str, body: HealthRequest) -> dict[str, Any]:
+    if check != "reflinks":
+        raise error(404, f"This plugin has no check called {check}.", "unknown-check")
+    passed, message = retrieve.check_reflinks(body.settings, Path(STAGING))
+    return {"passed": passed, "message": message}
 
 
 @app.post("/v1/health")

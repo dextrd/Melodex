@@ -1,4 +1,5 @@
 import base64
+import errno
 import os
 import shutil
 import subprocess
@@ -235,3 +236,33 @@ def test_formatting_refuses_files_outside_the_library_and_unknown_tags(client, r
     assert "doesn't write the tag comment" in results[1]["error"]
     assert "isn't in the music folder" in results[2]["error"]
     assert (library / "song.flac").read_bytes() == b"x"
+
+
+def test_the_reflink_check_says_whether_staging_and_the_library_can_share_files(client, roots, monkeypatch):
+    from app import reflinks
+    calls = []
+
+    def ioctl(fd, request, source):
+        calls.append(request)
+        raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+    monkeypatch.setattr(reflinks.fcntl, "ioctl", ioctl)
+    assert client.post("/v1/reflinks").json() == {"works": False, "reason": "they're on different filesystems"}
+    monkeypatch.setattr(reflinks.fcntl, "ioctl", lambda fd, request, source: None)
+    assert client.post("/v1/reflinks").json() == {"works": True}
+    # The files it tried with are gone again.
+    staging, library = roots
+    assert not list(library.iterdir()) and not list((staging / ".import").iterdir())
+
+
+def test_a_copy_where_reflinks_cant_be_made_is_an_ordinary_copy(tmp_path, monkeypatch):
+    from app import reflinks
+
+    def ioctl(fd, request, source):
+        raise OSError(errno.EOPNOTSUPP, "Operation not supported")
+
+    monkeypatch.setattr(reflinks.fcntl, "ioctl", ioctl)
+    (tmp_path / "a.flac").write_bytes(b"fLaC" * 1000)
+    assert reflinks.clone(tmp_path / "a.flac", tmp_path / "b.flac") is False
+    assert (tmp_path / "b.flac").read_bytes() == b"fLaC" * 1000
+    assert "can't make them" in reflinks.reason(OSError(errno.EOPNOTSUPP, "x"))

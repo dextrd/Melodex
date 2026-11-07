@@ -82,7 +82,22 @@ public sealed record PluginManifest
 
     /// <summary>Retrieval plugins only: the formats and quality the plugin can produce.</summary>
     public RetrievalOutput? Retrieval { get; init; }
+
+    /// <summary>
+    /// Retrieval plugins only: checks the plugin's settings offer as buttons, each answered by
+    /// <c>POST /v1/checks/{id}</c>, for things the health check doesn't cover.
+    /// </summary>
+    public IReadOnlyList<PluginCheck> Checks { get; init; } = [];
 }
+
+/// <summary>A check a plugin's settings offer as a button.</summary>
+/// <param name="Id">
+/// Its ID. <c>reflinks</c> checks the plugin can copy into staging as reflinks; Melodex adds whether the import worker
+/// can from staging into the library.
+/// </param>
+/// <param name="Title">The button's label.</param>
+/// <param name="Description">What it checks.</param>
+public sealed record PluginCheck(string Id, string Title, string? Description = null);
 
 /// <summary>What a retrieval plugin can produce. The user picks within this in the plugin's settings.</summary>
 public sealed record RetrievalOutput

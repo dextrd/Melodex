@@ -7,6 +7,7 @@ using Melodex.Contracts.Plugins.Retrieval;
 using Melodex.Core.Artwork;
 using Melodex.Core.Access;
 using Melodex.Core.Data;
+using Melodex.Core.Import;
 using Melodex.Core.Plugins;
 
 namespace Melodex.Core.Api;
@@ -172,6 +173,42 @@ public static class PluginEndpoints
             })
             .WithName("TestPlugin").WithSummary("Check the plugin works with its settings, and record the result.")
             .Produces<PluginInfo>();
+
+        plugins.MapPost("/{id:guid}/checks/{check}", async (Guid id, string check, RunPluginCheck body, MelodexDbContext db, PluginCatalog catalog,
+                RetrievalPlugins retrieval, IImportWorker worker, CancellationToken ct) =>
+            {
+                if (await db.PluginInstances.FindAsync([id], ct) is not { } instance)
+                    return Results.NotFound();
+                var manifest = Manifest(instance, catalog);
+                if (instance.Type != PluginType.Retrieval || manifest?.Checks.Any(c => c.Id == check) != true)
+                    return Problem("check", "This plugin has no such check.");
+                // Checked with the settings as they are in the form, saved or not.
+                var settings = JsonNode.Parse(instance.SettingsJson)!.AsObject();
+                if (body.Settings is { ValueKind: JsonValueKind.Object } given)
+                    settings = SettingsSchema.Merge(manifest.SettingsSchema, settings, JsonNode.Parse(given.GetRawText())!.AsObject());
+                var client = new RetrievalClient(retrieval.Client(instance.Endpoint!), JsonSerializer.SerializeToElement(settings));
+                PluginCheckResult result;
+                try
+                {
+                    var found = await client.RunCheckAsync(check, ct);
+                    result = new PluginCheckResult(found.Passed, found.Message);
+                    if (check == "reflinks")
+                    {
+                        // The plugin can only say about its side: the import worker copies on into the library.
+                        var library = await worker.CheckReflinksAsync(ct);
+                        result = new PluginCheckResult(found.Passed && library.Works, library.Works
+                            ? $"{found.Message} From staging to your music library, they can too."
+                            : $"{found.Message} From staging to your music library, files can't share their disk space: {library.Reason}.");
+                    }
+                }
+                catch (Exception e) when (e is RetrievalException or ImportException or HttpRequestException)
+                {
+                    result = new PluginCheckResult(false, $"Couldn't check: {e.Message}");
+                }
+                return Results.Ok(result);
+            })
+            .WithName("RunPluginCheck").WithSummary("Run one of the checks a plugin's settings offer, with the settings given or the saved ones.")
+            .Produces<PluginCheckResult>().ProducesValidationProblem();
 
         plugins.MapDelete("/{id:guid}", async (Guid id, MelodexDbContext db, PluginCatalog catalog, ArtworkCache artwork, CancellationToken ct) =>
             {

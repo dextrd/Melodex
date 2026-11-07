@@ -30,6 +30,14 @@ public sealed class RetrievalClient(HttpClient http, JsonElement settings) : IRe
         return (await response.Content.ReadFromJsonAsync<HealthReport>(RetrievalJson.Options, cancellationToken))!;
     }
 
+    /// <summary>Runs one of the checks the manifest offers.</summary>
+    public async Task<CheckResult> RunCheckAsync(string check, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync($"v1/checks/{Uri.EscapeDataString(check)}", new HealthRequest(settings), RetrievalJson.Options, cancellationToken);
+        await EnsureAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<CheckResult>(RetrievalJson.Options, cancellationToken))!;
+    }
+
     public async Task<IReadOnlyList<Candidate>> SearchAsync(RetrievalTarget target, int limit, CancellationToken cancellationToken)
     {
         using var response = await http.PostAsJsonAsync("v1/search", new SearchRequest(settings, target, limit), RetrievalJson.Options, cancellationToken);

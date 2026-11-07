@@ -18,7 +18,7 @@ It lives in the Melodex repository for now and will move to its own repository l
 - **Fetch.** Adds the torrent to qBittorrent stopped, with the `melodex` category and tag, turns off every file that
   wasn't asked for (the rest of the album, covers, logs), starts it, and reports progress. When the files are done,
   it copies them to staging, leaving qBittorrent to seed. A torrent that was already in qBittorrent keeps its files;
-  the requested ones are added to it.
+  the requested ones are added to it. Copies are reflinks where the filesystem can make them (see below).
 - **Cancel.** Removes a torrent it added, with what it downloaded. One that was already there stays.
 
 Melodex gives up on a fetch that makes no progress for 30 minutes, and cancels it.
@@ -38,6 +38,7 @@ Melodex gives up on a fetch that makes no progress for 30 minutes, and cancels i
 | `minSeeders` | `1` | Torrents with fewer seeders aren't offered. |
 | `minScore` | `0.6` | Torrents that match less well than this aren't offered. |
 | `afterwards` | `keep` | `keep` leaves the torrent seeding; `remove` takes it out, with its files, once Melodex has a copy. |
+| `reflinks` | on | Copies files as reflinks, so music you keep seeding isn't stored twice. Where they can't be made, files are copied as usual. |
 
 ## Running it
 
@@ -58,6 +59,24 @@ qbittorrent:
 
 Then add `http://retriever-prowlarr:8080` under Settings → Plugins in Melodex (it's one of the templates under Add),
 and fill in Prowlarr's API key in its settings.
+
+## Sharing disk space with what you seed
+
+A song you keep seeding would otherwise be on disk twice: in qBittorrent's downloads and in your library. A hardlink
+can't help, because Melodex tags the library's copy, and with a hardlink that would change the file qBittorrent
+seeds and break the torrent. A reflink can: it's a separate file that shares its data on disk with the original
+until one of them is changed, so tagging the library's copy leaves the seeding one alone, and only the few blocks the
+tags changed take space.
+
+The plugin copies into staging as reflinks, and Melodex's import worker carries them on into the library (see
+[the import worker](../../docs/import-worker.md#reflinks)). That needs:
+
+- btrfs, XFS made with reflink support, or ZFS 2.2 or later. Not ext4, network shares, or unRAID's `/mnt/user`.
+- qBittorrent's downloads, the staging volume and your library all on that same filesystem. Make `staging` a folder
+  on it rather than a volume Docker manages.
+
+**Check reflinks** in the plugin's settings tries it, with a file qBittorrent has downloaded, and says which step
+works and why not. Where reflinks can't be made, everything still works, with ordinary copies.
 
 ## Tests
 

@@ -39,6 +39,11 @@ public sealed class FakeImporter(string stagingRoot, string libraryRoot) : IImpo
 
     public Task<HealthReport> CheckHealthAsync(CancellationToken ct) => Task.FromResult(HealthReport.Healthy());
 
+    /// <summary>What the reflink check answers.</summary>
+    public ReflinkCheck Reflinks { get; set; } = new(true);
+
+    public Task<ReflinkCheck> CheckReflinksAsync(CancellationToken ct) => Task.FromResult(Reflinks);
+
     // As the worker does: the files, then any folder left with only artwork in it.
     public Task<DeleteResult> DeleteAsync(DeleteRequest request, CancellationToken ct)
     {
