@@ -13,6 +13,10 @@ it is. The worker pins beets to that release (`search_ids`) and takes it whateve
 checks every file landed on the recording Melodex named, and refuses the import if not. So beets never files a
 song under the wrong album because the tags looked close enough.
 
+An edition MusicBrainz doesn't have, because only a later catalogue such as Deezer lists it, has no release to pin
+to. Its files are filed as tagged instead: the worker writes Melodex's tags (title, artists, album, disc and track
+numbers, track total, date and ISRC), beets only works out the path from the template, and nothing is looked up.
+
 Melodex is the library's database, so beets' own library only exists for one import at a time. Nothing beets
 remembers can disagree with Melodex. One side effect: `%aunique{}` never adds anything, because beets sees no other
 albums to tell apart.
@@ -24,7 +28,7 @@ albums to tell apart.
   "stagingDirectory": "0199f0c2-…",
   "release": { "musicBrainzId": "76df3287-…", "title": "Dummy", "artist": "Portishead", "date": "1994-08-22", "trackCount": 11 },
   "files": [
-    { "path": "track.opus", "recordingId": "145f5c43-…", "trackId": null, "title": "Glory Box", "artist": "Portishead", "disc": 1, "position": 11 }
+    { "path": "track.opus", "recordingId": "145f5c43-…", "trackId": null, "title": "Glory Box", "artist": "Portishead", "disc": 1, "position": 11, "isrc": "GBAQT9400066" }
   ],
   "destinationDirectory": null,
   "pathTemplate": "$albumartist/$album%aunique{}/$track $title",
@@ -35,8 +39,8 @@ albums to tell apart.
 | Field | Meaning |
 | --- | --- |
 | `stagingDirectory` | The job's folder, relative to the staging volume (`/staging`). |
-| `release` | The edition the files belong to. Its MusicBrainz ID pins the match. |
-| `files` | Each file, relative to the staging folder, with the recording it is and its place on the release. |
+| `release` | The edition the files belong to. Its MusicBrainz ID pins the match; without one, the files are filed as tagged. |
+| `files` | Each file, relative to the staging folder, with the recording it is (empty without a release), its place on the release, and its ISRC if known. |
 | `destinationDirectory` | A folder relative to the library to put the files in, instead of the template's. Melodex sets it when you already own part of the album, so new tracks join the files you have wherever they live. Only the file name comes from the template. |
 | `pathTemplate` | A [beets path format](https://beets.readthedocs.io/en/stable/reference/pathformat.html), set under Settings → Fetching. |
 | `musicBrainzServer` | The server Melodex's MusicBrainz plugin uses, so a mirror applies to imports too. |

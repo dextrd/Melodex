@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Melodex.Client;
@@ -204,6 +205,35 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
         Assert.Single(done.Jobs!);
         Assert.Equal(1, source.Fetches);
         Assert.Equal(AlbumStatus.Complete, (await fixture.AlbumAsync("Portishead", "Third")).Status);
+    }
+
+    [TestLibraryFact]
+    public async Task An_edition_MusicBrainz_doesnt_have_is_filed_as_tagged()
+    {
+        await fixture.AddSourceAsync(new FakeSource("tracks"));
+        // The last missing song; another test asks for the first.
+        var album = await fixture.AlbumAsync("Portishead", "Roseland NYC Live");
+        var track = Guid.Empty;
+        foreach (var edition in (await Api.GetAlbumAsync(album.Id))!.Editions)
+            if ((await Api.GetAlbumAsync(album.Id, edition.Id))!.Tracks.LastOrDefault(t => t.Status == TrackStatus.Missing) is { } missing)
+                track = missing.TrackId;
+        var albumId = album.Id;
+        // As if only a later catalogue, such as Deezer, listed its editions.
+        using (var scope = fixture.Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Melodex.Core.Data.MelodexDbContext>();
+            var editions = db.Editions.Where(e => e.AlbumId == albumId).Select(e => e.Id).ToList();
+            await db.Crosswalk.Where(m => m.EntityKind == Melodex.Core.Data.EntityKind.Edition && editions.Contains(m.EntityId)
+                                          && m.Provider == Contracts.Catalogue.Providers.MusicBrainz).ExecuteDeleteAsync();
+        }
+
+        var done = await fixture.WaitAsync((await Api.CreateRequestAsync(new CreateRequest(RequestKind.Track, track))).Id);
+        Dump(done);
+
+        Assert.Equal(RequestState.InLibrary, done.State);
+        Assert.Contains(done.Jobs!, j => j.Log.Contains("as tagged"));
+        var import = fixture.Importer.Requests.Last(r => r.Files.Any(f => done.Title.StartsWith(f.Title)));
+        Assert.Null(import.Release.MusicBrainzId);
     }
 
     [TestLibraryFact]

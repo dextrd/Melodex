@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Melodex.Client;
+using Melodex.Contracts.Catalogue;
 using Melodex.Contracts.Plugins.Connectors;
 using Melodex.Contracts.Plugins.Retrieval;
 using Melodex.Core.Data;
@@ -353,8 +354,6 @@ public sealed class RequestPipeline(
 
     private async Task<ImportResult> ImportAsync(FetchTarget target, Job job, IReadOnlyList<Verifier.Matched> files, CancellationToken ct)
     {
-        if (target.ReleaseId is null)
-            throw new ImportException("The edition has no MusicBrainz release ID to pin beets to.");
         var fetch = await settings.GetFetchAsync(ct);
         var server = await db.PluginInstances.Where(p => p.PluginId == Melodex.Plugins.MusicBrainz.MusicBrainzIndexFactory.PluginId).Select(p => p.SettingsJson).FirstOrDefaultAsync(ct);
         string? musicBrainz = null;
@@ -364,11 +363,15 @@ public sealed class RequestPipeline(
         var request = new ImportRequest(
             job.StagingDirectory!,
             new ImportRelease(target.ReleaseId, target.Edition.Title, target.Album.ArtistCredit, target.Edition.ReleaseDate, target.EditionTrackCount),
-            files.Select(f => new ImportFile(f.Path, f.Track.RecordingId ?? "", null, f.Track.Title, f.Track.ArtistCredit, f.Track.Disc, f.Track.Position)).ToList(),
+            files.Select(f => new ImportFile(f.Path, f.Track.RecordingId ?? "", null, f.Track.Title, f.Track.ArtistCredit, f.Track.Disc, f.Track.Position,
+                f.Track.Ids.FirstOrDefault(i => i.Provider == Providers.Isrc)?.Value)).ToList(),
             target.DestinationDirectory,
             fetch.PathTemplate,
             musicBrainz);
-        Log(job, $"Importing with beets, pinned to release {target.ReleaseId}{(target.DestinationDirectory is null ? "" : $", into {target.DestinationDirectory}")}");
+        var into = target.DestinationDirectory is null ? "" : $", into {target.DestinationDirectory}";
+        Log(job, target.ReleaseId is null
+            ? $"Filing with beets as tagged, since MusicBrainz doesn't have this edition{into}"
+            : $"Importing with beets, pinned to release {target.ReleaseId}{into}");
         return await importer.ImportAsync(request, ct);
     }
 
@@ -412,7 +415,7 @@ public sealed class RequestPipeline(
             row.ArtistId = match.Track.ArtistId;
             row.TrackId = match.Track.TrackId;
             row.EditionId = target.Edition.Id;
-            row.MatchMethod = MatchMethod.MusicBrainzTags;
+            row.MatchMethod = target.ReleaseId is null ? MatchMethod.Crosswalk : MatchMethod.MusicBrainzTags;
             row.MatchConfidence = 1;
             row.MatchedAt = row.ScannedAt = DateTime.UtcNow;
             row.ReviewReason = null;

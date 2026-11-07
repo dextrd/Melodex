@@ -28,13 +28,16 @@ public sealed record ImportRequest(
     string PathTemplate,
     string? MusicBrainzServer);
 
-/// <param name="MusicBrainzId">The release's MusicBrainz ID, which pins beets' match.</param>
-public sealed record ImportRelease(string MusicBrainzId, string Title, string Artist, string? Date, int TrackCount);
+/// <param name="MusicBrainzId">
+/// The release's MusicBrainz ID, which pins beets' match. Without one (an edition only another catalogue has), the files
+/// are filed with the tags sent.
+/// </param>
+public sealed record ImportRelease(string? MusicBrainzId, string Title, string Artist, string? Date, int TrackCount);
 
 /// <param name="Path">Relative to the staging directory.</param>
 /// <param name="RecordingId">The MusicBrainz recording the file is.</param>
 /// <param name="TrackId">The MusicBrainz track (the recording's place on this release), when known.</param>
-public sealed record ImportFile(string Path, string RecordingId, string? TrackId, string Title, string Artist, int Disc, int Position);
+public sealed record ImportFile(string Path, string RecordingId, string? TrackId, string Title, string Artist, int Disc, int Position, string? Isrc = null);
 
 public sealed record ImportResult(IReadOnlyList<ImportedFile> Files);
 

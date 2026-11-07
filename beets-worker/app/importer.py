@@ -3,10 +3,14 @@
 Melodex is the library's database, so each import uses a throwaway beets library: beets fetches the release from
 MusicBrainz, maps the files onto its tracks, writes the tags and works out the path from the template, and this
 module moves the files into the music library. Nothing beets keeps between imports can disagree with Melodex.
+
+An edition MusicBrainz doesn't have (one only another catalogue lists) is filed as tagged: the files get Melodex's
+tags and beets only works out their path.
 """
 
 from __future__ import annotations
 
+import datetime
 import os
 import shutil
 import tempfile
@@ -38,7 +42,7 @@ class ImportFailed(Exception):
 
 @dataclass
 class Release:
-    music_brainz_id: str
+    music_brainz_id: str | None
     title: str
     artist: str
     date: str | None
@@ -54,6 +58,7 @@ class StagedFile:
     artist: str
     disc: int
     position: int
+    isrc: str | None = None
 
 
 class PinnedSession(ImportSession):
@@ -146,12 +151,16 @@ class Importer:
                 by_name[name] = staged
 
             config["paths"] = {"default": template, "comp": template, "singleton": template}
-            config["import"]["search_ids"] = [release.music_brainz_id]
             self._lib.__dict__.pop("path_formats", None)
-            session = PinnedSession(self._lib, work, release, by_name)
             try:
+                if release.music_brainz_id is None:
+                    return self._file(self._as_tagged(work), source, destination, by_name)
+                config["import"]["search_ids"] = [release.music_brainz_id]
+                session = PinnedSession(self._lib, work, release, by_name)
                 session.run()
-                return self._file(session, source, destination, by_name)
+                if session.error or not session.items:
+                    raise ImportFailed(session.error or "Beets didn't import anything; MusicBrainz may be unreachable.")
+                return self._file(session.items, source, destination, by_name)
             finally:
                 # The library only lives for the import: Melodex is the database.
                 for album in self._lib.albums():
@@ -179,12 +188,19 @@ class Importer:
 
             return format_files(self.library, files, artwork, destination, folder_artwork)
 
-    def _file(self, session: PinnedSession, source: Path, destination: str | None,
+    def _as_tagged(self, work: Path) -> list[Item]:
+        """The pre-tagged files as beets items, for an edition with no MusicBrainz release: nothing is looked up."""
+        items = []
+        for path in sorted(work.iterdir()):
+            item = Item.from_path(os.fsencode(path))
+            item.add(self._lib)
+            items.append(item)
+        return items
+
+    def _file(self, items: list[Item], source: Path, destination: str | None,
               by_name: dict[str, StagedFile]) -> list[dict[str, Any]]:
-        if session.error or not session.items:
-            raise ImportFailed(session.error or "Beets didn't import anything; MusicBrainz may be unreachable.")
         results = []
-        for item in session.items:
+        for item in items:
             staged = by_name[Path(displayable_path(item.path)).name]
             relative = Path(displayable_path(item.destination(relative_to_libdir=True)))
             if destination is not None:
@@ -225,6 +241,16 @@ class Importer:
         media.albumartist = release.artist
         media.track = staged.position
         media.disc = staged.disc
+        if staged.isrc:
+            media.isrc = staged.isrc
+        if release.music_brainz_id is None:
+            # Filed as tagged, so these are the tags it keeps; beets would otherwise have filled them in.
+            if release.track_count:
+                media.tracktotal = release.track_count
+            if release.date:
+                media.date = _date(release.date)
+            media.save()
+            return
         media.mb_trackid = staged.recording_id
         if staged.track_id:
             media.mb_releasetrackid = staged.track_id
@@ -239,3 +265,12 @@ class Importer:
             n += 1
             candidate = path.with_name(f"{path.stem}.{n}{path.suffix}")
         return candidate
+
+
+def _date(value: str) -> datetime.date | None:
+    """A catalogue's date, which may be only a year or a year and month, as the first day it could be."""
+    parts = (value.split("-") + ["1", "1"])[:3]
+    try:
+        return datetime.date(*(int(p) for p in parts))
+    except ValueError:
+        return None

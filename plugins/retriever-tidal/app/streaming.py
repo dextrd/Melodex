@@ -243,8 +243,8 @@ def _download(job: Job, http: httpx.Client, stream: Stream, path: Path, moved) -
 def _remux(source: Path, target: Path) -> None:
     try:
         codec = "flac" if target.suffix == ".flac" else "copy"
-        result = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(source), "-map", "0:a", "-c:a", codec,
-                                 str(target)], capture_output=True, text=True)
+        result = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(source), "-map", "0:a", "-map_metadata", "-1",
+                                 "-c:a", codec, str(target)], capture_output=True, text=True)
     finally:
         source.unlink(missing_ok=True)
     if result.returncode != 0:

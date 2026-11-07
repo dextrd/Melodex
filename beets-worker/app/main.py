@@ -28,7 +28,7 @@ class Model(BaseModel):
 
 
 class ImportRelease(Model):
-    music_brainz_id: str
+    music_brainz_id: str | None = None
     title: str
     artist: str
     date: str | None = None
@@ -37,12 +37,13 @@ class ImportRelease(Model):
 
 class ImportFile(Model):
     path: str
-    recording_id: str
+    recording_id: str = ""
     track_id: str | None = None
     title: str
     artist: str
     disc: int = 1
     position: int
+    isrc: str | None = None
 
 
 class ImportRequest(Model):
@@ -110,7 +111,8 @@ async def run_import(body: ImportRequest) -> dict[str, Any]:
         raise HTTPException(400, {"error": "No files to import.", "code": "invalid-request"})
     release = Release(body.release.music_brainz_id, body.release.title, body.release.artist, body.release.date,
                       body.release.track_count)
-    files = [StagedFile(f.path, f.recording_id, f.track_id, f.title, f.artist, f.disc, f.position) for f in body.files]
+    files = [StagedFile(f.path, f.recording_id, f.track_id, f.title, f.artist, f.disc, f.position, f.isrc)
+             for f in body.files]
     try:
         imported = await run_in_threadpool(get_importer().run, body.staging_directory, release, files,
                                            body.destination_directory, body.path_template, body.music_brainz_server)

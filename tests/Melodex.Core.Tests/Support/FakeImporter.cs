@@ -23,12 +23,16 @@ public sealed class FakeImporter(string stagingRoot, string libraryRoot) : IImpo
             var target = Path.Combine(libraryRoot, path);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.Move(Path.Combine(stagingRoot, request.StagingDirectory, file.Path), target, overwrite: true);
-            files.Add(new ImportedFile(file.Path, path, null, "wav", new Dictionary<string, string>
+            // Without a release, the worker files them as tagged, with no MusicBrainz IDs.
+            var tags = new Dictionary<string, string> { ["title"] = file.Title };
+            if (request.Release.MusicBrainzId is { } release)
             {
-                ["mb_trackid"] = file.RecordingId,
-                ["mb_albumid"] = request.Release.MusicBrainzId,
-                ["title"] = file.Title,
-            }));
+                tags["mb_trackid"] = file.RecordingId;
+                tags["mb_albumid"] = release;
+            }
+            if (file.Isrc is { } isrc)
+                tags["isrc"] = isrc;
+            files.Add(new ImportedFile(file.Path, path, null, "wav", tags));
         }
         return Task.FromResult(new ImportResult(files));
     }

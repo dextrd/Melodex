@@ -74,6 +74,30 @@ def test_a_file_is_tagged_and_filed_against_the_pinned_release(client, roots):
     assert not (staging / "job" / "glory.flac").exists()
 
 
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
+def test_an_edition_musicbrainz_doesnt_have_is_filed_as_tagged(client, roots):
+    staging, library = roots
+    (staging / "job").mkdir()
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=8000:cl=mono", "-t", "3",
+                    str(staging / "job" / "one.flac")], check=True)
+    release = {"title": "Roseland NYC Live 25", "artist": "Portishead", "date": "2024-03", "trackCount": 12}
+    song = {"path": "one.flac", "title": "Mysterons", "artist": "Portishead", "disc": 1, "position": 1,
+            "isrc": "GBUM72400001"}
+    body = {"stagingDirectory": "job", "release": release, "files": [song],
+            "pathTemplate": "$albumartist/$album%aunique{}/$track $title"}
+    response = client.post("/v1/import", json=body)
+    assert response.status_code == 200, response.json()
+    imported = response.json()["files"][0]
+    assert imported["path"] == "Portishead/Roseland NYC Live 25/01 Mysterons.flac"
+    tags = imported["tags"]
+    assert (tags["album"], tags["track"], tags["tracktotal"], tags["isrc"]) == ("Roseland NYC Live 25", "1", "12",
+                                                                                "GBUM72400001")
+    assert tags["year"] == "2024" and "mb_albumid" not in tags and "mb_trackid" not in tags
+    media = MediaFile(library / imported["path"])
+    assert (media.title, media.albumartist, media.isrc) == ("Mysterons", "Portishead", "GBUM72400001")
+    assert not (staging / "job" / "one.flac").exists()
+
+
 def test_deleting_removes_the_files_and_folders_left_with_only_artwork(client, roots):
     library = roots[1]
     album = library / "Portishead" / "Dummy"
