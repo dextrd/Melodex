@@ -1,7 +1,8 @@
 """What a streaming service's retrieval plugin does whichever service it is: finding the requested album or song among
 what the service lists, and downloading the tracks it streams.
 
-Shared by the Qobuz and Tidal plugins; each gives it a Service that answers in these terms.
+Shared by the Qobuz, Tidal and Bandcamp plugins; each gives it a Service that answers in these terms. Bandcamp only
+searches with it: its downloads are whole purchases, not streams.
 """
 
 from __future__ import annotations

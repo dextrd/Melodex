@@ -1,11 +1,13 @@
-"""Stand-ins for Qobuz's and Tidal's APIs, for the sandbox only, so the two plugins can be tried without accounts.
+"""Stand-ins for Qobuz's, Tidal's and Bandcamp's APIs, for the sandbox only, so their plugins can be tried without
+accounts.
 
 Albums and songs are looked up in MusicBrainz, so whatever Melodex asks for is found, with MusicBrainz's titles,
 lengths, barcodes and ISRCs. The audio is a quiet tone of each track's length, made when it's first asked for:
 16-bit/44.1 kHz FLAC as one file, and 24-bit/96 kHz FLAC as DASH segments, the way the services send them.
 
 Sign-in: Qobuz takes any email and password, with the app ID and secret below. Tidal gives a link to a page here that
-approves the code.
+approves the code. Bandcamp takes the identity cookie below; its collection starts empty, and the page at /bandcamp
+buys albums and songs into it.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ import secrets
 import subprocess
 import threading
 import time
+import zipfile
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl
@@ -30,12 +33,13 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 QOBUZ_APP_ID, QOBUZ_SECRET = "standin", "standin-secret"
 TIDAL_CLIENT_ID = "standin"
+BANDCAMP_IDENTITY = "standin"
 PUBLIC = os.environ.get("PUBLIC_URL", "http://localhost:8095")
 INTERNAL = os.environ.get("INTERNAL_URL", "http://streaming-standin:8080")
 AUDIO = Path(os.environ.get("AUDIO_ROOT", "/tmp/standin"))
 MUSICBRAINZ = "https://musicbrainz.org/ws/2"
 
-app = FastAPI(title="Qobuz and Tidal stand-ins")
+app = FastAPI(title="Qobuz, Tidal and Bandcamp stand-ins")
 _lock = threading.Lock()
 _last_call = 0.0
 _releases: dict[str, dict[str, Any] | None] = {}
@@ -346,3 +350,124 @@ def tidal_file(track_id: int) -> FileResponse:
 @app.get("/tidal/segment/{track_id}/{number}")
 def tidal_segment(track_id: int, number: int) -> Response:
     return Response(_segments(track_id)[number], media_type="audio/mp4")
+
+
+# ---- Bandcamp ----
+
+# What's been bought, newest first: ("a", album number) or ("t", track number).
+_bought: list[tuple[str, int]] = []
+
+_BANDCAMP_PAGE = """<!doctype html><meta name=viewport content="width=device-width"><title>Bandcamp stand-in</title>
+<body style="font:16px system-ui;max-width:32rem;margin:3rem auto;padding:0 1rem">
+<h1 style="font-size:1.4rem">Bandcamp stand-in</h1>{body}</body>"""
+
+
+def _purchase(kind: str, number: int) -> tuple[str, str, str | None, list[dict[str, Any]]]:
+    """Its title, artist, album (for a song) and tracks."""
+    if kind == "a":
+        album = _albums[number]
+        return album["title"], album["artist"], None, album["tracks"]
+    track, album = _tracks[number]
+    return track["title"], track["artist"], album["title"], [track]
+
+
+@app.get("/bandcamp")
+def bandcamp_page(note: str = "") -> HTMLResponse:
+    rows = "".join(f"<li>{html.escape(_purchase(k, n)[1])} – {html.escape(_purchase(k, n)[0])}"
+                   f"{' (album)' if k == 'a' else ' (song)'}</li>" for k, n in _bought) or "<li>Nothing yet.</li>"
+    return HTMLResponse(_BANDCAMP_PAGE.format(body=f"""<p>The sandbox's stand-in for your Bandcamp collection. The
+        plugin signs in with the identity cookie <code>{BANDCAMP_IDENTITY}</code>.</p>
+        {f'<p><b>{html.escape(note)}</b></p>' if note else ''}
+        <form method=post action=/bandcamp/buy style="display:grid;gap:.5rem">
+          <label>Artist and album or song, as MusicBrainz names them
+            <input name=query required style="font:inherit;width:100%;box-sizing:border-box" placeholder="Portishead Third"></label>
+          <span><button name=kind value=album style="font:inherit">Buy the album</button>
+          <button name=kind value=song style="font:inherit">Buy the song</button></span>
+        </form>
+        <h2 style="font-size:1.1rem">Your collection</h2><ul>{rows}</ul>"""))
+
+
+@app.post("/bandcamp/buy")
+async def bandcamp_buy(request: Request) -> HTMLResponse:
+    form = await _form(request)
+    query = form.get("query", "")
+    if form.get("kind") == "song":
+        found = [("t", t["id"], f"{t['title']} by {t['artist']}") for t, _ in _search_tracks(query)[:1]]
+    else:
+        found = [("a", a["id"], f"{a['title']} by {a['artist']}") for a in _search_albums(query)[:1]]
+    if not found:
+        return bandcamp_page(note=f"MusicBrainz has nothing called {query}.")
+    kind, number, name = found[0]
+    if (kind, number) not in _bought:
+        _bought.insert(0, (kind, number))
+    return bandcamp_page(note=f"Bought {name}.")
+
+
+def _signed_in(request: Request) -> bool:
+    return request.cookies.get("identity") == BANDCAMP_IDENTITY
+
+
+@app.get("/bandcamp/api/fan/2/collection_summary")
+def bandcamp_summary(request: Request) -> JSONResponse:
+    if not _signed_in(request):
+        return JSONResponse({"error": True, "error_message": "Not logged in"})
+    return JSONResponse({"fan_id": 1, "collection_summary": {"username": "sandbox-listener"}})
+
+
+@app.post("/bandcamp/api/fancollection/1/{kind}")
+def bandcamp_collection(kind: str, request: Request) -> JSONResponse:
+    if not _signed_in(request):
+        return JSONResponse({"error": True, "error_message": "Not logged in"})
+    items, links = [], {}
+    for index, (k, number) in enumerate(_bought if kind == "collection_items" else []):
+        title, artist, album, _ = _purchase(k, number)
+        items.append({"tralbum_type": k, "tralbum_id": number, "item_type": "album" if k == "a" else "track",
+                      "item_title": title, "band_name": artist, "album_title": album, "sale_item_type": "p",
+                      "sale_item_id": index + 1, "item_url": f"{INTERNAL}/bandcamp/{'album' if k == 'a' else 'track'}/{number}"})
+        links[f"p{index + 1}"] = f"{INTERNAL}/bandcamp/download?payment_id={k}{number}"
+    return JSONResponse({"items": items, "redownload_urls": links, "more_available": False, "last_token": "0"})
+
+
+@app.get("/bandcamp/{kind}/{number}")
+def bandcamp_tralbum(kind: str, number: int) -> HTMLResponse:
+    title, artist, _, tracks = _purchase("a" if kind == "album" else "t", number)
+    # Bandcamp has no discs: tracks are numbered straight through.
+    tralbum = {"current": {"title": title}, "artist": artist,
+               "trackinfo": [{"title": t["title"], "track_num": n if kind == "album" else None,
+                              "duration": t["duration"], "artist": None} for n, t in enumerate(tracks, 1)]}
+    return HTMLResponse(f'<script data-tralbum="{html.escape(json.dumps(tralbum))}"></script>')
+
+
+@app.get("/bandcamp/download")
+def bandcamp_download_page(payment_id: str, request: Request) -> HTMLResponse:
+    if not _signed_in(request):
+        return HTMLResponse("Not logged in", 403)
+    kind = "album" if payment_id.startswith("a") else "track"
+    downloads = {f: {"url": f"{INTERNAL}/bandcamp/files/download/{kind}?enc={f}&id={payment_id}"}
+                 for f in ["mp3-v0", "mp3-320", "flac", "aac-hi", "vorbis", "alac", "wav", "aiff-lossless"]}
+    blob = {"digital_items": [{"downloads": downloads}]}
+    return HTMLResponse(f'<div id="pagedata" data-blob="{html.escape(json.dumps(blob))}"></div>')
+
+
+@app.get("/bandcamp/files/statdownload/{kind}")
+def bandcamp_status(kind: str, request: Request) -> JSONResponse:
+    query = "&".join(f"{k}={v}" for k, v in request.query_params.items() if k != ".vrs")
+    return JSONResponse({"result": "ok", "download_url": f"{INTERNAL}/bandcamp/files/download/{kind}?{query}"})
+
+
+@app.get("/bandcamp/files/download/{kind}")
+def bandcamp_file(kind: str, id: str, enc: str = "flac") -> Response:
+    if enc != "flac":
+        return Response("The stand-in only makes FLAC.", 404)
+    title, artist, album, tracks = _purchase(id[0], int(id[1:]))
+    if kind == "track":
+        name = f"{artist} - {title}.flac"
+        return FileResponse(_flac(tracks[0]["id"], False), media_type="audio/flac", filename=name)
+    zipped = AUDIO / f"bandcamp-{id}.zip"
+    if not zipped.exists():
+        AUDIO.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(zipped.with_suffix(".tmp"), "w") as out:
+            for n, track in enumerate(tracks, 1):
+                out.write(_flac(track["id"], False), f"{artist} - {title} - {n:02} {track['title'].replace('/', '_')}.flac")
+        zipped.with_suffix(".tmp").rename(zipped)
+    return FileResponse(zipped, media_type="application/zip", filename=f"{artist} - {title}.zip")

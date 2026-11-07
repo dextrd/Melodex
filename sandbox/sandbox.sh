@@ -10,7 +10,7 @@
 #
 # Works with podman or docker. Navidrome's and Melodex's credentials are generated on first run into sandbox/.env.
 # Prowlarr and qBittorrent come too, for the Prowlarr plugin, with PandaCD (Creative Commons music) as the indexer.
-# The Qobuz and Tidal plugins talk to stand-ins for those services (sandbox/standins), which play tones.
+# The Qobuz, Tidal and Bandcamp plugins talk to stand-ins for those services (sandbox/standins), which play tones.
 
 set -euo pipefail
 
@@ -35,7 +35,7 @@ QBITTORRENT_PORT="${QBITTORRENT_PORT:-8090}"
 STANDIN_PORT="${STANDIN_PORT:-8095}"
 CONTAINERS=(melodex-sandbox-navidrome melodex-sandbox-core melodex-sandbox-beets melodex-sandbox-ytdlp melodex-sandbox-inbox melodex-sandbox-archive
   melodex-sandbox-prowlarr melodex-sandbox-qbittorrent melodex-sandbox-torrents melodex-sandbox-standin melodex-sandbox-qobuz
-  melodex-sandbox-tidal)
+  melodex-sandbox-tidal melodex-sandbox-bandcamp)
 VOLUMES=(melodex-sandbox-navidrome melodex-sandbox-config melodex-sandbox-staging melodex-sandbox-prowlarr
   melodex-sandbox-qbittorrent melodex-sandbox-downloads melodex-sandbox-tidal)
 
@@ -49,6 +49,7 @@ IMAGES=(
   "localhost/melodex/retriever-prowlarr:dev|$ROOT/plugins/retriever-prowlarr|$ROOT/plugins/retriever-prowlarr/Dockerfile"
   "localhost/melodex/retriever-qobuz:dev|$ROOT/plugins/retriever-qobuz|$ROOT/plugins/retriever-qobuz/Dockerfile"
   "localhost/melodex/retriever-tidal:dev|$ROOT/plugins/retriever-tidal|$ROOT/plugins/retriever-tidal/Dockerfile"
+  "localhost/melodex/retriever-bandcamp:dev|$ROOT/plugins/retriever-bandcamp|$ROOT/plugins/retriever-bandcamp/Dockerfile"
 )
 
 ENGINE="$(command -v podman || command -v docker || true)"
@@ -153,13 +154,24 @@ configure() {
   done
 }
 
-# The Qobuz and Tidal plugins, with the stand-ins' app keys. Tidal still needs signing in: its status gives the link.
+# The Qobuz, Tidal and Bandcamp plugins, with the stand-ins' app keys and cookie. Tidal still needs signing in: its
+# status gives the link. Bandcamp's collection starts empty: buy things on the stand-in's page.
 configure_streaming() {
-  local plugins="$1"
-  grep -q '"http://retriever-qobuz:8080"' <<<"$plugins" ||
-    melodex POST /plugins -o /dev/null -d '{"endpoint":"http://retriever-qobuz:8080","settings":{"appId":"standin","appSecret":"standin-secret","email":"listener@sandbox.invalid","password":"sandbox"}}'
-  grep -q '"http://retriever-tidal:8080"' <<<"$plugins" ||
-    melodex POST /plugins -o /dev/null -d '{"endpoint":"http://retriever-tidal:8080","settings":{"clientId":"standin"}}'
+  local plugins="$1" endpoint settings
+  while read -r endpoint settings; do
+    grep -q "\"$endpoint\"" <<<"$plugins" && continue
+    # The plugin may still be starting.
+    for _ in $(seq 1 30); do
+      melodex POST /plugins -o /dev/null -d "{\"endpoint\":\"$endpoint\",\"settings\":$settings}" 2>/dev/null && continue 2
+      sleep 1
+    done
+    echo "couldn't add the plugin at $endpoint" >&2
+    exit 1
+  done <<'PLUGINS'
+http://retriever-qobuz:8080 {"appId":"standin","appSecret":"standin-secret","email":"listener@sandbox.invalid","password":"sandbox"}
+http://retriever-tidal:8080 {"clientId":"standin"}
+http://retriever-bandcamp:8080 {"identity":"standin"}
+PLUGINS
 }
 
 # Prowlarr's API key, which it makes on first start.
@@ -205,6 +217,7 @@ for p in json.load(sys.stdin):
   echo "Prowlarr:    http://localhost:$PROWLARR_PORT"
   echo "qBittorrent: http://localhost:$QBITTORRENT_PORT (no login from this computer)"
   echo "Qobuz and Tidal stand-ins: http://localhost:$STANDIN_PORT"
+  echo "Bandcamp collection:       http://localhost:$STANDIN_PORT/bandcamp (buy things here to fetch them)"
   echo "Library copy: $MUSIC"
   echo "Inbox:        $INBOX (drop files here, then Retry the request)"
 }
@@ -273,7 +286,7 @@ up() {
     -v melodex-sandbox-staging:/staging -v melodex-sandbox-downloads:/downloads:ro \
     localhost/melodex/retriever-prowlarr:dev >/dev/null
 
-  # Stand-ins for Qobuz and Tidal, run with the Tidal plugin's image, which has ffmpeg to make their tones.
+  # Stand-ins for Qobuz, Tidal and Bandcamp, run with the Tidal plugin's image, which has ffmpeg to make their tones.
   "$ENGINE" run -d --name melodex-sandbox-standin "${SHARED[@]}" --network-alias streaming-standin \
     -p "127.0.0.1:$STANDIN_PORT:8080" -e PUBLIC_URL="http://localhost:$STANDIN_PORT" \
     -e INTERNAL_URL=http://streaming-standin:8080 -v "$SANDBOX/standins:/standin:ro,z" \
@@ -285,6 +298,9 @@ up() {
     -v melodex-sandbox-staging:/staging -v melodex-sandbox-tidal:/data \
     -e TIDAL_API=http://streaming-standin:8080/tidal/v1 -e TIDAL_AUTH=http://streaming-standin:8080/tidal/oauth2 \
     localhost/melodex/retriever-tidal:dev >/dev/null
+  "$ENGINE" run -d --name melodex-sandbox-bandcamp "${SHARED[@]}" --network-alias retriever-bandcamp "${AS_YOU[@]}" \
+    -v melodex-sandbox-staging:/staging -e BANDCAMP_URL=http://streaming-standin:8080/bandcamp \
+    localhost/melodex/retriever-bandcamp:dev >/dev/null
 
   wait_for Navidrome "$navidrome_url/ping"
   # First run only: Navidrome accepts creating the admin while it has no users.
