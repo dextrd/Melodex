@@ -153,20 +153,40 @@ h2 { font-size: 1.15rem; margin: 1.75rem 0 .5rem; }
     .topbar .scan-count { display: none; }
 }
 /*
-    On a phone, two lines: Melodex, Settings and the account on the first, the pages and Scan on the second. The empty
-    ::after, a whole line wide, is what breaks them. What a task is doing is left to Activity (its greyed button says
-    something is).
+    On a phone, two lines: Melodex, Scan, Settings and the account on the first, the pages across the whole of the
+    second. The empty ::after, a whole line wide, is what breaks them. What a task is doing is left to Activity (its
+    greyed button says something is).
 */
 @media (max-width: 640px) {
-    .topbar { row-gap: .3rem; }
-    .topbar::after { content: ""; order: 4; flex-basis: 100%; }
+    .topbar { row-gap: .4rem; gap: .5rem; }
+    .topbar::after { content: ""; order: 5; flex-basis: 100%; }
     .topbar > .spacer { order: 1; }
-    .topbar > .topbar-icon { order: 2; }
-    .topbar > .account-menu { order: 3; margin-left: 0; }
-    .topbar > .nav { order: 5; }
-    .topbar > .scan-status { order: 6; margin-left: auto; }
+    .topbar > .scan-status { order: 2; }
+    .topbar > .topbar-icon { order: 3; }
+    .topbar > .account-menu { order: 4; margin-left: 0; }
     .topbar .scan-progress { display: none; }
+    /* The pages share the line evenly as icons; the one you're on widens to a pill with its name, and the others make
+       room for it as it does. */
+    .topbar > .nav { order: 6; flex: 1 1 100%; gap: .25rem; }
+    .topbar .nav a {
+        flex: 1 1 0; min-width: 0; justify-content: center; padding: .45rem .3rem; border-radius: 999px;
+        transition: flex-grow .4s cubic-bezier(.2, .8, .2, 1), background-color .3s, color .3s;
+    }
+    .topbar .nav a.active { flex-grow: 2.6; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
+    .topbar .nav .nav-icon { display: block; transition: transform .4s cubic-bezier(.2, .8, .2, 1); }
+    .topbar .nav a:active .nav-icon { transform: scale(.88); }
+    .topbar .nav .nav-label {
+        position: static; width: auto; height: auto; clip-path: none; overflow: hidden; display: inline-block;
+        max-width: 0; opacity: 0; margin-left: 0;
+        transition: max-width .4s cubic-bezier(.2, .8, .2, 1), opacity .25s, margin-left .4s cubic-bezier(.2, .8, .2, 1);
+    }
+    .topbar .nav a.active .nav-label { max-width: 6.5rem; opacity: 1; margin-left: .4rem; transition-delay: 0s, .1s, 0s; }
 }
+@media (max-width: 640px) and (prefers-reduced-motion: reduce) {
+    .topbar .nav a, .topbar .nav .nav-icon, .topbar .nav .nav-label { transition: none; }
+}
+/* Where even the first line is short of room, Melodex is its logo. */
+@media (max-width: 360px) { .brand { font-size: 0; gap: 0; } }
 .spacer { flex: 1; }
 main { max-width: 1100px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
 
