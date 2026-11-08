@@ -141,6 +141,20 @@ if (options.ResetLogin)
     app.Logger.LogWarning("The admin's password was cleared, as ResetLogin is set. Open the web app to set a new one, then unset ResetLogin");
 }
 
+// The query planner's statistics, worked out in the background where they're missing or stale.
+_ = Task.Run(async () =>
+{
+    using var scope = app.Services.CreateScope();
+    try
+    {
+        await scope.ServiceProvider.GetRequiredService<MelodexDbContext>().OptimiseAsync();
+    }
+    catch (Exception e)
+    {
+        app.Logger.LogWarning("Couldn't update the database's statistics: {Message}", e.Message);
+    }
+});
+
 // Work out the library's views in the background, so the first visit after starting is quick too.
 _ = app.Services.GetRequiredService<LibraryCache>().WarmAsync(CancellationToken.None);
 

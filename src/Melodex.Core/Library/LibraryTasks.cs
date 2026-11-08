@@ -59,6 +59,8 @@ public sealed class LibraryScanTask(
 
         var artists = await db.Artists.Where(a => a.InLibrary).Select(a => a.Id).ToListAsync(ct);
         var failures = await refresher.RefreshArtistsAsync(artists, progress, ct);
+        // A scan can add a lot to the catalogue, which changes how best to read it.
+        await db.OptimiseAsync(ct);
         var notes = new List<string>();
         if (scan.SkippedFolders > 0)
             notes.Add(Count(scan.SkippedFolders, "folder", "folders") + " couldn't be read");
@@ -160,7 +162,10 @@ public sealed class CatalogueRefresher(
             }
 
             var stale = DateTime.UtcNow - CatalogueService.EditionsTtl;
-            var albums = await db.Albums.Where(a => a.ArtistId == next.Id && (a.EditionsRefreshedAt == null || a.EditionsRefreshedAt < stale)).ToListAsync(ct);
+            var various = await VariousArtists.IsAsync(db, next.Id, ct);
+            var albums = await db.Albums.Where(a => a.ArtistId == next.Id && (a.EditionsRefreshedAt == null || a.EditionsRefreshedAt < stale)
+                                                    && (!various || db.Editions.Any(e => e.AlbumId == a.Id && db.LibraryFiles.Any(f => f.EditionId == e.Id))))
+                .ToListAsync(ct);
             var wanted = new Queue<(Guid Id, int Attempt)>(albums.Where(a => library.ShowingOf(a) != ReleaseShowing.Hide).Select(a => (a.Id, 1)));
             int checkedAlbums = 0, albumFailures = 0, total = wanted.Count;
             while (wanted.TryDequeue(out var albumItem))

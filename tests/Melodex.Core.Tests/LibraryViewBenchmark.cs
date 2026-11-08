@@ -11,7 +11,8 @@ using Xunit.Abstractions;
 namespace Melodex.Core.Tests;
 
 /// <summary>
-/// How long the library views take on a library about the size of a real one. Not run by default: set BENCHMARK=1.
+/// How long the library views take on a library about the size of a real one. Not run by default: set BENCHMARK=1, and
+/// BENCHMARK_ARTISTS, _ALBUMS, _EDITIONS, _TRACKS or _FILES to change its size.
 /// </summary>
 public sealed class LibraryViewBenchmark(ITestOutputHelper output) : IDisposable
 {
@@ -29,10 +30,13 @@ public sealed class LibraryViewBenchmark(ITestOutputHelper output) : IDisposable
     {
         if (Environment.GetEnvironmentVariable("BENCHMARK") != "1")
             return;
-        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseSetting("Melodex:DataPath", _dataPath));
+        // BENCHMARK_DATA: a data folder holding a copy of a real melodex.db, timed as it is instead of a made-up library.
+        var real = Environment.GetEnvironmentVariable("BENCHMARK_DATA");
+        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseSetting("Melodex:DataPath", real ?? _dataPath));
         _ = factory.Server;
-        using (var scope = factory.Services.CreateScope())
-            await SeedAsync(scope.ServiceProvider.GetRequiredService<MelodexDbContext>(), artists: 300, albums: 30, editions: 3, tracks: 10, files: 3500);
+        if (real is null)
+            using (var scope = factory.Services.CreateScope())
+                await SeedAsync(scope.ServiceProvider.GetRequiredService<MelodexDbContext>(), artists: Scale("ARTISTS", 300), albums: Scale("ALBUMS", 30), editions: Scale("EDITIONS", 3), tracks: Scale("TRACKS", 10), files: Scale("FILES", 3500));
 
         foreach (var round in new[] { "cold", "warm" })
         {
@@ -53,8 +57,9 @@ public sealed class LibraryViewBenchmark(ITestOutputHelper output) : IDisposable
 
             // A page: an artist's, one of their albums', and a song's.
             var db = scope.ServiceProvider.GetRequiredService<MelodexDbContext>();
-            var album = await db.Albums.OrderBy(x => x.Title).Skip(round == "cold" ? 100 : 200).FirstAsync();
-            var song = await db.EditionTracks.Where(et => et.Edition.AlbumId == album.Id).Select(et => et.TrackId).FirstAsync();
+            var pick = await db.EditionTracks.Where(et => et.Disc == 1 && et.Position == 1).OrderBy(et => et.Edition.Album.Title)
+                .Skip(round == "cold" ? 100 : 200).Select(et => new { et.Edition.Album, et.TrackId }).FirstAsync();
+            var (album, song) = (pick.Album, pick.TrackId);
             watch.Restart();
             await view.GetArtistAsync(album.ArtistId, default);
             output.WriteLine($"{round} artist page: {watch.ElapsedMilliseconds} ms");
@@ -66,6 +71,8 @@ public sealed class LibraryViewBenchmark(ITestOutputHelper output) : IDisposable
             output.WriteLine($"{round} song page: {watch.ElapsedMilliseconds} ms");
         }
     }
+
+    private static int Scale(string name, int fallback) => int.TryParse(Environment.GetEnvironmentVariable("BENCHMARK_" + name), out var n) ? n : fallback;
 
     private static async Task SeedAsync(MelodexDbContext db, int artists, int albums, int editions, int tracks, int files)
     {

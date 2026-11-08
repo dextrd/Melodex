@@ -15,7 +15,7 @@ namespace Melodex.Core.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.13");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.14");
 
             modelBuilder.Entity("Melodex.Core.Data.Album", b =>
                 {
@@ -848,6 +848,9 @@ namespace Melodex.Core.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ArtistId");
+
+                    b.HasIndex("Ignored")
+                        .HasFilter("\"Ignored\"");
 
                     b.HasIndex("Title");
 

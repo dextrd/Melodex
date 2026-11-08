@@ -203,7 +203,7 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
     /// <summary>Fetches the artist's discography if it was never fetched or is older than the TTL.</summary>
     public async Task RefreshDiscographyAsync(Artist artist, bool force, CancellationToken ct)
     {
-        if (!force && artist.AlbumsRefreshedAt > DateTime.UtcNow - DiscographyTtl)
+        if (!force && artist.AlbumsRefreshedAt > DateTime.UtcNow - DiscographyTtl || await VariousArtists.IsAsync(db, artist.Id, ct))
             return;
         if (await SourceAsync(EntityKind.Artist, artist.Id, ct) is not var (index, providerId))
             return;

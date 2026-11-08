@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace Melodex.Core.Data;
 
-public class MelodexDbContext(DbContextOptions<MelodexDbContext> options) : DbContext(options)
+public partial class MelodexDbContext(DbContextOptions<MelodexDbContext> options) : DbContext(options)
 {
     /// <summary>
     /// SQLite options for every context. A list in a query (<c>ids.Contains(x)</c>) goes as one JSON parameter: by
@@ -11,6 +11,62 @@ public class MelodexDbContext(DbContextOptions<MelodexDbContext> options) : DbCo
     /// </summary>
     public static void Sqlite(SqliteDbContextOptionsBuilder sqlite) =>
         sqlite.UseParameterizedCollectionMode(ParameterTranslationMode.Parameter);
+
+    private static readonly TimeSpan WriteTurn = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>
+    /// Brings SQLite's statistics on the tables up to date where they're missing or have grown stale. Without them it can
+    /// pick an index that reads a whole table where another would read a few rows, which on a big catalogue takes seconds
+    /// a query. Each index is sampled on its own, so writes wait only a moment at a time.
+    /// </summary>
+    public async Task OptimiseAsync(CancellationToken ct = default)
+    {
+        var connection = Database.GetDbConnection();
+        await Database.OpenConnectionAsync(ct);
+        try
+        {
+            // Asked what it would analyse, across every table (0x10000), rather than letting it (0x01), which would take
+            // every table at once.
+            var tables = new List<string>();
+            await using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "PRAGMA optimize=0x10003;";
+                await using var reader = await command.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                    if (OptimiseTable().Match(reader.GetString(0)) is { Success: true } match)
+                        tables.Add(match.Groups[1].Value);
+            }
+            foreach (var table in tables)
+            {
+                var indexes = new List<string>();
+                await using (var command = connection.CreateCommand())
+                {
+                    command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = $table;";
+                    command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("$table", table));
+                    await using var reader = await command.ExecuteReaderAsync(ct);
+                    while (await reader.ReadAsync(ct))
+                        indexes.Add(reader.GetString(0));
+                }
+                foreach (var name in indexes.Count > 0 ? indexes : [table])
+                {
+                    // A pause between each, so writes waiting their turn get it: back to back, they'd seldom see it free.
+                    await Task.Delay(WriteTurn, ct);
+                    await using var command = connection.CreateCommand();
+                    command.CommandText = $"PRAGMA analysis_limit=400; ANALYZE \"{name.Replace("\"", "\"\"")}\";";
+                    await command.ExecuteNonQueryAsync(ct);
+                }
+            }
+        }
+        finally
+        {
+            await Database.CloseConnectionAsync();
+        }
+        // Each connection reads the statistics when it opens, so the pooled ones are let go to take up the new ones.
+        Microsoft.Data.Sqlite.SqliteConnection.ClearPool((Microsoft.Data.Sqlite.SqliteConnection)connection);
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex("^ANALYZE \"main\"\\.\"(.+)\"$")]
+    private static partial System.Text.RegularExpressions.Regex OptimiseTable();
 
     public DbSet<Artist> Artists => Set<Artist>();
     public DbSet<Album> Albums => Set<Album>();
@@ -56,6 +112,8 @@ public class MelodexDbContext(DbContextOptions<MelodexDbContext> options) : DbCo
         {
             e.HasOne(t => t.Artist).WithMany().OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(t => t.Title);
+            // Every page asks which tracks are ignored, and they're few among the catalogue's many.
+            e.HasIndex(t => t.Ignored).HasFilter("\"Ignored\"");
         });
 
         modelBuilder.Entity<EditionTrack>(e =>

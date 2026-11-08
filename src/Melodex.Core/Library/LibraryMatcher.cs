@@ -22,9 +22,6 @@ public sealed class LibraryMatcher(
     ScanFeed feed,
     ILogger<LibraryMatcher> logger)
 {
-    // MusicBrainz's "Various Artists": its discography is enormous and never what a compilation should match against.
-    private static readonly ProviderId VariousArtists = new(Providers.MusicBrainz, "89ad4ac3-39f7-470e-963a-56509c546377");
-
     private readonly Dictionary<string, Artist?> _artistsByName = new(StringComparer.OrdinalIgnoreCase);
     private double _threshold;
 
@@ -351,9 +348,6 @@ public sealed class LibraryMatcher(
         return resolved;
     }
 
-    private async Task<bool> IsVariousArtistsAsync(Artist artist, CancellationToken ct) =>
-        await catalogue.FindAsync(EntityKind.Artist, VariousArtists, ct) == artist.Id;
-
     // ---- Album matching ----
 
     private async Task<List<Album>> CandidateAlbumsAsync(List<Candidate> files, Artist? artist, CancellationToken ct)
@@ -367,7 +361,7 @@ public sealed class LibraryMatcher(
         var albums = new List<Album>();
 
         // 2. The artist's discography, by title.
-        if (artist is not null && !await IsVariousArtistsAsync(artist, ct))
+        if (artist is not null && !await VariousArtists.IsAsync(db, artist.Id, ct))
         {
             await catalogue.RefreshDiscographyAsync(artist, false, ct);
             var discography = await db.Albums.Where(a => a.ArtistId == artist.Id).ToListAsync(ct);
