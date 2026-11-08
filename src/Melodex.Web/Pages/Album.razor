@@ -43,8 +43,8 @@ else
                 var playHint = missing ? $"{playLabel}: in order, fetching the tracks you don't have to listen to, without adding them to your library" : "Play the album";
                 RenderFragment play = @<text>
                     <IconButton Icon="play" Requires="@UserPermissions.Listen" Primary="true" Large="true" Label="@playLabel" Title="@playHint" OnClick="() => Player.PlayAlbumAsync(_album!)" />
-                    <IconButton Icon="queue" Requires="@UserPermissions.Listen" Large="true" Confirm="true" Title="@(missing ? "Add to the queue, fetching the tracks you don't have to listen to" : "Add to the queue")"
-                                OnClick="() => Player.QueueAlbumAsync(_album!)" />
+                    <QueueButton Large="true" Left="true" Title="@(missing ? "Add to the queue, next or at the end, fetching the tracks you don't have to listen to" : "Add to the queue: next, or at the end")"
+                                OnQueue="next => Player.QueueAlbumAsync(_album!, next)" />
                     @if (tracks.Any(Owned))
                     {
                         <IconButton Icon="playlist" Requires="@UserPermissions.Listen" Large="true" Title="Add the songs you have to a playlist"
@@ -94,7 +94,7 @@ else
             }
             @if (detail.Fetching)
             {
-                <Loading Inline="true" Text="Checking MusicBrainz for its editions…" />
+                <Loading Inline="true" Text="Checking the catalogue for its editions…" />
             }
         </div>
     }
@@ -113,7 +113,7 @@ else
         }
         @if (_album is { Editions.Count: 0, Fetching: true })
         {
-            <Loading Inline="true" Text="Fetching its editions and tracks from MusicBrainz…" />
+            <Loading Inline="true" Text="Fetching its editions and tracks from the catalogue…" />
         }
         <div class="card">
             <table class="table track-list album-tracks narrow-status" aria-busy="true">
@@ -177,8 +177,8 @@ else
                                 @if (track.Status is TrackStatus.Owned or TrackStatus.OwnedElsewhere)
                                 {
                                     <IconButton Icon="play" Requires="@UserPermissions.Listen" Title="Play the tracks you have from here" OnClick="() => PlayOwnedFromAsync(track)" />
-                                    <IconButton Icon="queue" Requires="@UserPermissions.Listen" Title="Add to the queue" Confirm="true"
-                                                OnClick="() => Player.AddAsync([PlayerEntry.Owned(track, album, _album.ShownEditionId)])" />
+                                    <QueueButton Title="Add to the queue: next, or at the end"
+                                                OnQueue="next => Player.AddAsync([PlayerEntry.Owned(track, album, _album.ShownEditionId)], next)" />
                                     <IconButton Icon="playlist" Requires="@UserPermissions.Listen" Class="hide-narrow" Title="Add to a playlist"
                                                 OnClick="() => _adding = (track.Title, [new PlaylistItem(track.TrackId)])" />
                                 }

@@ -22,7 +22,11 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
     /// <summary>The catalogues that are on, core catalogue first.</summary>
     public async Task<IReadOnlyList<CatalogueIndex>> IndexesAsync(CancellationToken ct) => _indexes ??= await indexPlugins.GetAllAsync(ct);
 
-    private async Task<CatalogueIndex> IndexAsync(CancellationToken ct) => (await IndexesAsync(ct))[0];
+    /// <summary>Whether a catalogue is on. Without one, Melodex is a plain music library.</summary>
+    public async Task<bool> HasCatalogueAsync(CancellationToken ct) => (await IndexesAsync(ct)).Count > 0;
+
+    private async Task<CatalogueIndex> IndexAsync(CancellationToken ct) =>
+        (await IndexesAsync(ct)).FirstOrDefault() ?? throw new NoCatalogueException();
 
     /// <summary>The core catalogue's plugin.</summary>
     public async Task<IIndexPlugin> PluginAsync(CancellationToken ct) => (await IndexAsync(ct)).Plugin;
@@ -402,4 +406,10 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
             await MapAsync(EntityKind.Track, track.Id, external, ct);
         return track;
     }
+}
+
+/// <summary>Something needs a catalogue, and none is on.</summary>
+public sealed class NoCatalogueException() : InvalidOperationException(Message)
+{
+    public new const string Message = "This needs a catalogue, and none is set up. Add one, such as MusicBrainz, under Settings → Plugins.";
 }

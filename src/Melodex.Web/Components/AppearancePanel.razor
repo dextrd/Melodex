@@ -1,0 +1,168 @@
+@inject MelodexClient Api
+@inject AuthState Auth
+@inject Theme Theme
+@implements IDisposable
+
+@*
+    How the web app looks: for whoever's signed in, kept with their account, or for everyone who hasn't chosen their own.
+    Each choice shows at once where it's what you see.
+*@
+<section class="panel" aria-label="@Title">
+    <header class="panel-head">
+        <div class="panel-title">
+            <h2>@Title</h2>
+            <p class="muted small">
+                @if (ForEveryone)
+                {
+                    <span>How Melodex looks and behaves for everyone who hasn't chosen their own look. Each person can choose their own under Settings → Appearance.</span>
+                }
+                else if (Auth.Status?.OwnAppearance == true)
+                {
+                    <span>How Melodex looks and behaves for you, on every device you sign in on. </span>
+                    <button class="link" disabled="@_saving" @onclick="FollowEveryoneAsync">Use everyone's look instead</button>
+                }
+                else
+                {
+                    <span>You're following the look chosen for everyone. Change anything here to make it your own, on every device you sign in on.</span>
+                }
+            </p>
+        </div>
+        @if (_saving) { <span class="spinner"></span> }
+    </header>
+    <div class="appearance">
+        <div class="field-label">Colour</div>
+        <div class="swatches" role="radiogroup" aria-label="Colour">
+            @foreach (var (color, name, light, dark) in Theme.Colors)
+            {
+                <button type="button" role="radio" aria-checked="@(_appearance.Color == color ? "true" : "false")"
+                        class="swatch @(_appearance.Color == color ? "selected" : "")" @onclick="() => SaveAsync(_appearance with { Color = color })">
+                    <span class="swatch-dot" style="--light: @light; --dark: @dark" aria-hidden="true"></span>
+                    @name
+                </button>
+            }
+        </div>
+
+        <div class="field-label">Light or dark</div>
+        <div class="mode-choices" role="radiogroup" aria-label="Light or dark">
+            @foreach (var (mode, name, hint) in Theme.Modes)
+            {
+                <label class="dialog-choice">
+                    <input type="radio" name="@($"mode-{(ForEveryone ? "everyone" : "you")}")" checked="@(_appearance.Mode == mode)" @onchange="() => SaveAsync(_appearance with { Mode = mode })" />
+                    <span><strong>@name</strong><span class="muted small">@hint</span></span>
+                </label>
+            }
+        </div>
+
+        <label class="dialog-choice">
+            <input type="checkbox" checked="@_appearance.HighContrast" @onchange="e => SaveAsync(_appearance with { HighContrast = (bool)e.Value! })" />
+            <span>
+                <strong>High contrast</strong>
+                <span class="muted small">Stronger text and borders, and owned, partial, covered and missing in colours that colour-blind people can tell apart</span>
+            </span>
+        </label>
+        <div class="field-label">Long lists</div>
+        <p class="small">
+            The Library and playlists show
+            <NumberField Value="_appearance.ListPage" Min="20" Max="500" Step="20" Label="How many to show at a time"
+                         ValueChanged="v => SaveAsync(_appearance with { ListPage = v })" />
+            at a time, and more as you scroll down. <span class="muted">Fewer opens long lists faster.</span>
+        </p>
+        @if (_error is not null) { <p class="error small">@_error</p> }
+    </div>
+</section>
+
+@code {
+    /// <summary>Everyone's look, rather than your own.</summary>
+    [Parameter] public bool ForEveryone { get; set; }
+
+    private Appearance _appearance = new();
+    private bool _saving;
+    private string? _error;
+
+    private string Title => ForEveryone ? "Appearance for everyone" : "Appearance";
+
+    // Everyone's look shows as you change it only while you follow it.
+    private bool Shown => !ForEveryone || Auth.Status?.OwnAppearance != true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Auth.Changed += OnAuthChanged;
+        _appearance = Auth.Status?.Appearance ?? new Appearance();
+        if (ForEveryone)
+        {
+            try
+            {
+                _appearance = await Api.GetDefaultAppearanceAsync();
+            }
+            catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+            {
+                _error = "Couldn't read everyone's look.";
+            }
+        }
+    }
+
+    private async Task SaveAsync(Appearance appearance)
+    {
+        _appearance = appearance;
+        _error = null;
+        if (Shown)
+            await Theme.ApplyAsync(appearance);
+        _saving = true;
+        try
+        {
+            if (ForEveryone)
+            {
+                await Api.SetDefaultAppearanceAsync(appearance);
+                if (Shown && Auth.Status is { } status)
+                    Auth.Set(status with { Appearance = appearance });
+            }
+            else
+            {
+                await Api.SetAppearanceAsync(appearance);
+                if (Auth.Status is { } status)
+                    Auth.Set(status with { Appearance = appearance, OwnAppearance = true });
+            }
+        }
+        catch (MelodexApiException e)
+        {
+            _error = ForEveryone ? $"Couldn't keep it: {e.Message}" : $"Couldn't keep it with your account: {e.Message}";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task FollowEveryoneAsync()
+    {
+        _saving = true;
+        _error = null;
+        try
+        {
+            _appearance = await Api.ClearAppearanceAsync();
+            await Theme.ApplyAsync(_appearance);
+            if (Auth.Status is { } status)
+                Auth.Set(status with { Appearance = _appearance, OwnAppearance = false });
+        }
+        catch (MelodexApiException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // Following everyone's look, yours changes when theirs does.
+    private void OnAuthChanged()
+    {
+        if (!ForEveryone && Auth.Status is { OwnAppearance: false, Appearance: { } appearance })
+        {
+            _appearance = appearance;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose() => Auth.Changed -= OnAuthChanged;
+}

@@ -407,6 +407,9 @@ namespace Melodex.Core.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("PutBackAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ReviewReason")
                         .HasColumnType("TEXT");
 
@@ -501,6 +504,9 @@ namespace Melodex.Core.Data.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("AddToTop")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Comment")
                         .HasColumnType("TEXT");

@@ -146,6 +146,30 @@ public sealed class ScanAndReviewTests(RequestFixture fixture)
     }
 
     [TestLibraryFact]
+    public async Task A_file_set_aside_moves_between_the_lists_and_is_back_on_review_at_once_when_put_back()
+    {
+        var item = (await Api.GetReviewAsync()).First();
+
+        // From one list to another, without going through the review list.
+        await Api.SetFileAsideAsync(item.FileId, SetAside.Excluded);
+        await Api.SetFileAsideAsync(item.FileId, SetAside.Deferred);
+        Assert.Contains(await Api.GetReviewAsync(ReviewList.Deferred), i => i.FileId == item.FileId);
+        await Api.SetFileAsideAsync(item.FileId, SetAside.Hidden);
+        Assert.Contains(await Api.GetReviewAsync(ReviewList.Hidden), i => i.FileId == item.FileId);
+        Assert.DoesNotContain(await Api.GetReviewAsync(ReviewList.Deferred), i => i.FileId == item.FileId);
+        await Api.SetFileAsideAsync(item.FileId, SetAside.Excluded);
+
+        // Put back, it's on the review list straight away, not only after a scan, and the next scan matches it again.
+        await Api.SetFileAsideAsync(item.FileId, SetAside.None);
+        var back = Assert.Single(await Api.GetReviewAsync(), i => i.FileId == item.FileId);
+        Assert.Contains("Put back", back.Reason);
+        var scan = await ScanAsync();
+        Assert.Contains("1 to review", scan.Progress);
+        var matched = Assert.Single(await Api.GetReviewAsync(), i => i.FileId == item.FileId);
+        Assert.DoesNotContain("Put back", matched.Reason ?? "");
+    }
+
+    [TestLibraryFact]
     public async Task A_scan_can_match_unmatched_files_again()
     {
         var review = (await Api.GetReviewAsync()).Count;

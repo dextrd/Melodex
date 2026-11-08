@@ -1,0 +1,16 @@
+@*
+    Six dots to drag a row of a list by, the only place it can be picked up from, so its text can still be selected and
+    its buttons pressed. The row it's in takes the drop.
+*@
+<span class="drag-handle @(Disabled ? "off" : "")" draggable="@(Disabled ? "false" : "true")" title="Drag to move" aria-hidden="true"
+      @ondragstart="OnStart" @ondragend="OnEnd">
+    <svg viewBox="0 0 10 16"><circle cx="2.5" cy="3" r="1.4" /><circle cx="7.5" cy="3" r="1.4" /><circle cx="2.5" cy="8" r="1.4" /><circle cx="7.5" cy="8" r="1.4" /><circle cx="2.5" cy="13" r="1.4" /><circle cx="7.5" cy="13" r="1.4" /></svg>
+</span>
+
+@code {
+    [Parameter] public EventCallback OnStart { get; set; }
+
+    [Parameter] public EventCallback OnEnd { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+}

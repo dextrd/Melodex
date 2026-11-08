@@ -48,9 +48,9 @@ else
                             OnClick="() => Player.PlayAsync(playable)" />
                 <IconButton Icon="shuffle" Requires="@UserPermissions.Listen" Large="true" Title="Shuffle: play in a random order" Disabled="playable.Count == 0"
                             OnClick="() => Player.PlayAsync(playable.OrderBy(_ => Random.Shared.Next()).ToList())" />
-                <IconButton Icon="queue" Requires="@UserPermissions.Listen" Large="true" Confirm="true" Title="Add to the queue" Disabled="playable.Count == 0"
-                            OnClick="() => Player.AddAsync(playable)" />
-                <IconButton Icon="rename" Large="true" Label="Rename" Title="Rename it, move it to another folder, or change its comment" OnClick="StartRename" />
+                <QueueButton Large="true" Left="true" Title="Add to the queue: next, or at the end" Disabled="playable.Count == 0"
+                            OnQueue="next => Player.AddAsync(playable, next)" />
+                <IconButton Icon="rename" Large="true" Label="Edit" Title="Rename it, move it to another folder, change its comment, or choose where songs you add go" OnClick="StartRename" />
                 <IconButton Icon="image" Large="true" Label="Picture" Title="Give it a picture of its own, or take it away" OnClick="() => _choosingCover = true" />
                 <IconButton Icon="pin" Large="true" On="summary.Pinned" Title="@(summary.Pinned ? "Unpin it" : "Pin it, to show it first among your playlists")" OnClick="PinAsync" />
                 <IconButton Icon="remove" Large="true" Title="Delete the playlist" OnClick="() => _deleting = true" />
@@ -67,7 +67,7 @@ else
     else
     {
         <div class="card">
-            <table class="table track-list playlist-songs">
+            <table class="table track-list playlist-songs" data-reorder>
                 @* Fixed widths, so the columns stay put as more rows are drawn. *@
                 <colgroup><col class="num-col" /><col class="cover-col" /><col /><col class="album-col hide-narrow" /><col class="length-col hide-narrow" /><col class="icons-4-col" /></colgroup>
                 <thead>
@@ -87,8 +87,10 @@ else
                         var song = _playlist.Songs[i];
                         var canPlay = song.State is PlaylistSongState.Library or PlaylistSongState.Local;
                         var albumHref = song.AlbumId is { } album ? $"{(song.State == PlaylistSongState.Local ? "local/albums" : "albums")}/{album}" : null;
-                        <tr @key="song.EntryId" class="@(canPlay ? "" : "dim") @(canPlay && Player.Now is { } now && now.TrackId == (song.TrackId ?? song.FileId) ? "playing" : "")">
-                            <td class="num muted">@(i + 1)</td>
+                        <tr @key="song.EntryId" class="@(canPlay ? "" : "dim") @(canPlay && Player.Now is { } now && now.TrackId == (song.TrackId ?? song.FileId) ? "playing" : "") @Drag.Class(index)"
+                            @ondragover="() => Drag.Over(index)" @ondragover:preventDefault="true"
+                            @ondrop="() => Drag.DropAsync(index, MoveToAsync)" @ondrop:preventDefault="true">
+                            <td class="num muted"><div class="drag-num"><DragHandle Disabled="_busy" OnStart="() => Drag.Start(index)" OnEnd="Drag.End" />@(i + 1)</div></td>
                             <td class="cover-col">
                                 @if (albumHref is not null) { <a href="@albumHref" tabindex="-1"><Cover Url="@song.CoverUrl" /></a> } else { <Cover Url="@song.CoverUrl" /> }
                             </td>
@@ -117,13 +119,16 @@ else
                             </td>
                             <td class="num hide-narrow muted">@Format.Duration(song.DurationSeconds)</td>
                             <td class="num actions">
-                                @if (canPlay)
-                                {
-                                    <IconButton Icon="play" Requires="@UserPermissions.Listen" Title="Play the playlist from here" OnClick="() => PlayFromAsync(song)" />
-                                }
-                                <IconButton Icon="up" Class="hide-narrow" Title="Move up" Disabled="index == 0 || _busy" OnClick="() => MoveAsync(index, -1)" />
-                                <IconButton Icon="down" Class="hide-narrow" Title="Move down" Disabled="index == _playlist.Songs.Count - 1 || _busy" OnClick="() => MoveAsync(index, 1)" />
-                                <IconButton Icon="cancel" Title="Take it out of the playlist" Disabled="_busy" OnClick="() => RemoveAsync(index)" />
+                                <div class="row-actions">
+                                    @if (canPlay)
+                                    {
+                                        <IconButton Icon="play" Requires="@UserPermissions.Listen" Title="Play the playlist from here" OnClick="() => PlayFromAsync(song)" />
+                                        <QueueButton Class="hide-narrow" Title="Add to the queue: next, or at the end"
+                                                    OnQueue="next => Player.AddAsync(PlaylistNames.Playable([song]), next)" />
+                                    }
+                                    <MoveMenu First="index == 0" Last="index == _playlist.Songs.Count - 1" Disabled="_busy" OnMove="by => MoveAsync(index, by)" />
+                                    <IconButton Icon="cancel" Title="Take it out of the playlist" Disabled="_busy" OnClick="() => RemoveAsync(index)" />
+                                </div>
                             </td>
                         </tr>
                     }
@@ -136,7 +141,7 @@ else
 
 @if (_renaming && _playlist is not null)
 {
-    <Dialog Title="Rename the playlist" OnClose="() => _renaming = false">
+    <Dialog Title="Edit the playlist" OnClose="() => _renaming = false">
         <div class="field">
             <label class="field-label" for="playlist-rename">Name</label>
             <input id="playlist-rename" type="text" @bind="_name" @bind:event="oninput" />
@@ -146,6 +151,7 @@ else
             <label class="field-label" for="playlist-comment">Comment</label>
             <textarea id="playlist-comment" rows="3" @bind="_comment"></textarea>
         </div>
+        <AddToTopField @bind-Value="_addToTop" />
         @if (_renameError is not null) { <p class="error small">@_renameError</p> }
         <div class="toolbar">
             <span class="spacer"></span>
@@ -196,6 +202,7 @@ else
     private Guid _shown;
     private string _name = "";
     private string? _comment, _error, _renameError;
+    private bool _addToTop;
 
     private string Delimiter => PlaylistNames.Delimiter(Auth);
 
@@ -257,10 +264,17 @@ else
         return Player.PlayAsync(PlaylistNames.Playable(playable), playable.IndexOf(from));
     }
 
+    private readonly DragOrder Drag = new();
+
+    private Task MoveToAsync(int from, int to) => MoveAsync(from, to - from);
+
+    // A step up or down, or to the top or bottom.
     private Task MoveAsync(int index, int by)
     {
         var ids = _playlist!.Songs.Select(s => s.EntryId).ToList();
-        (ids[index], ids[index + by]) = (ids[index + by], ids[index]);
+        var id = ids[index];
+        ids.RemoveAt(index);
+        ids.Insert(Math.Clamp(by is int.MinValue or int.MaxValue ? by : index + by, 0, ids.Count), id);
         return ArrangeAsync(ids);
     }
 
@@ -287,6 +301,7 @@ else
     {
         _name = _playlist!.Playlist.Name;
         _comment = _playlist.Playlist.Comment;
+        _addToTop = _playlist.Playlist.AddToTop;
         _renameError = null;
         _renaming = true;
     }
@@ -297,7 +312,7 @@ else
         _renameError = null;
         try
         {
-            var summary = await Api.UpdatePlaylistAsync(Id, new UpdatePlaylist(_name.Trim(), _comment ?? ""));
+            var summary = await Api.UpdatePlaylistAsync(Id, new UpdatePlaylist(_name.Trim(), _comment ?? "", _addToTop));
             _playlist = _playlist! with { Playlist = summary };
             _renaming = false;
             _rechecks = 0;

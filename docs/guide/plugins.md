@@ -11,6 +11,14 @@ Melodex is pluggable in five ways. Manage them under **Settings → Plugins**, w
 | **Artwork** | Covers and artist pictures | Cover Art Archive, Wikimedia Commons, Deezer, fanart.tv (with your own key) |
 | **Lyrics** | The words of songs, synced where they can be | LRCLIB |
 
+## Without a catalogue
+
+The catalogue can be removed, MusicBrainz included, and Melodex is then a plain music library: your files are listed
+and played as their tags say, as [your own music](library.md#your-own-music) is. There's nothing missing, nothing to
+fetch, and search finds only what you have. Add a catalogue whenever you like, and the next scan matches your files
+against it. Files matched before it was removed stay as they are. Beets doesn't need MusicBrainz either: music fetched
+through a catalogue that isn't MusicBrainz, such as Deezer, is filed as it's tagged.
+
 Retrieval, artwork and lyrics plugins are tried in order; move them up and down to change it. A retrieval plugin is a separate service that
 speaks a small HTTP contract, so anyone can write one: see [the plugin contracts](../contracts/README.md).
 

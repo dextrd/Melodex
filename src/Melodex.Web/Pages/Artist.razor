@@ -61,7 +61,7 @@ else
     }
     else if (_artist.Fetching)
     {
-        <Loading Inline="true" Text="@(_artist.Albums.Any(a => !a.Local) ? "Fetching the rest of the discography from MusicBrainz…" : "Fetching the discography from MusicBrainz…")" />
+        <Loading Inline="true" Text="@(_artist.Albums.Any(a => !a.Local) ? "Fetching the rest of the discography from the catalogue…" : "Fetching the discography from the catalogue…")" />
     }
     else if (_artist.Albums.Count == 0 || Catalogue.Count == 0 && Prefs.Ownership == OwnershipView.Missing)
     {

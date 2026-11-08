@@ -10,9 +10,10 @@ namespace Melodex.Core.Catalogue;
 
 /// <summary>
 /// Searching for artists, albums and tracks: through the catalogues, whose answers are kept a while so a search
-/// made again comes back at once, or only in the catalogue Melodex already holds, which answers in a moment.
+/// made again comes back at once, or only in the catalogue Melodex already holds, which answers in a moment. The second
+/// takes in music of your own, listed as its tags say, too.
 /// </summary>
-public sealed class CatalogueSearch(MelodexDbContext db, CatalogueService service, LibraryView view)
+public sealed class CatalogueSearch(MelodexDbContext db, CatalogueService service, LibraryView view, LocalMusic local)
 {
     private const int Limit = 10;
 
@@ -23,7 +24,8 @@ public sealed class CatalogueSearch(MelodexDbContext db, CatalogueService servic
         text = text.Trim();
         if (text.Length == 0)
             return new SearchResults([], [], []);
-        return local ? await LocalAsync(text, kinds, ct) : await RemoteAsync(text, kinds, ct);
+        // Without a catalogue, there's only the library to search.
+        return local || !await service.HasCatalogueAsync(ct) ? await LocalAsync(text, kinds, ct) : await RemoteAsync(text, kinds, ct);
     }
 
     private static bool Wants(IReadOnlySet<SearchKind>? kinds, SearchKind kind) => kinds is null || kinds.Count == 0 || kinds.Contains(kind);
@@ -125,7 +127,22 @@ public sealed class CatalogueSearch(MelodexDbContext db, CatalogueService servic
                 .DistinctBy(et => et.TrackId).ToDictionary(et => et.TrackId, et => et.Album);
             tracks.AddRange(found.Select(t => (t, albums.GetValueOrDefault(t.Id))));
         }
-        return await ResultsAsync(artists, albumIds, tracks, ct);
+        var results = await ResultsAsync(artists, albumIds, tracks, ct);
+
+        // Your own music, after the catalogue's.
+        if (!Wants(kinds, SearchKind.Artist) && !Wants(kinds, SearchKind.Album))
+            return results;
+        var own = await local.LoadAsync(ct);
+        bool Has(string name) => name.Contains(text, StringComparison.CurrentCultureIgnoreCase);
+        var ownArtists = Wants(kinds, SearchKind.Artist)
+            ? own.Artists.Where(a => Has(a.Name)).OrderBy(a => a.Name.Length).ThenBy(a => a.Name)
+                .Select(a => new SearchArtist(a.Id, a.Name, null, true, [], a.Albums[0].CoverUrl, Local: true)).Take(Limit).ToList()
+            : [];
+        var ownAlbums = Wants(kinds, SearchKind.Album)
+            ? own.Albums.Where(a => a.Title != LocalMusic.NoAlbum && Has(a.Title)).OrderBy(a => a.Title.Length).ThenBy(a => a.Title)
+                .Select(a => a.Summary()).Take(Limit).ToList()
+            : [];
+        return results with { Artists = [.. results.Artists, .. ownArtists], Albums = [.. results.Albums, .. ownAlbums] };
     }
 
     private async Task<SearchResults> ResultsAsync(List<Artist> artists, List<Guid> albumIds, List<(Track Track, Album? Album)> tracks, CancellationToken ct)

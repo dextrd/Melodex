@@ -79,29 +79,39 @@ public sealed record CatalogueIndex(PluginInstance Instance, IIndexPlugin Plugin
 
 /// <summary>
 /// The catalogues that are on, in the user's order. The first is the core catalogue; the ones after it fill in what
-/// it doesn't have, and each is asked about entities by its own IDs.
+/// it doesn't have, and each is asked about entities by its own IDs. There may be none: Melodex is then a plain music
+/// library, showing files as their tags say, without missing music or fetching.
 /// </summary>
 public sealed class IndexPlugins(MelodexDbContext db, PluginHost host, PluginCatalog catalog)
 {
+    public const string DefaultsSetting = "index.defaults";
+
     public async Task<IReadOnlyList<CatalogueIndex>> GetAllAsync(CancellationToken cancellationToken)
     {
         var instances = await db.PluginInstances
             .Where(p => p.Type == PluginType.Index && p.Enabled)
             .OrderBy(p => p.Priority)
             .ToListAsync(cancellationToken);
-        if (instances.Count == 0)
-            throw new InvalidOperationException("No index plugin is set up.");
         // A plugin that doesn't say is taken to use MusicBrainz IDs, as every index plugin did before the field existed.
         return instances
             .Select(i => new CatalogueIndex(i, host.Get<IIndexPlugin>(i), catalog.Find(i.PluginId)?.Manifest.Provider ?? Melodex.Contracts.Catalogue.Providers.MusicBrainz))
             .ToList();
     }
 
-    /// <summary>On first run, sets up MusicBrainz as the index plugin, so the catalogue works out of the box.</summary>
+    /// <summary>
+    /// On first run, sets up MusicBrainz as the catalogue, so it works out of the box. Only once: removed, it stays
+    /// removed. An install from before this was offered once already has a catalogue, so nothing is added to it.
+    /// </summary>
     public static async Task EnsureDefaultAsync(MelodexDbContext db, PluginCatalog catalog)
     {
-        if (await db.PluginInstances.AnyAsync(p => p.Type == PluginType.Index))
+        if (await db.Settings.FindAsync(DefaultsSetting) is not null)
             return;
+        db.Settings.Add(new Setting { Key = DefaultsSetting, ValueJson = "true" });
+        if (await db.PluginInstances.AnyAsync(p => p.Type == PluginType.Index))
+        {
+            await db.SaveChangesAsync();
+            return;
+        }
         var manifest = catalog.Find(MusicBrainzIndexFactory.PluginId)!.Manifest;
         db.PluginInstances.Add(new PluginInstance
         {

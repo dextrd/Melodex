@@ -22,14 +22,7 @@ public static class SetupEndpoints
                 var path = options.Value.LibraryPath;
                 var (readable, files) = Count(path);
                 var scanned = await db.BackgroundTasks.AnyAsync(t => t.Kind == LibraryScanTask.TaskKind && t.Status == BackgroundTaskStatus.Succeeded, ct);
-                var done = await db.Settings.AnyAsync(s => s.Key == DoneKey, ct);
-                // An install that had music before there were setup steps doesn't need them.
-                if (!done && await db.LibraryFiles.AnyAsync(ct))
-                {
-                    await MarkDoneAsync(db, ct);
-                    done = true;
-                }
-                return new SetupStatus(done, Path.GetFullPath(path), readable, files,
+                return new SetupStatus(await IsDoneAsync(db, ct), Path.GetFullPath(path), readable, files,
                     await db.PluginInstances.AnyAsync(p => p.Type == PluginType.Connector, ct),
                     await db.PluginInstances.AnyAsync(p => p.Type == PluginType.Retrieval, ct),
                     scanned);
@@ -46,7 +39,42 @@ public static class SetupEndpoints
             .WithName("FinishSetup")
             .WithSummary("Setup is finished, or skipped: the web app stops showing its steps.");
 
+        setup.MapPost("/reset", (FactoryResetRequest body, HttpContext http, IOptions<MelodexOptions> options, IHostApplicationLifetime lifetime) =>
+            {
+                if (Caller.Of(http) is not { Kind: CallerKind.User, IsAdmin: true })
+                    return Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: "Only the admin, signed in, can reset Melodex.");
+                if (!string.Equals(body.Confirm?.Trim(), FactoryReset.Confirmation, StringComparison.OrdinalIgnoreCase))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["confirm"] = [$"Type \"{FactoryReset.Confirmation}\" to reset Melodex."] });
+                FactoryReset.Request(options.Value);
+                // Once the answer is sent, Melodex stops, and wipes everything as it starts again.
+                http.Response.OnCompleted(() =>
+                {
+                    lifetime.StopApplication();
+                    return Task.CompletedTask;
+                });
+                return Results.Accepted();
+            })
+            .WithName("FactoryReset")
+            .WithSummary("Resets Melodex as it was first installed, for the admin only, who must send confirm: \"reset\". Users, settings, plugins, "
+                         + "the library's matches, playlists, requests, the cache, pictures, logs and Listen Now files all go; the music folder and "
+                         + "plugins' own data stay. Melodex restarts, so everyone is signed out, and the web app starts setup again.")
+            .Produces(StatusCodes.Status202Accepted).ProducesValidationProblem();
+
         return api;
+    }
+
+    /// <summary>
+    /// Whether setup is finished. Until it is, the web app shows only its steps. An install that had music before there
+    /// were setup steps doesn't need them.
+    /// </summary>
+    public static async Task<bool> IsDoneAsync(MelodexDbContext db, CancellationToken ct)
+    {
+        if (await db.Settings.AnyAsync(s => s.Key == DoneKey, ct))
+            return true;
+        if (!await db.LibraryFiles.AnyAsync(ct))
+            return false;
+        await MarkDoneAsync(db, ct);
+        return true;
     }
 
     private static async Task MarkDoneAsync(MelodexDbContext db, CancellationToken ct)

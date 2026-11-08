@@ -85,6 +85,12 @@ public class LibraryFile
     /// <summary>When the user hid it: it's out of the library altogether, though it stays in the music folder.</summary>
     public DateTime? HiddenAt { get; set; }
 
+    /// <summary>
+    /// When the user put it back on the review list from those set aside. It's on the list at once, and the next scan
+    /// tries to match it again.
+    /// </summary>
+    public DateTime? PutBackAt { get; set; }
+
     /// <summary>When a format last rewrote it; a paused format skips files it has already done.</summary>
     public DateTime? FormattedAt { get; set; }
 }

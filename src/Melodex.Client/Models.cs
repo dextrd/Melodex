@@ -480,7 +480,9 @@ public sealed record SearchResults(
     IReadOnlyList<SearchTrack> Tracks);
 
 /// <param name="ImageUrl">A picture of the artist, served by the core; a 404 when there's none.</param>
-public sealed record SearchArtist(Guid Id, string Name, string? Disambiguation, bool InLibrary, IReadOnlyList<ProviderId> Ids, string? ImageUrl = null);
+/// <param name="Local">An artist only your own files name, as their tags say: open them at <c>/library/local/artists/{id}</c>.</param>
+public sealed record SearchArtist(Guid Id, string Name, string? Disambiguation, bool InLibrary, IReadOnlyList<ProviderId> Ids, string? ImageUrl = null,
+    bool Local = false);
 
 /// <param name="AlbumId">The album the track is best known from, when the catalogue says.</param>
 /// <param name="CoverUrl">That album's cover, served by the core.</param>

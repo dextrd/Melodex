@@ -78,7 +78,7 @@ else
                     {
                         <IconButton Icon="play" Requires="@UserPermissions.Listen" Title="@(Player.IsNow(item.TrackId) ? "Playing" : "Play")" Primary="@Player.IsNow(item.TrackId)"
                                     OnClick="() => PlayAsync(playable, playable.IndexOf(item))" />
-                        <IconButton Icon="queue" Requires="@UserPermissions.Listen" Title="Add to the queue" Confirm="true" OnClick="() => Player.AddAsync([PlayerEntry.Listening(item)])" />
+                        <QueueButton Title="Add to the queue: next, or at the end" OnQueue="next => Player.AddAsync([PlayerEntry.Listening(item)], next)" />
                     }
                     @if (item.State == ListenNowState.Playable)
                     {

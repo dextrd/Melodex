@@ -195,6 +195,27 @@ public sealed class PlaylistTests : IDisposable
         Assert.Null(songs[1].ReviewPath);
     }
 
+    [TestLibraryFact]
+    public async Task A_playlist_can_take_songs_at_the_top()
+    {
+        await ScanAsync();
+        var (a, b) = await TwoTracksAsync();
+
+        var made = await _api.CreatePlaylistAsync(new CreatePlaylist("Newest first", Songs: [new PlaylistItem(a.TrackId)], AddToTop: true));
+        Assert.True(made.Playlist.AddToTop);
+        var id = made.Playlist.Id;
+        await _api.AddToPlaylistAsync(id, new AddToPlaylist([new PlaylistItem(b.TrackId)]));
+        var added = (await _api.GetPlaylistAsync(id))!;
+        Assert.Equal([b.Title, a.Title], added.Songs.Select(s => s.Title));
+
+        // Back to the bottom, which changes nothing the media server would hear of.
+        var changed = await _api.UpdatePlaylistAsync(id, new UpdatePlaylist(AddToTop: false));
+        Assert.False(changed.AddToTop);
+        Assert.Equal(added.Playlist.UpdatedAt, changed.UpdatedAt);
+        await _api.AddToPlaylistAsync(id, new AddToPlaylist([new PlaylistItem(a.TrackId)], Duplicates: true));
+        Assert.Equal([b.Title, a.Title, a.Title], (await _api.GetPlaylistAsync(id))!.Songs.Select(s => s.Title));
+    }
+
     [Fact]
     public void Names_are_compared_by_their_letters_and_artists()
     {

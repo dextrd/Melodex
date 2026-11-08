@@ -68,6 +68,8 @@ public sealed class LibraryScanTask(
             notes.Add(Count(scan.Unreadable, "file", "files") + " couldn't be read");
         if (match.Waiting > 0)
             notes.Add(Count(match.Waiting, "file", "files") + " left to match next scan (the catalogue source was busy)");
+        if (match.NoCatalogue > 0)
+            notes.Add(Count(match.NoCatalogue, "file", "files") + " shown as their tags say, as no catalogue is set up");
         if (match.StillDeferred > 0)
             notes.Add(Count(match.StillDeferred, "deferred file", "deferred files") + " still not a confident match");
         if (failures > 0)
@@ -81,15 +83,16 @@ public sealed class LibraryScanTask(
     private static string Count(int n, string one, string many) => LibraryMatcher.Plural(n, one, many);
 
     /// <summary>
-    /// Puts files back to be matched: deferred ones on every scan, and those the scan was asked to match again. Only
+    /// Puts files back to be matched: deferred ones and those put back on the review list on every scan, and those the
+    /// scan was asked to match again. Only
     /// files last matched before the scan was asked for, so a scan picked up again after a pause doesn't redo any.
     /// Files you matched, excluded or hid yourself are left alone.
     /// </summary>
     private async Task<int> RematchAsync(Rematch rematch, DateTime since, CancellationToken ct)
     {
         var files = db.LibraryFiles.Where(f => f.MatchedAt != null && f.MatchedAt < since && f.ExcludedAt == null && f.HiddenAt == null);
-        var again = await files.Where(f => f.DeferredAt != null && f.TrackId == null)
-            .ExecuteUpdateAsync(u => u.SetProperty(f => f.MatchedAt, (DateTime?)null), ct);
+        var again = await files.Where(f => (f.DeferredAt != null || f.PutBackAt != null) && f.TrackId == null)
+            .ExecuteUpdateAsync(u => u.SetProperty(f => f.MatchedAt, (DateTime?)null).SetProperty(f => f.PutBackAt, (DateTime?)null), ct);
         if (rematch == Rematch.Unmatched)
             again += await files.Where(f => f.TrackId == null)
                 .ExecuteUpdateAsync(u => u.SetProperty(f => f.MatchedAt, (DateTime?)null), ct);

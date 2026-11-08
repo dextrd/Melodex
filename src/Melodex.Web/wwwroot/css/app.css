@@ -189,6 +189,35 @@ h2 { font-size: 1.15rem; margin: 1.75rem 0 .5rem; }
 @media (max-width: 360px) { .brand { font-size: 0; gap: 0; } }
 .spacer { flex: 1; }
 main { max-width: 1100px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
+/*
+    On a computer the page scrolls in its own box below the top bar, and above the player, so the scrollbar is only
+    beside the page. Phones keep scrolling the whole window: their scrollbars sit over the page anyway, and that way the
+    browser's own bars can tuck away as you scroll.
+*/
+@media (hover: hover) and (pointer: fine) {
+    html:has(.page-scroll), html:has(.page-scroll) body { height: 100%; overflow: hidden; }
+    body:has(.page-scroll) #app { height: 100%; display: flex; flex-direction: column; }
+    #app > * { flex: none; }
+    #app > .page-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+    .settings-nav { top: 1.25rem; }
+}
+
+/*
+    Scrollbars in the theme's colours: a muted thumb, stronger under the pointer and the accent colour while held. Where
+    the browser has its own scrollbar styles (Chrome, Edge, Safari) they're used, as they can tell when the thumb is
+    held; elsewhere (Firefox) a script marks the box whose scrollbar is held (see scroll.js).
+*/
+@supports selector(::-webkit-scrollbar) {
+    ::-webkit-scrollbar { width: 12px; height: 12px; background: transparent; }
+    ::-webkit-scrollbar-corner { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--muted) 45%, transparent); border: 3px solid transparent; border-radius: 6px; background-clip: padding-box; }
+    ::-webkit-scrollbar-thumb:hover { background-color: var(--muted); }
+    ::-webkit-scrollbar-thumb:active { background-color: var(--accent); }
+}
+@supports not selector(::-webkit-scrollbar) {
+    * { scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent; }
+    .scrollbar-held { scrollbar-color: var(--accent) transparent; }
+}
 
 /* Controls */
 button, .button {
@@ -198,10 +227,11 @@ button, .button {
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 button:disabled { opacity: .55; cursor: default; }
 button.link { border: none; background: none; color: var(--accent); padding: 0; }
-input[type=search], input[type=text], input[type=number], select {
+input[type=search], input[type=text], input[type=number], select, textarea {
     font: inherit; padding: .4rem .6rem; border: 1px solid var(--border); border-radius: 6px;
     background: var(--surface); color: var(--text);
 }
+textarea { resize: vertical; line-height: 1.45; }
 input[type=search] { width: 100%; max-width: 420px; }
 label { display: inline-flex; align-items: center; gap: .4rem; }
 
@@ -434,7 +464,7 @@ h3 { font-size: 1rem; margin: 1.25rem 0 .25rem; }
 .field-label { display: block; font-weight: 600; font-size: .9rem; margin-bottom: .2rem; }
 label.field { display: flex; flex-direction: column; align-items: stretch; gap: 0; }
 .field > span.muted.small { display: block; margin-top: .2rem; }
-.field input[type=text], .field input[type=password], .field select { width: 100%; max-width: 32rem; }
+.field input[type=text], .field input[type=password], .field select, .field textarea { width: 100%; max-width: 32rem; box-sizing: border-box; }
 input[type=password] { font: inherit; padding: .4rem .6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
 code { font-size: .85em; background: var(--bg); padding: .05rem .3rem; border-radius: 4px; border: 1px solid var(--border); overflow-wrap: anywhere; }
 .plugin-message { color: var(--partial); overflow-wrap: anywhere; }
@@ -461,6 +491,9 @@ code { font-size: .85em; background: var(--bg); padding: .05rem .3rem; border-ra
 }
 .plugin-about, .plugin-card .plugin-message { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .plugin-card .plugin-message { align-self: start; }
+.plugin-about { cursor: pointer; }
+.plugin-card.open, .user-card { height: auto; min-height: 9.5rem; }
+.plugin-card.open .plugin-about, .plugin-card.open .plugin-message { display: block; -webkit-line-clamp: none; }
 .plugin-actions { display: flex; align-items: center; gap: .3rem; }
 .plugin-card.off .plugin-top strong, .plugin-card.off .plugin-about { opacity: .55; }
 @media (max-width: 640px) {
@@ -531,8 +564,10 @@ h2.section-title { margin: 1.5rem 0 0; }
 .player { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; }
 .player-bar {
     display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr); gap: 1rem; align-items: center;
-    padding: .5rem 1rem; background: var(--surface); border-top: 1px solid var(--border);
+    position: relative; padding: .5rem 1rem; background: var(--surface); border-top: 1px solid var(--border);
 }
+/* A phone's: the button behind it all that opens the full-screen player, and the line showing how far the song has got. */
+.player-open, .player-progress { display: none; }
 .player-track { display: flex; gap: .75rem; align-items: center; min-width: 0; }
 .player-art { position: relative; width: 3.5rem; flex: none; padding: 0; border: none; background: none; border-radius: 6px; height: auto; }
 .player-art .cover { width: 100%; }
@@ -550,8 +585,14 @@ h2.section-title { margin: 1.5rem 0 0; }
 .player-seek { display: flex; gap: .6rem; align-items: center; }
 .player-seek input { flex: 1; min-width: 0; accent-color: var(--accent); }
 .player-seek .time { width: 3rem; text-align: center; font-variant-numeric: tabular-nums; }
-.volume { display: flex; align-items: center; gap: .1rem; }
+.volume { position: relative; display: flex; align-items: center; gap: .1rem; }
 .volume input { width: 6rem; accent-color: var(--accent); }
+.volume > .volume-open { display: none; }
+.volume-pop {
+    position: absolute; right: 0; bottom: calc(100% + .9rem); z-index: 31; display: flex; align-items: center; gap: .25rem;
+    padding: .35rem .7rem .35rem .35rem; box-shadow: 0 6px 24px rgb(0 0 0 / .25);
+}
+.volume-pop input { width: 9rem; }
 button.icon {
     display: inline-grid; place-items: center; width: 2.25rem; height: 2.25rem; padding: 0; border-radius: 999px;
     border: none; background: none; color: var(--text);
@@ -577,16 +618,31 @@ button.icon.play svg { fill: currentColor; }
 .queue-list li.dim { opacity: .55; }
 .queue-list .queue-title { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; text-align: left; color: var(--text); }
 .queue-list .queue-title > span { max-width: 100%; }
+.queue-list .queue-cover { width: 2.25rem; flex: none; border-radius: 4px; }
+/* Narrower, the right takes only the room its buttons need, and the volume folds into a button. */
+@media (max-width: 1100px) {
+    .player-bar { grid-template-columns: minmax(0, 1fr) minmax(13.5rem, 1.6fr) auto; }
+    .volume.folds > .volume-mute, .volume.folds > input[type=range] { display: none; }
+    .volume.folds > .volume-open { display: inline-grid; }
+}
+/* Narrower still, the playlist and lyrics buttons are left to the full-screen player. */
+@media (max-width: 900px) { .player-bar .fold { display: none; } }
 @media (max-width: 760px) {
-    /* On a phone the seek bar takes a row of its own, and the rest is in the full-screen player. */
-    .player-space { height: 7.5rem; }
-    .player-bar { grid-template-columns: minmax(0, 1fr) auto auto; gap: .3rem .5rem; padding: .5rem .75rem; }
+    /* On a phone it's one line: what's playing, and previous, play, next and stop. Anywhere else opens the full-screen
+       player, which has the rest; a line along the top shows how far the song has got. */
+    .player-space { height: 4.5rem; }
+    .player-bar { grid-template-columns: minmax(0, 1fr) auto auto; gap: .5rem; padding: .5rem .75rem; }
     .player-art { width: 3rem; }
+    .player-track { pointer-events: none; }
     .player-centre { display: contents; }
-    .player-centre .player-seek { grid-column: 1 / -1; grid-row: 2; max-width: none; }
-    .player-controls { grid-column: 2; grid-row: 1; gap: 0; }
+    .player-centre .player-seek { display: none; }
+    .player-controls { grid-column: 2; grid-row: 1; gap: .15rem; }
     .player-end { grid-column: 3; grid-row: 1; gap: 0; }
+    .player-controls, .player-end { position: relative; z-index: 1; }
     .player-bar .hide-narrow { display: none; }
+    .player-open { display: block; position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: none; border-radius: 0; background: none; cursor: pointer; }
+    .player-progress { display: block; position: absolute; left: 0; right: 0; top: -1px; height: 3px; background: color-mix(in srgb, var(--text) 12%, transparent); pointer-events: none; }
+    .player-progress > span { display: block; height: 100%; background: var(--accent); transition: width .25s linear; }
 }
 
 /* The full-screen player: the cover large over a blur of itself, with lyrics or the queue beside it. */
@@ -759,12 +815,15 @@ tr.playing td:nth-child(2) { color: var(--accent); font-weight: 600; }
 .icon-button:has(span:not(.spinner)) { padding: 0 .9rem 0 .7rem; }
 .icon-button.done { border-color: var(--owned); color: var(--owned); }
 .icon-button .spinner { width: .9rem; height: .9rem; }
-td.actions > .icon-button + .icon-button, td.actions > .icon-button + .badge, td.actions > .badge + .icon-button { margin-left: .3rem; }
+/* Buttons that open a menu are spaced like any other. */
+td.actions > :is(.icon-button, .queue-menu, .move-menu) + :is(.icon-button, .queue-menu, .move-menu),
+td.actions > :is(.icon-button, .queue-menu, .move-menu) + .badge, td.actions > .badge + :is(.icon-button, .queue-menu, .move-menu) { margin-left: .3rem; }
 .album-actions { gap: .4rem; }
 .track-list col.icons-2-col { width: 5.5rem; }
 .track-list col.icons-3-col { width: 9.5rem; }
 .track-list col.icons-4-col { width: 12.5rem; }
-@media (max-width: 640px) { .track-list col.icons-4-col { width: 5.5rem; } }
+/* On a phone a playlist song keeps play, move and take out. */
+@media (max-width: 640px) { .track-list col.icons-4-col { width: 7.75rem; } }
 /* Room between the last button and the card's edge. */
 .table tr > td:last-child.actions { padding-right: 1rem; }
 
@@ -1082,23 +1141,43 @@ svg.flip { transform: scaleY(-1); }
 .markdown th, .markdown td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
 .markdown th { color: var(--muted); font-weight: 600; }
 
-/* The setup steps after making the admin account. */
-.setup-steps { list-style: none; margin: 1rem 0; padding: 0; display: grid; gap: .5rem; max-width: 46rem; }
-.setup-step { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
-.setup-step.open { border-color: var(--accent); }
-.setup-head {
-    display: flex; align-items: center; gap: .75rem; width: 100%; padding: .8rem 1rem; font: inherit; color: var(--text);
-    background: none; border: none; cursor: pointer; text-align: left;
+/* The first run's setup: full screen, a step at a time, with the steps numbered along the bottom. */
+.setup-page { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+.setup-brand { display: flex; align-items: center; gap: .5rem; font-weight: 700; font-size: 1.1rem; padding: 1rem 1.25rem 0; }
+.setup-main { flex: 1; width: 100%; max-width: 900px; margin: 0 auto; padding: 1.5rem 1rem 2rem; box-sizing: border-box; }
+.setup-main > .muted:first-of-type { margin-top: 0; max-width: 46rem; }
+.setup-admin { display: grid; gap: .75rem; max-width: 28rem; padding: 1rem 1.1rem; }
+.setup-card, .setup-scan { display: grid; gap: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+.setup-card h2 { margin: 0; }
+.setup-card p, .setup-scan p { margin: 0; }
+.setup-scan .error { max-width: none; white-space: normal; }
+.setup-nav {
+    position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: .75rem;
+    padding: .7rem 1rem; background: var(--surface); border-top: 1px solid var(--border);
 }
-.setup-head strong { flex: 1; }
+.setup-back, .setup-next { flex: none; min-width: 5.5rem; }
+.setup-dots { flex: 1; display: flex; justify-content: center; gap: .25rem; list-style: none; margin: 0; padding: 0; min-width: 0; }
+.setup-dot {
+    display: flex; flex-direction: column; align-items: center; gap: .2rem; padding: .2rem .45rem; font: inherit;
+    background: none; border: none; color: var(--muted); cursor: pointer;
+}
+.setup-dot:disabled { cursor: default; }
+.setup-dot-name { font-size: .75rem; }
 .setup-number {
-    display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; flex: none;
-    background: var(--bg); border: 1px solid var(--border); font-size: .85rem; font-weight: 600;
+    display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 50%; flex: none;
+    background: var(--bg); border: 1px solid var(--border); font-size: .85rem; font-weight: 600; color: var(--text);
+    transition: background .15s, border-color .15s;
 }
-.setup-step.open .setup-number { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-.setup-body { padding: 0 1rem 1rem 3.35rem; display: grid; gap: .6rem; }
-.setup-body p { margin: 0; }
-@media (max-width: 600px) { .setup-body { padding-left: 1rem; } }
+.setup-dot:not(:disabled):hover .setup-number { border-color: var(--accent); }
+.setup-dot.passed .setup-number { border-color: var(--accent); color: var(--accent); }
+.setup-dot.current { color: var(--text); }
+.setup-dot.current .setup-number { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+@media (max-width: 600px) {
+    .setup-dot-name { display: none; }
+    .setup-dot { padding: .2rem .1rem; }
+    .setup-number { width: 1.7rem; height: 1.7rem; }
+    .setup-back, .setup-next { min-width: 0; }
+}
 .markdown td code { white-space: nowrap; }
 .setup-body .error { max-width: none; white-space: normal; }
 
@@ -1305,3 +1384,35 @@ input[type=search]:disabled { opacity: .6; }
 .cover.folder-cover { display: grid; place-items: center; background: var(--bg); color: var(--accent); }
 .cover.folder-cover svg { width: 46%; height: 46%; fill: currentColor; fill-opacity: .18; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
 .folder-crumbs { display: flex; flex-wrap: wrap; gap: .4rem; align-items: baseline; margin: 1rem 0 .75rem; }
+
+/* Moving a song in a playlist: the "more" button and its menu. */
+.move-menu, .queue-menu { position: relative; display: inline-flex; vertical-align: middle; }
+/* After their own display, or those meant to go on a phone stay. */
+@media (max-width: 640px) { .move-menu.hide-narrow, .queue-menu.hide-narrow { display: none; } }
+/* A row's buttons, evenly apart whether or not they open a menu. */
+.row-actions { display: flex; gap: .3rem; align-items: center; justify-content: flex-end; }
+.move-menu .menu { text-align: left; }
+.menu button:disabled { opacity: .45; cursor: default; background: none; }
+
+/* Shuffle and repeat: quieter than the transport until they're on, then in the accent, with a dot beneath. */
+button.icon.mode { color: var(--muted); position: relative; }
+button.icon.mode svg { width: 1.05rem; height: 1.05rem; }
+button.icon.mode.on { color: var(--accent); }
+button.icon.mode.on::after {
+    content: ""; position: absolute; bottom: .1rem; left: 50%; width: 4px; height: 4px; margin-left: -2px;
+    border-radius: 50%; background: currentColor;
+}
+.np-controls button.icon.mode svg { width: 1.3rem; height: 1.3rem; }
+
+/* Dragging a song to another place: it fades, and a line in the accent shows where it'll go. */
+[data-reorder] [draggable=true] { cursor: grab; }
+.drag-handle { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 1rem; height: 1.6rem; color: var(--muted); opacity: .55; touch-action: none; }
+.drag-handle svg { width: .6rem; height: 1rem; fill: currentColor; }
+.drag-handle:hover, [data-reorder] li:hover > .drag-handle, [data-reorder] tr:hover .drag-handle { opacity: 1; }
+.drag-handle:active { cursor: grabbing; }
+.drag-handle.off { opacity: .2; cursor: default; }
+/* The handle at the start of a row's number cell, the number at its end. */
+.drag-num { display: flex; align-items: center; justify-content: space-between; gap: .25rem; }
+.dragging { opacity: .45; }
+.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }

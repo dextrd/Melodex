@@ -1,0 +1,117 @@
+@inject MelodexClient Api
+@inject AuthState Auth
+@inject NavigationManager Nav
+
+@*
+    The admin's way to start Melodex afresh: everything but the music folder goes, and setup begins again. Typing
+    "reset" makes sure it's meant.
+*@
+@if (Auth.Status?.IsAdmin == true)
+{
+    <h2>Reset</h2>
+    <div class="card settings-card">
+        <div class="setting-line">
+            <span>Put Melodex back as it was first installed, and set it up again.</span>
+            <span class="spacer"></span>
+            <button class="danger" @onclick="Open">Reset Melodex…</button>
+        </div>
+        <div class="muted small">Your music folder isn't touched.</div>
+    </div>
+
+    @if (_open)
+    {
+        <Dialog Title="Reset Melodex?" OnClose="Close" Alert="true">
+            @if (_restarting)
+            {
+                @if (_gone)
+                {
+                    <p>Melodex didn't come back. If it doesn't restart by itself, start it again, and open this page.</p>
+                }
+                else
+                {
+                    <p><span class="spinner"></span> Melodex is restarting…</p>
+                }
+            }
+            else
+            {
+                <p>
+                    Everything Melodex holds goes, for good: every user and API key, settings and plugins, the library's matches and what's set aside,
+                    playlists, requests and their history, webhooks, the cache, pictures, logs and Listen Now files. Everyone is signed out, and Melodex
+                    restarts and asks for a new admin account.
+                </p>
+                <p>Your music folder isn't touched, and nor is anything plugins keep of their own.</p>
+                <label class="field">
+                    <span class="field-label">Type <strong>@Confirmation</strong> to reset Melodex</span>
+                    <input type="text" autocomplete="off" @bind="_typed" @bind:event="oninput" />
+                </label>
+                @if (_error is not null) { <p class="error small">@_error</p> }
+                <div class="toolbar dialog-buttons">
+                    <button @onclick="Close">Cancel</button>
+                    <button class="danger" disabled="@(_busy || !string.Equals(_typed.Trim(), Confirmation, StringComparison.OrdinalIgnoreCase))" @onclick="ResetAsync">
+                        @if (_busy) { <span class="spinner"></span> }Reset Melodex
+                    </button>
+                </div>
+            }
+        </Dialog>
+    }
+}
+
+@code {
+    private const string Confirmation = "reset";
+
+    private bool _open;
+    private string _typed = "";
+    private bool _busy;
+    private bool _restarting;
+    private bool _gone;
+    private string? _error;
+
+    private void Open()
+    {
+        _open = true;
+        _typed = "";
+        _error = null;
+    }
+
+    private void Close()
+    {
+        if (!_restarting)
+            _open = false;
+    }
+
+    private async Task ResetAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Api.FactoryResetAsync(_typed.Trim());
+            _restarting = true;
+        }
+        catch (MelodexApiException e)
+        {
+            _error = e.Message;
+            _busy = false;
+            return;
+        }
+
+        // Melodex stops, and comes back empty: once it answers with no admin, setup starts from a fresh page.
+        StateHasChanged();
+        for (var waited = 0; waited < 120; waited += 2)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            try
+            {
+                if (!(await Api.GetAuthStatusAsync()).SetUp)
+                {
+                    Nav.NavigateTo("", forceLoad: true);
+                    return;
+                }
+            }
+            catch (Exception e) when (e is HttpRequestException or MelodexApiException or TaskCanceledException)
+            {
+            }
+        }
+        _gone = true;
+    }
+}

@@ -1,27 +1,48 @@
 @inject Player Player
 
-@* The volume: a slider, and a button that mutes and unmutes. Kept per browser. *@
-<div class="volume @Class">
-    <button class="icon" title="@(_volume == 0 ? "Unmute" : "Mute")" @onclick="MuteAsync">
-        <svg viewBox="0 0 24 24">
-            <path d="M4 9v6h4l5 4V5L8 9z" />
-            @if (_volume == 0)
-            {
-                <path d="M17 9l4 6M21 9l-4 6" />
-            }
-            else
-            {
-                <path d="M16.5 8.5a5 5 0 0 1 0 7" />
-                @if (_volume > .5) { <path d="M19 6a8.5 8.5 0 0 1 0 12" /> }
-            }
-        </svg>
-    </button>
-    <input type="range" min="0" max="1" step="0.01" value="@_volume.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)"
-           aria-label="Volume" @oninput="SetAsync" />
+@*
+    The volume: a slider, and a button that mutes and unmutes. Kept per browser. One that folds becomes a single button
+    when there's little room (see app.css), opening the slider and mute button above it.
+*@
+<div class="volume @Class @(Folds ? "folds" : "")">
+    <button class="icon volume-mute" title="@(_volume == 0 ? "Unmute" : "Mute")" @onclick="MuteAsync">@Icon</button>
+    <input type="range" min="0" max="1" step="0.01" value="@Value" aria-label="Volume" @oninput="SetAsync" />
+    @if (Folds)
+    {
+        <button class="icon volume-open @(_open ? "on" : "")" title="Volume" aria-expanded="@(_open ? "true" : "false")" @onclick="() => _open = !_open">@Icon</button>
+        @if (_open)
+        {
+            <div class="menu-backdrop" @onclick="() => _open = false"></div>
+            <div class="volume-pop card">
+                <button class="icon" title="@(_volume == 0 ? "Unmute" : "Mute")" @onclick="MuteAsync">@Icon</button>
+                <input type="range" min="0" max="1" step="0.01" value="@Value" aria-label="Volume" @oninput="SetAsync" />
+            </div>
+        }
+    }
 </div>
 
 @code {
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>Folds into a button that opens the slider, when there's little room.</summary>
+    [Parameter] public bool Folds { get; set; }
+
+    private bool _open;
+
+    private string Value => _volume.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    private RenderFragment Icon => @<svg viewBox="0 0 24 24">
+        <path d="M4 9v6h4l5 4V5L8 9z" />
+        @if (_volume == 0)
+        {
+            <path d="M17 9l4 6M21 9l-4 6" />
+        }
+        else
+        {
+            <path d="M16.5 8.5a5 5 0 0 1 0 7" />
+            @if (_volume > .5) { <path d="M19 6a8.5 8.5 0 0 1 0 12" /> }
+        }
+    </svg>;
 
     private double _volume = 1;
     private double _before = 1;

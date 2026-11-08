@@ -43,6 +43,9 @@
             <button class="icon @(Player.Panel == PlayerPanel.Queue ? "on" : "")" title="Queue (@Player.Queue.Count)" @onclick="() => Player.TogglePanel(PlayerPanel.Queue)">
                 <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h10M17 15v6l4-3z" /></svg>
             </button>
+            <button class="icon" title="Stop and clear the queue" @onclick="Player.ClearAsync">
+                <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5" /></svg>
+            </button>
             <button class="icon @(_visualiser ? "on" : "")" title="@(_visualiser ? "Hide the visualiser" : "Show the visualiser")" @onclick="ToggleVisualiserAsync">
                 <svg viewBox="0 0 24 24"><path d="M5 20V12M9 20V6M13 20V9M17 20V4M21 20v-6" /></svg>
             </button>
@@ -87,10 +90,14 @@
                 <span class="small muted time">@Format.Duration(Player.Duration)</span>
             </div>
             <div class="np-controls">
-                <button class="icon" title="Previous" disabled="@(now is null)" @onclick="Player.PreviousAsync">
+                <button class="icon mode@(Player.Shuffle ? " on" : "")" title="@(Player.Shuffle ? "Shuffle is on: click to play in order (S)" : "Shuffle: play what's to come in a random order (S)")"
+                        aria-pressed="@(Player.Shuffle ? "true" : "false")" disabled="@(now is null)" @onclick="() => Player.SetShuffleAsync(!Player.Shuffle)">
+                    <svg viewBox="0 0 24 24"><path d="M4 7h3.5c4.5 0 4.5 10 9 10H20M4 17h3.5c1.6 0 2.6-1.3 3.4-3M13.1 10c.8-1.7 1.8-3 3.4-3H20M17.5 4.5 20 7l-2.5 2.5M17.5 14.5 20 17l-2.5 2.5" /></svg>
+                </button>
+                <button class="icon" title="Previous (Shift+←)" disabled="@(now is null)" @onclick="Player.PreviousAsync">
                     <svg viewBox="0 0 24 24"><path d="M6 5v14M18 5 8 12l10 7z" /></svg>
                 </button>
-                <button class="icon play" title="@(Player.Playing ? "Pause" : "Play")" disabled="@(now is null)" @onclick="Player.ToggleAsync">
+                <button class="icon play" title="@(Player.Playing ? "Pause (Space)" : "Play (Space)")" disabled="@(now is null)" @onclick="Player.ToggleAsync">
                     @if (now?.Waiting == true)
                     {
                         <span class="spinner"></span>
@@ -104,8 +111,11 @@
                         <svg viewBox="0 0 24 24"><path d="M7 4.5v15L19 12z" /></svg>
                     }
                 </button>
-                <button class="icon" title="Next" disabled="@(now is null || Player.Current + 1 >= Player.Queue.Count)" @onclick="Player.NextAsync">
+                <button class="icon" title="Next (Shift+→)" disabled="@(now is null || !Player.HasNext)" @onclick="Player.NextAsync">
                     <svg viewBox="0 0 24 24"><path d="M18 5v14M6 5l10 7-10 7z" /></svg>
+                </button>
+                <button class="icon mode@(Player.Repeat != RepeatMode.Off ? " on" : "")" title="@RepeatTitle" aria-label="@RepeatTitle" disabled="@(now is null)" @onclick="Player.CycleRepeatAsync">
+                    <svg viewBox="0 0 24 24"><path d="M17 3l3 3-3 3M4 11V9a3 3 0 0 1 3-3h13M7 21l-3-3 3-3M20 13v2a3 3 0 0 1-3 3H4" />@if (Player.Repeat == RepeatMode.One) { <path d="M11 10.5l1.5-1v5" /> }</svg>
                 </button>
             </div>
             <VolumeControl Class="np-volume" />
@@ -113,7 +123,7 @@
 
         @if (Player.Panel == PlayerPanel.Queue)
         {
-            <aside class="np-panel np-queue"><PlayerQueue /></aside>
+            <aside class="np-panel np-queue"><PlayerQueue OnOpenPage="Player.Collapse" /></aside>
         }
         else if (Player.Panel == PlayerPanel.Lyrics)
         {
@@ -170,6 +180,13 @@
 </div>
 
 @code {
+    private string RepeatTitle => Player.Repeat switch
+    {
+        RepeatMode.All => "Repeating the queue: click to repeat this song (R)",
+        RepeatMode.One => "Repeating this song: click to stop repeating (R)",
+        _ => "Repeat: go round the queue again at the end (R)",
+    };
+
     private ElementReference _root, _canvas, _lyricsPanel;
     private PlayerEntry? _adding;
     private IJSObjectReference? _script;

@@ -43,7 +43,7 @@ public sealed class PlaylistService(MelodexDbContext db, SettingsService setting
 
     public async Task<PlaylistDetail> CreateAsync(Guid userId, CreatePlaylist body, CancellationToken ct)
     {
-        var playlist = new Playlist { UserId = userId, Name = CheckName(body.Name), Comment = Comment(body.Comment) };
+        var playlist = new Playlist { UserId = userId, Name = CheckName(body.Name), Comment = Comment(body.Comment), AddToTop = body.AddToTop };
         db.Playlists.Add(playlist);
         if (body.Songs is { Count: > 0 } songs)
             await AddEntriesAsync(playlist, songs, duplicates: true, ct);
@@ -60,7 +60,13 @@ public sealed class PlaylistService(MelodexDbContext db, SettingsService setting
             playlist.Name = CheckName(body.Name);
         if (body.Comment is not null)
             playlist.Comment = Comment(body.Comment);
-        await ChangedAsync(playlist, ct);
+        if (body.AddToTop is { } top)
+            playlist.AddToTop = top;
+        // Where songs go is Melodex's alone: the media server has nothing new to hear.
+        if (body.Name is not null || body.Comment is not null)
+            await ChangedAsync(playlist, ct);
+        else
+            await db.SaveChangesAsync(ct);
         return (await GetAsync(userId, id, ct))!.Playlist;
     }
 
@@ -276,7 +282,7 @@ public sealed class PlaylistService(MelodexDbContext db, SettingsService setting
         !syncing ? PlaylistSyncState.Off
         : p.SyncedAt is { } synced && synced >= p.UpdatedAt && !p.NeedsPush && !p.CoverNeedsPush && p.ServerId is not null ? PlaylistSyncState.Synced
         : PlaylistSyncState.Waiting,
-        p.PinnedAt is not null, p.CoverHash is not null);
+        p.PinnedAt is not null, p.CoverHash is not null, p.AddToTop);
 
     // ---- Adding ----
 
@@ -293,6 +299,7 @@ public sealed class PlaylistService(MelodexDbContext db, SettingsService setting
             .Select(t => new { t.Id, t.Title, t.ArtistCredit, t.Duration }).ToDictionaryAsync(t => t.Id, ct);
 
         var position = playlist.Entries.Count == 0 ? 0 : playlist.Entries.Max(e => e.Position) + 1;
+        var existing = playlist.Entries.ToList();
         int added = 0, already = 0, missing = 0;
         foreach (var item in items)
         {
@@ -325,6 +332,15 @@ public sealed class PlaylistService(MelodexDbContext db, SettingsService setting
             playlist.Entries.Add(entry);
             db.PlaylistEntries.Add(entry);
             added++;
+        }
+        // At the top, in the order given, with what was there after them.
+        if (playlist.AddToTop && added > 0)
+        {
+            var top = 0;
+            foreach (var entry in playlist.Entries.Except(existing).OrderBy(e => e.Position))
+                entry.Position = top++;
+            foreach (var entry in existing.OrderBy(e => e.Position))
+                entry.Position = top++;
         }
         return new PlaylistAdded(added, already, missing);
     }

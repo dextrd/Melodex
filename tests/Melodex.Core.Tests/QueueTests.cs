@@ -165,7 +165,7 @@ public sealed class QueueTests : IDisposable
         {
             await Task.Delay(100);
             task = await _api.GetTaskAsync(ids[1]);
-        } while (task!.State == TaskState.Queued && DateTime.UtcNow < deadline);
+        } while (task!.State is TaskState.Queued or TaskState.Running && DateTime.UtcNow < deadline);
         Assert.False(task.Paused);
         Assert.Equal(TaskState.Failed, task.State);
     }

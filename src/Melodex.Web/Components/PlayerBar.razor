@@ -5,7 +5,9 @@
 @*
     The player along the bottom of every page, once something has been played: what's playing on the left, the controls
     in the middle, and the queue, lyrics and volume on the right. The cover, or the expand button, opens the full-screen
-    player.
+    player. As it narrows, the volume folds into a button, and the playlist and lyrics buttons go to the full-screen
+    player. On a phone it's one line: previous, play, next and stop, a line along its top showing how far the song has
+    got, and anywhere else on it opens the full-screen player.
 *@
 @if (Player.Queue.Count > 0)
 {
@@ -14,9 +16,11 @@
     <div class="player">
         @if (_showQueue)
         {
-            <div class="player-queue card"><PlayerQueue /></div>
+            <div class="player-queue card"><PlayerQueue OnOpenPage="() => _showQueue = false" /></div>
         }
         <div class="player-bar">
+            <button class="player-open" aria-label="Open the full-screen player" @onclick="() => Player.Expand()"></button>
+            <div class="player-progress" aria-hidden="true"><span style="width: @(Player.Duration > 0 ? (Player.Position / Player.Duration * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) : "0")%"></span></div>
             <div class="player-track">
                 <button class="player-art" title="Open the full-screen player" @onclick="() => Player.Expand()">
                     <Cover Url="@now?.CoverUrl" />
@@ -67,10 +71,14 @@
             </div>
             <div class="player-centre">
             <div class="player-controls">
-                <button class="icon hide-narrow" title="Previous" disabled="@(now is null)" @onclick="Player.PreviousAsync">
+                <button class="icon mode@(Player.Shuffle ? " on" : "") hide-narrow" title="@(Player.Shuffle ? "Shuffle is on: click to play in order (S)" : "Shuffle: play what's to come in a random order (S)")"
+                        aria-pressed="@(Player.Shuffle ? "true" : "false")" disabled="@(now is null)" @onclick="() => Player.SetShuffleAsync(!Player.Shuffle)">
+                    <svg viewBox="0 0 24 24"><path d="M4 7h3.5c4.5 0 4.5 10 9 10H20M4 17h3.5c1.6 0 2.6-1.3 3.4-3M13.1 10c.8-1.7 1.8-3 3.4-3H20M17.5 4.5 20 7l-2.5 2.5M17.5 14.5 20 17l-2.5 2.5" /></svg>
+                </button>
+                <button class="icon" title="Previous (Shift+←)" disabled="@(now is null)" @onclick="Player.PreviousAsync">
                     <svg viewBox="0 0 24 24"><path d="M6 5v14M18 5 8 12l10 7z" /></svg>
                 </button>
-                <button class="icon play" title="@(Player.Playing ? "Pause" : "Play")" disabled="@(now is null)" @onclick="Player.ToggleAsync">
+                <button class="icon play" title="@(Player.Playing ? "Pause (Space)" : "Play (Space)")" disabled="@(now is null)" @onclick="Player.ToggleAsync">
                     @if (now?.Waiting == true)
                     {
                         <span class="spinner"></span>
@@ -84,8 +92,11 @@
                         <svg viewBox="0 0 24 24"><path d="M7 4.5v15L19 12z" /></svg>
                     }
                 </button>
-                <button class="icon" title="Next" disabled="@(now is null || Player.Current + 1 >= Player.Queue.Count)" @onclick="Player.NextAsync">
+                <button class="icon" title="Next (Shift+→)" disabled="@(now is null || !Player.HasNext)" @onclick="Player.NextAsync">
                     <svg viewBox="0 0 24 24"><path d="M18 5v14M6 5l10 7-10 7z" /></svg>
+                </button>
+                <button class="icon mode@(Player.Repeat != RepeatMode.Off ? " on" : "") hide-narrow" title="@RepeatTitle" aria-label="@RepeatTitle" disabled="@(now is null)" @onclick="Player.CycleRepeatAsync">
+                    <svg viewBox="0 0 24 24"><path d="M17 3l3 3-3 3M4 11V9a3 3 0 0 1 3-3h13M7 21l-3-3 3-3M20 13v2a3 3 0 0 1-3 3H4" />@if (Player.Repeat == RepeatMode.One) { <path d="M11 10.5l1.5-1v5" /> }</svg>
                 </button>
             </div>
             <div class="player-seek">
@@ -98,22 +109,22 @@
             <div class="player-end">
                 @if (now is not null && Auth.May(UserPermissions.Listen))
                 {
-                    <button class="icon hide-narrow" title="@(PlaylistNames.ItemOf(now) is null ? "Add it to your library to put it in a playlist" : "Add to a playlist")"
+                    <button class="icon hide-narrow fold" title="@(PlaylistNames.ItemOf(now) is null ? "Add it to your library to put it in a playlist" : "Add to a playlist")"
                         disabled="@(PlaylistNames.ItemOf(now) is null)" @onclick="() => _adding = now">
                     <svg viewBox="0 0 24 24"><path d="M4 6h11M4 11h11M4 16h6" /><circle cx="16.5" cy="17.5" r="2.5" /><path d="M19 17.5V9l2.5 1" /></svg>
                 </button>
                 }
-                <button class="icon hide-narrow" title="Lyrics" @onclick="() => Player.Expand(PlayerPanel.Lyrics)">
+                <button class="icon hide-narrow fold" title="Lyrics" @onclick="() => Player.Expand(PlayerPanel.Lyrics)">
                     <svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z" /><path d="M8 9h8M8 12h5" /></svg>
                 </button>
-                <button class="icon @(_showQueue ? "on" : "")" title="Queue (@Player.Queue.Count)" @onclick="() => _showQueue = !_showQueue">
+                <button class="icon hide-narrow @(_showQueue ? "on" : "")" title="Queue (@Player.Queue.Count)" @onclick="() => _showQueue = !_showQueue">
                     <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h10M17 15v6l4-3z" /></svg>
                 </button>
-                <VolumeControl Class="hide-narrow" />
-                <button class="icon" title="Open the full-screen player" @onclick="() => Player.Expand()">
+                <VolumeControl Class="hide-narrow" Folds="true" />
+                <button class="icon hide-narrow" title="Open the full-screen player" @onclick="() => Player.Expand()">
                     <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>
                 </button>
-                <button class="icon hide-narrow" title="Stop and clear the queue" @onclick="Player.ClearAsync">
+                <button class="icon" title="Stop and clear the queue" @onclick="Player.ClearAsync">
                     <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5" /></svg>
                 </button>
             </div>
@@ -131,6 +142,13 @@
 }
 
 @code {
+    private string RepeatTitle => Player.Repeat switch
+    {
+        RepeatMode.All => "Repeating the queue: click to repeat this song (R)",
+        RepeatMode.One => "Repeating this song: click to stop repeating (R)",
+        _ => "Repeat: go round the queue again at the end (R)",
+    };
+
     private bool _showQueue;
     private PlayerEntry? _adding;
 

@@ -1,0 +1,15 @@
+@* Where songs added to a playlist go: the bottom, as usual, or the top. *@
+<div class="field">
+    <span class="field-label">Songs you add go</span>
+    <Segmented T="bool" Value="Value" Options="Options" OnChange="ValueChanged" Label="Songs you add go" />
+    <span class="muted small">Only when added in Melodex: songs added on the media server go wherever it puts them.</span>
+</div>
+
+@code {
+    private static readonly IReadOnlyList<(bool, string, string?)> Options =
+        [(false, "At the bottom", "After the songs already there"), (true, "At the top", "Before the songs already there")];
+
+    [Parameter] public bool Value { get; set; }
+
+    [Parameter] public EventCallback<bool> ValueChanged { get; set; }
+}

@@ -16,8 +16,9 @@ public static class SetAsides
     public static bool Usable(FileTags tags) => !string.IsNullOrWhiteSpace(tags.Title) && !string.IsNullOrWhiteSpace(tags.Artist ?? tags.AlbumArtist);
 
     /// <summary>
-    /// Sets a file aside, or with <see cref="SetAside.None"/> puts it back to be matched at the next scan. Excluding or
-    /// hiding a file drops any match it had; deferring keeps its suggestion until the next scan tries again.
+    /// Sets a file aside, or with <see cref="SetAside.None"/> puts it back on the review list, to be matched again at the
+    /// next scan. Excluding or hiding a file drops any match it had; deferring keeps its suggestion until the next scan
+    /// tries again.
     /// </summary>
     public static void Apply(LibraryFile file, SetAside to)
     {
@@ -27,11 +28,12 @@ public static class SetAsides
         file.ExcludedAt = to == SetAside.Excluded ? now : null;
         file.DeferredAt = to == SetAside.Deferred ? now : null;
         file.HiddenAt = to == SetAside.Hidden ? now : null;
+        file.PutBackAt = to == SetAside.None ? now : null;
         switch (to)
         {
             case SetAside.None:
-                // Matched again by the next scan.
-                file.MatchedAt = null;
+                // On the review list until the next scan matches it again; a file never matched yet is simply matched then.
+                file.MatchedAt = file.MatchedAt is null ? null : now;
                 break;
             case SetAside.Deferred:
                 file.MatchedAt ??= now;

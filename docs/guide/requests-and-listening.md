@@ -30,12 +30,24 @@ The **Downloads** page lists what you've fetched to listen to.
 
 ## The player
 
-Play, queue and skip from any album, artist or track. The queue is kept in this browser. Songs you don't have are
-fetched as the queue reaches them.
+Play, queue and skip from any album, artist or track. While something's playing, the queue button asks where: **Play
+next**, straight after the song playing, or at the end. Songs you don't have are fetched as the queue reaches them.
+
+The queue is kept for each person in this browser: after a reload, or the next time, it's there paused where you
+left it, and Play carries on. Drag songs by the six dots on their left to reorder them. The button at the top of the queue opens it as
+a page of its own, to play from, move songs about, take them out, or save the queue as a playlist.
+
+**Shuffle**, beside the controls, plays what's to come in a random order; turning it off puts the queue back in its
+order, carrying on from the same song. **Repeat** goes round the queue again at the end, and pressed again, plays the
+same song again. Both are kept in this browser.
 
 The bar along the bottom has what's playing on the left, the controls and seek bar in the middle, and lyrics, the
-queue, the volume and the full-screen player on the right. On a phone, the lyrics and volume are in the full-screen
-player.
+queue, the volume, the full-screen player and stop on the right. Stop ends playing and clears the queue. In a narrow
+window the volume becomes a button that opens its slider, and the playlist and lyrics buttons are left to the
+full-screen player.
+
+On a phone the bar is one line: previous, play, next and stop, with a line along its top showing how far the song has
+got. Tap anywhere else on it to open the full-screen player, which has everything else.
 
 **The full-screen player** opens from the cover in the bar, or its expand button. It shows the cover large, over a
 blur of itself, with a visualiser that moves with the music, and beside it, either:
@@ -45,9 +57,21 @@ blur of itself, with a visualiser that moves with the music, and beside it, eith
   without lyrics can be looked up from here, if you may format; see [lyrics](library.md#lyrics).
 - **The queue**.
 
-The visualiser can be turned off, and the browser's own full screen turned on, from the buttons at the top. Escape
+The visualiser can be turned off, the browser's own full screen turned on, and playing stopped, from the buttons at the
+top. Escape
 closes it. The volume and whether the visualiser shows are kept in this browser.
 
 The playlist button in the bar, or at the top of the full-screen player, adds what's playing to a playlist.
+
+**Keyboard shortcuts** work anywhere outside a text box:
+
+| Key | Does |
+| --- | --- |
+| Space or K | Play or pause |
+| → and ← | Forward or back ten seconds |
+| Shift+→ and Shift+←, or N and P | Next or previous song |
+| S | Shuffle on or off |
+| R | Repeat: the queue, the song, or off |
+| / | Search |
 
 Next: [Playlists](playlists.md).

@@ -41,6 +41,12 @@ public class Playlist
     /// <summary>Pinned by its owner, to show first.</summary>
     public DateTime? PinnedAt { get; set; }
 
+    /// <summary>
+    /// Songs added in Melodex go at the top rather than the bottom. Only Melodex honours it: songs added on the media
+    /// server go wherever it puts them.
+    /// </summary>
+    public bool AddToTop { get; set; }
+
     /// <summary>Its own picture, if it has one, under the data folder's <c>playlist-covers</c>; otherwise its albums' covers stand in.</summary>
     public string? CoverFile { get; set; }
 

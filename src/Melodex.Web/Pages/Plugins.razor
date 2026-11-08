@@ -2,10 +2,14 @@
 @layout SettingsLayout
 @using Melodex.Contracts.Plugins
 @inject MelodexClient Api
+@inject AuthState Auth
 
-<PageTitle>Plugins · Melodex</PageTitle>
+<SectionTitle>Plugins · Melodex</SectionTitle>
 
-<p class="muted">What Melodex works through: where music comes from, the media server it files music for, and the catalogue it checks your library against, with its pictures.</p>
+@if (!InSetup)
+{
+    <p class="muted">What Melodex works through: where music comes from, the media server it files music for, and the catalogue it checks your library against, with its pictures.</p>
+}
 
 @if (_plugins is null)
 {
@@ -24,7 +28,7 @@ else
             "No media server yet. Music is still filed, but nothing is told about it.")
         @Section(PluginType.Index, "Catalogue",
             "Where Melodex learns what each artist has released, to tell what's missing. The first is the core catalogue; the ones after it fill in what it doesn't have.",
-            "No catalogue. Melodex can't tell what's missing without one.")
+            "No catalogue. Melodex is a plain music library, showing your files as their tags say: without one it can't tell what's missing, fetch music, or search for music you don't have.")
         @Section(PluginType.Artwork, "Artwork",
             "Pictures of artists and album covers. For each picture, Melodex asks these in order and keeps the first one found.",
             "No artwork sources, so artists and albums show placeholders.")
@@ -88,6 +92,11 @@ else
         <Dialog Title="@($"Remove {removing.Name}?")" OnClose="() => _removing = null" Alert="true">
             @if (_error is not null) { <p class="error">@_error</p> }
             <p>Its settings are forgotten. You can add it again later.</p>
+            @if (removing.Type == PluginType.Index && _plugins.Count(p => p.Type == PluginType.Index) == 1)
+            {
+                <p>It's your only catalogue. Without one, Melodex is a plain music library: new files show as their tags say, and
+                    missing music, fetching and searching for music you don't have stop working until you add one.</p>
+            }
             <div class="toolbar dialog-buttons">
                 <button @onclick="() => _removing = null">Cancel</button>
                 <button class="danger" disabled="@_busy" @onclick="() => RemoveAsync(removing)">Remove</button>
@@ -148,7 +157,23 @@ else
     private Guid? _editing;
     private string? _checking;
     private readonly Dictionary<string, PluginCheckResult> _checks = [];
+    /// <summary>Shown in the first run's setup, which says what plugins are itself.</summary>
+    [Parameter] public bool InSetup { get; set; }
+
     private PluginInfo? _removing;
+    private readonly HashSet<Guid> _expanded = [];
+
+    private void ToggleExpanded(PluginInfo plugin)
+    {
+        if (!_expanded.Remove(plugin.Id))
+            _expanded.Add(plugin.Id);
+    }
+
+    private void ToggleOnKey(KeyboardEventArgs e, PluginInfo plugin)
+    {
+        if (e.Key is "Enter" or " ")
+            ToggleExpanded(plugin);
+    }
     private SchemaForm? _editForm;
 
     // Adding: the section whose templates are showing, then the template being filled in.
@@ -232,7 +257,8 @@ else
     {
         var index = list.IndexOf(plugin);
         var problem = plugin.HealthMessage is not null && plugin.Health != HealthStatus.Healthy ? plugin.HealthMessage : null;
-        <div class="plugin-card @(plugin.Enabled ? "" : "off")">
+        var expanded = _expanded.Contains(plugin.Id);
+        <div class="plugin-card @(plugin.Enabled ? "" : "off") @(expanded ? "open" : "")">
             <div class="plugin-top">
                 @if (Ordered(plugin.Type) && list.Count > 1)
                 {
@@ -249,10 +275,13 @@ else
                     <span class="badge neutral">Off</span>
                 }
             </div>
-            <div class="muted small plugin-about" title="@(plugin.Endpoint ?? plugin.Manifest?.Description)">
+            @* Two lines each, so the cards line up; a click or tap shows the rest. *@
+            <div class="muted small plugin-about" title="@(expanded ? null : plugin.Endpoint ?? plugin.Manifest?.Description)" role="button" tabindex="0"
+                 aria-expanded="@(expanded ? "true" : "false")" @onclick="() => ToggleExpanded(plugin)"
+                 @onkeydown="e => ToggleOnKey(e, plugin)">
                 @(plugin.Endpoint ?? plugin.Manifest?.Description)@(plugin.Manifest is { } m ? $" · v{m.Version}" : "")
             </div>
-            <div class="small plugin-message" title="@problem"><LinkedText Value="@problem" /></div>
+            <div class="small plugin-message" title="@(expanded ? null : problem)" @onclick="() => ToggleExpanded(plugin)"><LinkedText Value="@problem" /></div>
             <div class="plugin-actions">
                 @if (Ordered(plugin.Type) && list.Count > 1)
                 {
@@ -267,10 +296,7 @@ else
                 {
                     <IconButton Icon="settings" Title="Settings" OnClick="() => Edit(plugin)" />
                 }
-                @if (plugin.Type != PluginType.Index || list.Count > 1)
-                {
-                    <IconButton Icon="remove" Class="remove" Title="Remove" Disabled="_busy" OnClick="() => _removing = plugin" />
-                }
+                <IconButton Icon="remove" Class="remove" Title="Remove" Disabled="_busy" OnClick="() => _removing = plugin" />
             </div>
         </div>
     };
@@ -372,6 +398,9 @@ else
             _error = e.Message;
         }
         await LoadAsync();
+        // Whether there's a catalogue changes what the rest of the app offers.
+        if (_plugins is not null && Auth.Status is { } status && status.Catalogue != _plugins.Any(p => p.Type == PluginType.Index && p.Enabled))
+            Auth.Set(await Api.GetAuthStatusAsync());
         _busy = false;
     }
 

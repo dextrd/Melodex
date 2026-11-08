@@ -1,0 +1,223 @@
+@using Melodex.Contracts.Plugins
+@using Melodex.Web.Pages
+@inject MelodexClient Api
+@inject AuthState Auth
+@inject NavigationManager Nav
+
+@*
+    The first run, in full screen without the rest of the app: the admin account and anyone else, the music folder and
+    media server, plugins, API keys and webhooks, how Melodex looks, then the first scan. Once the admin is made, any
+    step can be gone back to or skipped, by the numbers along the bottom. Everything here is in Settings later too.
+*@
+<div class="setup-page">
+    <div class="setup-brand"><Logo />Melodex</div>
+
+    <CascadingValue Name="InSetup" Value="true" IsFixed="true">
+    <main class="setup-main">
+        <h1>@Steps[_step].Title</h1>
+        <p class="muted">@Steps[_step].Intro</p>
+
+        @switch (_step)
+        {
+            case 0 when !SetUp:
+                <form class="card setup-admin" @onsubmit="MakeAdminAsync" @onsubmit:preventDefault="true">
+                    <label class="field">
+                        <span class="field-label">Username</span>
+                        <input type="text" autocomplete="username" @bind="_username" @bind:event="oninput" required autofocus />
+                    </label>
+                    <label class="field">
+                        <span class="field-label">Password</span>
+                        <input type="password" autocomplete="new-password" @bind="_password" @bind:event="oninput" required />
+                        <span class="muted small">At least 8 characters.</span>
+                    </label>
+                    <label class="field">
+                        <span class="field-label">Password again</span>
+                        <input type="password" autocomplete="new-password" @bind="_confirm" @bind:event="oninput" required />
+                    </label>
+                    @if (_error is not null) { <p class="error small">@_error</p> }
+                    <div class="toolbar">
+                        <span class="spacer"></span>
+                        <button class="primary" type="submit" disabled="@(_busy || _username.Trim().Length == 0 || _password.Length == 0 || _confirm.Length == 0)">
+                            @if (_busy) { <span class="spinner"></span> }Make the admin account
+                        </button>
+                    </div>
+                </form>
+                break;
+            case 0:
+                <Users />
+                break;
+            case 1:
+                <MusicStep />
+                break;
+            case 2:
+                @if (_ytdlpNote is not null) { <div class="notice">@_ytdlpNote</div> }
+                @if (_plugins) { <Plugins InSetup="true" /> } else { <Loading /> }
+                break;
+            case 3:
+                <ApiKeys />
+                <Webhooks />
+                break;
+            case 4:
+                <AppearancePanel ForEveryone="true" />
+                break;
+            default:
+                <div class="card setup-scan">
+                    @if (Auth.Status?.Catalogue != false)
+                    {
+                        <p>
+                            Melodex reads every file in your music folder and matches it against the catalogue, then fills in each artist's albums. Matching is
+                            quick; the albums take about a second each, as MusicBrainz asks, so a big library takes a while. The library fills in as it goes,
+                            and you can use Melodex meanwhile.
+                        </p>
+                    }
+                    else
+                    {
+                        <p>
+                            Melodex reads every file in your music folder and lists it as its tags say. With no catalogue, it can't tell what's missing or
+                            fetch music; add one under Settings → Plugins whenever you like, and the next scan matches your files against it.
+                        </p>
+                    }
+                    @if (_error is not null) { <p class="error">@_error</p> }
+                    <div class="toolbar">
+                        <button disabled="@_busy" @onclick="() => FinishAsync(false)">Open Melodex without scanning</button>
+                        <span class="spacer"></span>
+                        <button class="primary" disabled="@_busy" @onclick="() => FinishAsync(true)">
+                            @if (_busy) { <span class="spinner"></span> }Scan and open Melodex
+                        </button>
+                    </div>
+                </div>
+                break;
+        }
+    </main>
+    </CascadingValue>
+
+    <nav class="setup-nav" aria-label="Setup steps">
+        <button class="setup-back" disabled="@(!SetUp || _step == 0)" @onclick="() => GoAsync(_step - 1)">Back</button>
+        <ol class="setup-dots">
+            @for (var i = 0; i < Steps.Length; i++)
+            {
+                var step = i;
+                <li>
+                    <button class="setup-dot @(step == _step ? "current" : step < _step ? "passed" : "")" disabled="@(!SetUp)"
+                            aria-current="@(step == _step ? "step" : null)" title="@Steps[step].Name" @onclick="() => GoAsync(step)">
+                        <span class="setup-number">@(step + 1)</span>
+                        <span class="setup-dot-name">@Steps[step].Name</span>
+                    </button>
+                </li>
+            }
+        </ol>
+        @if (_step < Steps.Length - 1)
+        {
+            <button class="primary setup-next" disabled="@(!SetUp)" @onclick="() => GoAsync(_step + 1)">Next</button>
+        }
+        else
+        {
+            <span class="setup-next"></span>
+        }
+    </nav>
+</div>
+
+<PageTitle>Set up · Melodex</PageTitle>
+
+@code {
+    private sealed record Step(string Name, string Title, string Intro);
+
+    private static readonly Step[] Steps =
+    [
+        new("People", "Welcome to Melodex", "First, the admin account, which may do everything. Then add anyone else who'll use Melodex, with only what they need. Everyone signs in, even at home."),
+        new("Music", "Your music", "Where your music is, and the media server you listen through."),
+        new("Plugins", "Plugins", "Where music comes from, the catalogue your library is checked against, and where pictures and lyrics come from. These are a good start: remove any you don't want, or add others."),
+        new("API", "Apps and webhooks", "Let other apps use Melodex with API keys, and tell them when things happen with webhooks. Most people can skip this."),
+        new("Look", "How Melodex looks", "For everyone, to begin with. Each person can choose their own look later, under Settings → Appearance."),
+        new("Scan", "The first scan", "Melodex is ready. Scan your music folder to fill your library."),
+    ];
+
+    private int _step;
+    private string _username = "admin";
+    private string _password = "";
+    private string _confirm = "";
+    private bool _busy;
+    private bool _plugins;
+    private bool _offeredYtdlp;
+    private string? _ytdlpNote;
+    private string? _error;
+
+    private bool SetUp => Auth.Status?.SetUp == true;
+
+    private async Task GoAsync(int step)
+    {
+        if (!SetUp || step < 0 || step >= Steps.Length)
+            return;
+        _step = step;
+        _error = null;
+        if (step == 2)
+            await OfferYtdlpAsync();
+    }
+
+    // yt-dlp comes with Melodex's compose file, so it's added the first time the plugins are shown, unless a source already is.
+    private async Task OfferYtdlpAsync()
+    {
+        if (!_offeredYtdlp)
+        {
+            _offeredYtdlp = true;
+            var ytdlp = Plugins.KnownSources.First(s => s.Key == "ytdlp");
+            try
+            {
+                if (!(await Api.ListPluginsAsync()).Any(p => p.Type == PluginType.Retrieval))
+                {
+                    var added = await Api.AddPluginAsync(new AddPlugin(Endpoint: ytdlp.Endpoint));
+                    await Api.TestPluginAsync(added.Id);
+                }
+            }
+            catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+            {
+                _ytdlpNote = $"YouTube (yt-dlp) didn't answer at {ytdlp.Endpoint}, so it isn't added. If it runs elsewhere, or once it's running, add it under Sources.";
+            }
+        }
+        _plugins = true;
+    }
+
+    private async Task MakeAdminAsync()
+    {
+        if (_password != _confirm)
+        {
+            _error = "The passwords don't match.";
+            return;
+        }
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Api.SetUpLoginAsync(new SetUpLogin(_username, _password));
+            _password = _confirm = "";
+            Auth.Set(await Api.GetAuthStatusAsync());
+        }
+        catch (MelodexApiException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task FinishAsync(bool scan)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            if (scan)
+                await Api.ScanLibraryAsync();
+            await Api.FinishSetupAsync();
+            Nav.NavigateTo(scan ? "activity" : "");
+            Auth.Set(await Api.GetAuthStatusAsync());
+        }
+        catch (MelodexApiException e)
+        {
+            _error = e.Message;
+            _busy = false;
+        }
+    }
+}

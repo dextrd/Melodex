@@ -1,0 +1,57 @@
+@inject Player Player
+@inject AuthState Auth
+
+@*
+    Adds to the queue. While something's playing it asks where: next, after the song playing, or at the end. With
+    nothing playing it just starts.
+*@
+@if (Auth.May(UserPermissions.Listen))
+{
+    <span class="queue-menu @Class">
+        <IconButton Icon="@(_done ? "done" : "queue")" Large="Large" Disabled="Disabled" On="_open" Title="@Title" OnClick="ClickAsync" />
+        @if (_open)
+        {
+            <div class="menu-backdrop" @onclick="() => _open = false"></div>
+            <div class="menu @(Left ? "" : "right")" role="menu">
+                <button type="button" role="menuitem" @onclick="() => ChooseAsync(true)">Play next</button>
+                <button type="button" role="menuitem" @onclick="() => ChooseAsync(false)">Add to the end of the queue</button>
+            </div>
+        }
+    </span>
+}
+
+@code {
+    /// <summary>Adds to the queue: next, or at the end.</summary>
+    [Parameter, EditorRequired] public Func<bool, Task> OnQueue { get; set; } = _ => Task.CompletedTask;
+
+    [Parameter] public string Title { get; set; } = "Add to the queue: next, or at the end";
+
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter] public bool Large { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>The menu opens to the right of the button rather than the left, for buttons near the left edge.</summary>
+    [Parameter] public bool Left { get; set; }
+
+    private bool _open, _done;
+
+    private async Task ClickAsync()
+    {
+        if (Player.Now is null)
+            await ChooseAsync(false);
+        else
+            _open = !_open;
+    }
+
+    private async Task ChooseAsync(bool next)
+    {
+        _open = false;
+        await OnQueue(next);
+        _done = true;
+        StateHasChanged();
+        await Task.Delay(1200);
+        _done = false;
+    }
+}

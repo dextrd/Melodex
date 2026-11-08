@@ -3,13 +3,14 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Melodex.Client;
 using Melodex.Contracts.Catalogue;
+using Melodex.Contracts.Plugins;
 using Melodex.Core.Data;
 
 namespace Melodex.Core.Library;
 
 /// <summary>
 /// Music of your own that no catalogue knows: excluded files with a title and artist, grouped into artists and albums
-/// as their tags say. An artist the library already has from the catalogue, by name, gets these albums too; anyone else
+/// as their tags say. With no catalogue on, every file not matched before is listed this way too. An artist the library already has from the catalogue, by name, gets these albums too; anyone else
 /// becomes a local artist. Their IDs come from their names, so they stay the same from scan to scan.
 /// </summary>
 public sealed class LocalMusic(MelodexDbContext db)
@@ -48,7 +49,9 @@ public sealed class LocalMusic(MelodexDbContext db)
 
     public async Task<Snapshot> LoadAsync(CancellationToken ct)
     {
-        var files = await db.LibraryFiles.AsNoTracking().Where(f => f.ExcludedAt != null && f.HiddenAt == null).ToListAsync(ct);
+        var plain = !await db.PluginInstances.AnyAsync(p => p.Type == PluginType.Index && p.Enabled, ct);
+        var files = await db.LibraryFiles.AsNoTracking()
+            .Where(f => (f.ExcludedAt != null || plain && f.TrackId == null && f.DeferredAt == null) && f.HiddenAt == null).ToListAsync(ct);
         var songs = files.Select(f => new Song(f, FileTags.Parse(f.TagsJson))).Where(s => SetAsides.Usable(s.Tags)).ToList();
         if (songs.Count == 0)
             return new Snapshot([], []);

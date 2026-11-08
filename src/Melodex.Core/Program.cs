@@ -27,6 +27,7 @@ builder.Services.AddOptions<PluginHttpOptions>();
 
 Directory.CreateDirectory(options.DataPath);
 var database = Path.Combine(options.DataPath, "melodex.db");
+var reset = FactoryReset.ApplyIfRequested(options, database);
 var movedDatabase = FromNavidex.MoveDatabase(options.DataPath, database);
 builder.Services.AddSingleton<LibraryCache>();
 builder.Services.AddSingleton<EventFeed>();
@@ -124,6 +125,8 @@ using (var scope = app.Services.CreateScope())
     await db.Database.MigrateAsync();
     if (movedDatabase)
         app.Logger.LogInformation("Moved the database from Navidex to {Database}", database);
+    if (reset)
+        app.Logger.LogWarning("Melodex was reset, as the admin asked: open the web app to set it up again");
     await FromNavidex.RenamePluginsAsync(db);
     // Write-ahead logging, so pages keep reading while a scan writes. It's stored in the file, so this is once.
     await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");

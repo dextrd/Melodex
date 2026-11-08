@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using Melodex.Client;
+using Melodex.Contracts.Plugins;
 using Melodex.Core.Access;
 using Melodex.Core.Data;
 
@@ -16,17 +17,20 @@ public static class AccessEndpoints
     {
         var auth = api.MapGroup("/auth").WithTags("Access");
 
-        auth.MapGet("/status", async (HttpContext http, AccessService access, CancellationToken ct) =>
+        auth.MapGet("/status", async (HttpContext http, AccessService access, MelodexDbContext db, CancellationToken ct) =>
             {
                 var (caller, _) = await access.IdentifyAsync(http, ct);
                 var user = caller is { Kind: CallerKind.User, UserId: { } id } ? (await access.UsersAsync(ct)).GetValueOrDefault(id) : null;
-                return new AuthStatus(await access.IsSetUpAsync(ct), caller?.Kind == CallerKind.User, caller is not null, caller?.Name, caller?.UserId,
+                var own = AppearanceOf(user);
+                var setUp = await access.IsSetUpAsync(ct);
+                return new AuthStatus(setUp, caller?.Kind == CallerKind.User, caller is not null, caller?.Name, caller?.UserId,
                     caller is { Kind: CallerKind.User, IsAdmin: true }, caller is null ? [] : Scopes.All.Where(caller.Scopes.Contains).ToList(),
-                    AppearanceOf(user));
+                    own ?? await DefaultAppearanceAsync(db, ct), own is not null, setUp && await SetupEndpoints.IsDoneAsync(db, ct),
+                    await db.PluginInstances.AnyAsync(p => p.Type == PluginType.Index && p.Enabled, ct));
             })
             .AllowAnyone()
             .WithName("GetAuthStatus")
-            .WithSummary("Whether the admin account has been made, and who this caller is and what they may do. Open to anyone.");
+            .WithSummary("Whether the admin account has been made and setup finished, and who this caller is and what they may do. Open to anyone.");
 
         auth.MapPost("/setup", async (SetUpLogin body, HttpContext http, AccessService access, MelodexDbContext db, CancellationToken ct) =>
             {
@@ -133,12 +137,8 @@ public static class AccessEndpoints
             {
                 if (await db.Users.FindAsync([Caller.Of(http).UserId], ct) is not { } user)
                     return Results.NotFound();
-                if (!Enum.IsDefined(body.Color) || !Enum.IsDefined(body.Mode))
-                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["appearance"] = ["That isn't a theme Melodex has."] });
-                if (body.PlaylistFolders is null || body.PlaylistFolders.Length > 3 || body.PlaylistFolders.Any(char.IsWhiteSpace))
-                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["playlistFolders"] = ["Separate folders with up to 3 characters, not spaces, or none."] });
-                if (body.ListPage is < 20 or > 500)
-                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["listPage"] = ["Show from 20 to 500 at a time."] });
+                if (Invalid(body) is { } problem)
+                    return problem;
                 user.Appearance = JsonSerializer.Serialize(body, MelodexJson.Options);
                 await db.SaveChangesAsync(ct);
                 access.UsersChanged();
@@ -147,6 +147,41 @@ public static class AccessEndpoints
             .RequireScope(Scopes.SignedIn)
             .WithName("SetAppearance")
             .WithSummary("Choose how the web app looks to you (its colour, light or dark, and high contrast) and how long the Search page keeps your last search. Kept with your account, so it follows you.");
+
+        auth.MapDelete("/appearance", async (HttpContext http, AccessService access, MelodexDbContext db, CancellationToken ct) =>
+            {
+                if (await db.Users.FindAsync([Caller.Of(http).UserId], ct) is not { } user)
+                    return Results.NotFound();
+                user.Appearance = null;
+                await db.SaveChangesAsync(ct);
+                access.UsersChanged();
+                return Results.Ok(await DefaultAppearanceAsync(db, ct));
+            })
+            .RequireScope(Scopes.SignedIn)
+            .WithName("ClearAppearance")
+            .WithSummary("Go back to how Melodex looks for everyone, following it when the admin changes it. Returns that look.");
+
+        auth.MapGet("/appearance/default", (MelodexDbContext db, CancellationToken ct) => DefaultAppearanceAsync(db, ct))
+            .RequireScope(Scopes.SignedIn)
+            .WithName("GetDefaultAppearance")
+            .WithSummary("How Melodex looks for everyone who hasn't chosen their own look.");
+
+        auth.MapPut("/appearance/default", async (Appearance body, AccessService access, MelodexDbContext db, CancellationToken ct) =>
+            {
+                if (Invalid(body) is { } problem)
+                    return problem;
+                var json = JsonSerializer.Serialize(body, MelodexJson.Options);
+                if (await db.Settings.FindAsync([DefaultAppearanceKey], ct) is { } setting)
+                    setting.ValueJson = json;
+                else
+                    db.Settings.Add(new Setting { Key = DefaultAppearanceKey, ValueJson = json });
+                await db.SaveChangesAsync(ct);
+                access.UsersChanged();
+                return Results.Ok(body);
+            })
+            .RequireScope(Scopes.Settings)
+            .WithName("SetDefaultAppearance")
+            .WithSummary("Choose how Melodex looks for everyone who hasn't chosen their own look. Each person can choose their own under Settings → Appearance.");
 
         MapUsers(api);
         MapKeys(api);
@@ -297,20 +332,38 @@ public static class AccessEndpoints
         new(user.Id, user.Username, user.IsAdmin, Scopes.All.Where(AccessService.PermissionsOf(user).Contains).ToList(), user.CreatedAt, user.LastSignInAt, keys,
             user.MediaServerUsername);
 
-    // Nobody can give more than they have.
-    private static Appearance AppearanceOf(User? user)
+    private const string DefaultAppearanceKey = "appearance.default";
+
+    // A person's own look, or null where they follow everyone's.
+    private static Appearance? AppearanceOf(User? user) => user?.Appearance is { Length: > 0 } json ? Parse(json) : null;
+
+    private static async Task<Appearance> DefaultAppearanceAsync(MelodexDbContext db, CancellationToken ct) =>
+        await db.Settings.FindAsync([DefaultAppearanceKey], ct) is { } setting ? Parse(setting.ValueJson) ?? new Appearance() : new Appearance();
+
+    private static Appearance? Parse(string json)
     {
-        if (user?.Appearance is not { Length: > 0 } json)
-            return new Appearance();
         try
         {
-            return JsonSerializer.Deserialize<Appearance>(json, MelodexJson.Options) ?? new Appearance();
+            return JsonSerializer.Deserialize<Appearance>(json, MelodexJson.Options);
         }
         catch (JsonException)
         {
-            return new Appearance();
+            return null;
         }
     }
+
+    private static IResult? Invalid(Appearance body)
+    {
+        if (!Enum.IsDefined(body.Color) || !Enum.IsDefined(body.Mode))
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["appearance"] = ["That isn't a theme Melodex has."] });
+        if (body.PlaylistFolders is null || body.PlaylistFolders.Length > 3 || body.PlaylistFolders.Any(char.IsWhiteSpace))
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["playlistFolders"] = ["Separate folders with up to 3 characters, not spaces, or none."] });
+        if (body.ListPage is < 20 or > 500)
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["listPage"] = ["Show from 20 to 500 at a time."] });
+        return null;
+    }
+
+    // Nobody can give more than they have.
 
     private static IResult? Beyond(Caller caller, IEnumerable<string> permissions)
     {

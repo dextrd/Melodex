@@ -22,7 +22,9 @@ namespace Melodex.Core.Library;
 public sealed class LibraryCache(IServiceScopeFactory scopes, IOptions<MelodexOptions> options, ILogger<LibraryCache> logger) : DbCommandInterceptor
 {
     private static readonly string[] LibraryTables =
-        ["\"Artists\"", "\"Albums\"", "\"Editions\"", "\"Tracks\"", "\"EditionTracks\"", "\"Crosswalk\"", "\"LibraryFiles\"", "\"Settings\""];
+        ["\"Artists\"", "\"Albums\"", "\"Editions\"", "\"Tracks\"", "\"EditionTracks\"", "\"Crosswalk\"", "\"LibraryFiles\"", "\"Settings\"",
+         // Turning the last catalogue off or on changes whether unmatched files are listed as their tags say.
+         "\"PluginInstances\""];
 
     /// <summary>How long a caller waits for a fresher answer before taking the last one.</summary>
     public static readonly TimeSpan Patience = TimeSpan.FromMilliseconds(500);

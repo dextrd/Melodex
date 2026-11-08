@@ -1,0 +1,104 @@
+@using Melodex.Contracts.Plugins
+@inject MelodexClient Api
+
+@* Setup's music step: whether Melodex can read the music folder, and connecting Navidrome. *@
+@if (_status is null)
+{
+    <Loading />
+}
+else
+{
+    <div class="card setup-card">
+        <h2>Music folder</h2>
+        <p>Melodex reads <code>@_status.LibraryPath</code>, the folder your media server reads too.</p>
+        @if (!_status.LibraryReadable)
+        {
+            <p class="error">Melodex can't open it. Check <code>MUSIC_PATH</code> in your compose file, and that the folder can be read by the container.</p>
+        }
+        else if (_status.AudioFiles == 0)
+        {
+            <p class="error">It's empty, or holds no music Melodex knows. Check <code>MUSIC_PATH</code> points at your music, or carry on to start from nothing.</p>
+        }
+        else
+        {
+            <p>It has @(_status.AudioFiles >= SetupStatus.CountLimit ? $"over {SetupStatus.CountLimit:N0}" : _status.AudioFiles.ToString("N0")) music files.</p>
+        }
+        <div class="toolbar"><button @onclick="CheckAsync" disabled="@_busy">Check again</button></div>
+    </div>
+
+    <div class="card setup-card">
+        <h2>Navidrome</h2>
+        <p>Melodex tells Navidrome to scan when music arrives, shows covers from your own files through it, and can keep each person's playlists the same in both.</p>
+        @if (_status.MediaServer)
+        {
+            <p><span class="badge owned">Connected</span> Change it under Plugins, the next step.</p>
+        }
+        else if (_navidrome is { } navidrome)
+        {
+            <SchemaForm @ref="_form" Schema="navidrome.Manifest.SettingsSchema" />
+            @if (_error is not null) { <p class="error">@_error</p> }
+            <div class="toolbar">
+                <span class="muted small">No Navidrome? Skip this: Melodex still files your music.</span>
+                <span class="spacer"></span>
+                <button class="primary" disabled="@_busy" @onclick="ConnectAsync">
+                    @if (_busy) { <span class="spinner"></span> }Connect
+                </button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private const string NavidromeId = "melodex.connector.navidrome";
+
+    private SetupStatus? _status;
+    private AvailablePlugin? _navidrome;
+    private SchemaForm? _form;
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _navidrome = (await Api.ListAvailablePluginsAsync()).FirstOrDefault(p => p.Manifest.Id == NavidromeId && p.Problem is null);
+        await CheckAsync();
+    }
+
+    private async Task CheckAsync()
+    {
+        _busy = true;
+        try
+        {
+            _status = await Api.GetSetupAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ConnectAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var added = await Api.AddPluginAsync(new AddPlugin(PluginId: NavidromeId, Settings: _form!.ToJson()));
+            var tested = await Api.TestPluginAsync(added.Id);
+            if (tested.Health == HealthStatus.Unhealthy)
+            {
+                // Keep what was typed, to fix and try again.
+                await Api.RemovePluginAsync(added.Id);
+                _error = $"Couldn't reach Navidrome: {tested.HealthMessage}";
+            }
+            _status = await Api.GetSetupAsync();
+        }
+        catch (MelodexApiException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

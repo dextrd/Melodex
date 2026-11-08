@@ -8,7 +8,7 @@ export function observe(element, target) {
         // Look again: if it's still near the screen after drawing more, draw more again.
         observer.unobserve(element);
         observer.observe(element);
-    }, { rootMargin: '1000px 0px' });
+    }, { root: scroller(), rootMargin: '1000px 0px' });
     observer.observe(element);
     const resized = new ResizeObserver(() => size(element));
     resized.observe(element.parentElement);
@@ -37,4 +37,11 @@ function size(element) {
         perRow++;
     const rowHeight = list.getBoundingClientRect().height / Math.ceil(items.length / perRow);
     element.style.height = `${Math.ceil(remaining / perRow) * rowHeight}px`;
+}
+
+// What the list scrolls in: the page's own box on a computer, else the screen. Asked of the box itself, as a margin
+// reaches past what it clips only when it's the root.
+function scroller() {
+    const scrolling = window.melodexScroll?.scroller();
+    return scrolling && scrolling !== document.scrollingElement ? scrolling : null;
 }

@@ -1,22 +1,24 @@
 # Getting started
 
-## Making the admin account
+## Setting up
 
-The first time you open Melodex it asks for the admin account. The admin may do everything, and only they can change
-their own account. Everyone signs in, even at home; tick **Remember me** to stay signed in on that browser for 30
-days.
+The first time you open Melodex, it walks you through setting up, full screen, before anything else. The numbered
+circles along the bottom show where you are. Once the admin account is made, any step can be gone back to or skipped
+with them, and everything in it can be changed later under **Settings**. Until the admin finishes, nobody else gets in.
 
-## The setup steps
-
-After the admin account, Melodex walks through what it needs. Each step can be skipped and done later from Settings.
-
-1. **Your music folder.** Melodex checks it can read the folder and counts what's there. If it finds nothing, check
-   `MUSIC_PATH` and the folder's permissions.
-2. **Navidrome.** Melodex tells Navidrome to scan when music arrives, and shows the covers from your own files. Give it
-   Navidrome's address and a Navidrome **admin** username and password (only admins can start scans).
-3. **Fetching.** Choose where music comes from: YouTube Music (yt-dlp), and an inbox folder you drop files into.
-   Without a retrieval plugin you can still browse and see what's missing.
-4. **The first scan.** Melodex reads every file and matches it against MusicBrainz.
+1. **People.** First the admin account. The admin may do everything, and only they can change their own account.
+   Then add anyone else who'll use Melodex, with only the permissions they need. Everyone signs in, even at home; tick
+   **Remember me** to stay signed in on that browser for 30 days.
+2. **Music.** Melodex checks it can read your music folder and counts what's there; if it finds nothing, check
+   `MUSIC_PATH` and the folder's permissions. Then Navidrome: Melodex tells it to scan when music arrives, and shows
+   the covers from your own files. Give it Navidrome's address and a Navidrome **admin** username and password (only
+   admins can start scans).
+3. **Plugins.** These start as the MusicBrainz catalogue, YouTube Music (yt-dlp), Cover Art Archive, Wikimedia
+   Commons and Deezer pictures, and LRCLIB lyrics. Remove any you don't want, or add others: see [Plugins](plugins.md).
+4. **Apps and webhooks.** API keys for other apps, and webhooks to tell them when things happen. Most people can skip
+   this.
+5. **Look.** How Melodex looks for everyone. Each person can choose their own later, under **Settings → Appearance**.
+6. **The first scan.** Melodex reads every file and matches it against the catalogue.
 
 ## The first scan
 

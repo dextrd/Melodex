@@ -66,7 +66,7 @@
                 @foreach (var artist in _recentArtists)
                 {
                     <div class="tile-wrap" @key="artist.Id">
-                        <a class="tile" href="artists/@artist.Id" title="@(artist.Disambiguation is null ? artist.Name : $"{artist.Name} ({artist.Disambiguation})")"
+                        <a class="tile" href="@(artist.Local ? "local/artists" : "artists")/@artist.Id" title="@(artist.Disambiguation is null ? artist.Name : $"{artist.Name} ({artist.Disambiguation})")"
                            @onclick="() => RememberArtistAsync(artist)">
                             <Cover Url="@artist.ImageUrl" Artist="true" />
                             <div class="tile-name">@artist.Name</div>
@@ -102,8 +102,16 @@
     else
     {
         <div class="empty card">
-            Search MusicBrainz for an artist, album or track. Results show what you have and what you're missing, and anything can be fetched
-            or listened to from here. As you type, matches from the catalogue Melodex already holds show at once.
+            @if (Catalogue)
+            {
+                @:Search the catalogue for an artist, album or track. Results show what you have and what you're missing, and anything can be fetched
+                @:or listened to from here. As you type, matches from what Melodex already holds show at once.
+            }
+            else
+            {
+                @:Search your library for an artist, album or track. With no catalogue set up, there's only your own music to search; add one, such as
+                @:MusicBrainz, under Settings → Plugins to find music you don't have.
+            }
         </div>
     }
 }
@@ -113,11 +121,11 @@ else
     <div class="search-results" @onclick="UsedResultsAsync">
     @if (_remoteBusy)
     {
-        <Loading Inline="true" Text="@(_localOnly ? "Showing what Melodex already knows; searching MusicBrainz…" : "Searching MusicBrainz…")" />
+        <Loading Inline="true" Text="@(_localOnly ? "Showing what Melodex already knows; searching the catalogue…" : "Searching the catalogue…")" />
     }
-    else if (_localOnly)
+    else if (_localOnly && Catalogue)
     {
-        <div class="muted small search-note">From the catalogue Melodex already holds. Press Enter to search MusicBrainz.</div>
+        <div class="muted small search-note">From what Melodex already holds. Press Enter to search the catalogue.</div>
     }
     @if (_searchError is not null) { <div class="notice error">@_searchError</div> }
     @if (Artists.Count + Albums.Count + Tracks.Count == 0 && !_remoteBusy)
@@ -136,8 +144,8 @@ else
         <div class="tiles">
             @foreach (var artist in Artists)
             {
-                <a class="tile arrives" href="artists/@artist.Id" title="@(artist.Disambiguation is null ? artist.Name : $"{artist.Name} ({artist.Disambiguation})")"
-                   @onclick="() => RememberArtistAsync(new RecentArtist(artist.Id, artist.Name, artist.Disambiguation, artist.ImageUrl))">
+                <a class="tile arrives" href="@(artist.Local ? "local/artists" : "artists")/@artist.Id" title="@(artist.Disambiguation is null ? artist.Name : $"{artist.Name} ({artist.Disambiguation})")"
+                   @onclick="() => RememberArtistAsync(new RecentArtist(artist.Id, artist.Name, artist.Disambiguation, artist.ImageUrl, artist.Local))">
                     <Cover Url="@artist.ImageUrl" Artist="true" />
                     <div class="tile-name">@artist.Name</div>
                     @if (artist.Disambiguation is not null) { <div class="muted small tile-sub">@artist.Disambiguation</div> }
@@ -156,12 +164,12 @@ else
                     @foreach (var album in Albums)
                     {
                         <tr class="arrives">
-                            <td class="cover-col"><a href="albums/@album.Id" tabindex="-1"><Cover Url="@album.CoverUrl" /></a></td>
+                            <td class="cover-col"><a href="@Format.AlbumHref(album)" tabindex="-1"><Cover Url="@album.CoverUrl" /></a></td>
                             <td class="track-main">
-                                <div class="ellipsis"><a href="albums/@album.Id">@album.Title</a></div>
+                                <div class="ellipsis"><a href="@Format.AlbumHref(album)">@album.Title</a></div>
                                 <div class="muted small ellipsis">
                                     <span class="show-narrow"><StatusBadge Album="album.Status" /></span>
-                                    <a href="artists/@album.ArtistId">@album.ArtistCredit</a>@(Format.Year(album.FirstReleaseDate) is { Length: > 0 } year ? $" · {year}" : "") · @Format.TypeLabel(album.Type)
+                                    @if (album.Local) { @album.ArtistCredit } else { <a href="artists/@album.ArtistId">@album.ArtistCredit</a> }@(Format.Year(album.FirstReleaseDate) is { Length: > 0 } year ? $" · {year}" : "") · @Format.TypeLabel(album.Type)
                                 </div>
                             </td>
                             <td class="num hide-narrow"><StatusBadge Album="album.Status" /></td>
@@ -171,10 +179,14 @@ else
                                     RenderFragment play = @<text>
                                         <IconButton Icon="@(missing ? "listen" : "play")" Requires="@UserPermissions.Listen" Title="@(missing ? "Listen: fetch it to play now, without adding it to your library" : album.Status == AlbumStatus.Partial ? "Play, fetching the tracks you don't have to listen to" : "Play")"
                                                     OnClick="() => Player.PlayAlbumAsync(album.Id)" />
-                                        <IconButton Icon="queue" Requires="@UserPermissions.Listen" Class="@(album.Status is AlbumStatus.Missing or AlbumStatus.Partial ? "hide-narrow" : null)" Title="Add to the queue" Confirm="true" OnClick="() => Player.QueueAlbumAsync(album.Id)" />
+                                        <QueueButton Class="@(album.Status is AlbumStatus.Missing or AlbumStatus.Partial ? "hide-narrow" : null)" Title="Add to the queue: next, or at the end" OnQueue="next => Player.QueueAlbumAsync(album.Id, next)" />
                                     </text>;
                                 }
-                                @if (album.Status is AlbumStatus.Missing or AlbumStatus.Partial)
+                                @if (album.Local)
+                                {
+                                    @* Your own music plays from its page. *@
+                                }
+                                else if (album.Status is AlbumStatus.Missing or AlbumStatus.Partial)
                                 {
                                     <FetchButton Kind="RequestKind.Album" Id="album.Id" Hint="@(missing ? "Get this album" : "Get the tracks you're missing")">@play</FetchButton>
                                 }
@@ -196,7 +208,7 @@ else
             @if (track.Owned)
             {
                 <IconButton Icon="play" Requires="@UserPermissions.Listen" Title="Play" OnClick="() => Player.PlayAsync([PlayerEntry.Owned(track)])" />
-                <IconButton Icon="queue" Requires="@UserPermissions.Listen" Title="Add to the queue" Confirm="true" OnClick="() => Player.AddAsync([PlayerEntry.Owned(track)])" />
+                <QueueButton Title="Add to the queue: next, or at the end" OnQueue="next => Player.AddAsync([PlayerEntry.Owned(track)], next)" />
             }
             else
             {
@@ -225,7 +237,9 @@ else
     private const string SearchHint = "Artist, album or track";
 
     /// <summary>An artist opened from the search results, kept to open again.</summary>
-    public sealed record RecentArtist(Guid Id, string Name, string? Disambiguation, string? ImageUrl);
+    public sealed record RecentArtist(Guid Id, string Name, string? Disambiguation, string? ImageUrl, bool Local = false);
+
+    private bool Catalogue => Auth.Status?.Catalogue != false;
 
     private static readonly IReadOnlyList<(string Key, string Label)> SortOptions = [("relevance", "Best match"), ("name", "Name"), ("year", "Year")];
 
@@ -382,7 +396,8 @@ else
         _searchError = null;
         if (remember)
             await RememberAsync(text);
-        var pending = (KindList ?? AllKinds).Select(kind => Api.SearchAsync(text, [kind])).ToList();
+        // Without a catalogue, what Melodex holds is all there is.
+        var pending = Catalogue ? (KindList ?? AllKinds).Select(kind => Api.SearchAsync(text, [kind])).ToList() : [];
         // What's shown may still be the last search's, kept so the page doesn't flash: the first answer replaces it.
         var ours = false;
         try
@@ -415,8 +430,8 @@ else
             catch (HttpRequestException e)
             {
                 _searchError = e.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable
-                    ? "MusicBrainz is busy right now, so some results may be missing. Try again in a moment."
-                    : "Searching MusicBrainz failed, so some results may be missing. Try again in a moment.";
+                    ? "The catalogue is busy right now, so some results may be missing. Try again in a moment."
+                    : "Searching the catalogue failed, so some results may be missing. Try again in a moment.";
             }
             if (pending.Count > 0)
                 StateHasChanged();

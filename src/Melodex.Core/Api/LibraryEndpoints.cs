@@ -351,7 +351,7 @@ public static class LibraryEndpoints
             .RequireScope(Scopes.Review).WithName("SetFileAside")
             .WithSummary("Exclude a file from matching (it stays in the library as its own tags say), defer it (it leaves the review list, "
                          + "and each scan tries it again, matching it only when it beats the threshold) or hide it from the library. "
-                         + "None puts it back, to be matched at the next scan.")
+                         + "None puts it back on the review list, to be matched again at the next scan.")
             .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
 
         library.MapPost("/review/set-aside", async (SetFilesAside body, MelodexDbContext db, CancellationToken ct) =>
@@ -379,7 +379,7 @@ public static class LibraryEndpoints
             })
             .RequireScope(Scopes.Review).WithName("ExcludeFile")
             .WithSummary("Exclude a file from matching, for music no catalogue knows: it's never matched and leaves the review list. "
-                         + "Including it again matches it at the next scan. Set-aside does this and more.")
+                         + "Including it again puts it on the review list, to be matched again at the next scan. Set-aside does this and more.")
             .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
 
         library.MapPost("/files/{id:guid}/match", async (Guid id, MatchFile body, MelodexDbContext db, RequestPlanner planner, CancellationToken ct) =>
@@ -712,6 +712,6 @@ public static class LibraryEndpoints
         file.SuggestedTrackId = null;
         file.SuggestedEditionId = null;
         file.MatchedAt = DateTime.UtcNow;
-        file.ExcludedAt = file.DeferredAt = file.HiddenAt = null;
+        file.ExcludedAt = file.DeferredAt = file.HiddenAt = file.PutBackAt = null;
     }
 }

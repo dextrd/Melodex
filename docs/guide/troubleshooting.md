@@ -21,5 +21,10 @@ that may start a scan (an admin).
 
 **I'm locked out.** See [a lost admin password](users-and-permissions.md#a-lost-admin-password).
 
+**I want to start again.** The admin can reset Melodex at the bottom of **Settings → General**, typing `reset` to
+confirm. Every user and key, the settings, plugins, matches, playlists, requests, the cache, pictures, logs and Listen
+Now files go; the music folder and anything plugins keep of their own stay. Melodex restarts (the compose file brings
+it back) and asks for a new admin account, as on its first run.
+
 **Something else.** **Settings → Log** shows what Melodex has been doing, including errors. Open an
 [issue](https://github.com/joeatethebeans/Melodex/issues) with what you saw.

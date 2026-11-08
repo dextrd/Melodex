@@ -1,17 +1,26 @@
 @inject Player Player
+@inject NavigationManager Nav
+@implements IDisposable
 
-@* The queue: what's playing and what's next, to jump to or take out. In the player bar's pop-up and the full-screen player. *@
+@*
+    The queue: what's playing and what's next, to jump to or take out. In the player bar's pop-up and the full-screen
+    player, either of which can open it as a page of its own.
+*@
 <div class="section-head" style="margin: 0 0 .25rem;">
     <h3>Queue</h3>
     <span class="spacer"></span>
     <button class="link small" @onclick="Player.ClearAsync">Clear</button>
+    <IconButton Icon="open" Class="small" Title="Open the queue as a page" OnClick="OpenPage" />
 </div>
-<ol class="queue-list">
+<ol class="queue-list" data-reorder>
     @for (var i = 0; i < Player.Queue.Count; i++)
     {
         var index = i;
         var entry = Player.Queue[i];
-        <li class="@(index == Player.Current ? "now" : "") @(entry.Unplayable ? "dim" : "")">
+        <li class="@(index == Player.Current ? "now" : "") @(entry.Unplayable ? "dim" : "") @Drag.Class(index)"
+            @ondragover="() => Drag.Over(index)" @ondragover:preventDefault="true" @ondrop="() => Drag.Drop(index, Player.Move)" @ondrop:preventDefault="true">
+            <DragHandle OnStart="() => Drag.Start(index)" OnEnd="Drag.End" />
+            <Cover Url="@entry.CoverUrl" Class="queue-cover" />
             <button class="link queue-title" @onclick="() => Player.JumpAsync(index)">
                 <span class="ellipsis">@entry.Title</span>
                 <span class="muted small ellipsis">@entry.ArtistCredit</span>
@@ -23,6 +32,24 @@
 </ol>
 
 @code {
+    private readonly DragOrder Drag = new();
+
+    /// <summary>Closes whatever the queue is shown in, as the queue page opens.</summary>
+    [Parameter] public EventCallback OnOpenPage { get; set; }
+
+    // Drawn again as the queue changes or moves on, as its parent doesn't pass it anything that would.
+    protected override void OnInitialized() => Player.Changed += Redraw;
+
+    private async Task OpenPage()
+    {
+        await OnOpenPage.InvokeAsync();
+        Nav.NavigateTo("queue");
+    }
+
+    private void Redraw() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Player.Changed -= Redraw;
+
     private static string EntryState(PlayerEntry entry) => entry switch
     {
         { Unplayable: true } => entry.Detail is { Length: < 40 } d ? d : "Can't play",

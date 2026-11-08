@@ -7,6 +7,7 @@ export function init(dotnet) {
     player = dotnet;
     if (audio)
         return;
+    document.addEventListener("keydown", shortcut);
     audio = new Audio();
     audio.preload = "auto";
     audio.volume = storedVolume();
@@ -34,6 +35,41 @@ export function init(dotnet) {
         navigator.mediaSession.setActionHandler("previoustrack", () => player.invokeMethodAsync("OnRemote", "previous"));
         navigator.mediaSession.setActionHandler("nexttrack", () => player.invokeMethodAsync("OnRemote", "next"));
     }
+}
+
+// Keyboard shortcuts, anywhere but a text box. The player's need something in the queue; "/" opens Search.
+const keys = {
+    " ": "toggle", k: "toggle", K: "toggle",
+    ArrowRight: "forward", ArrowLeft: "back",
+    n: "next", N: "next", p: "previous", P: "previous",
+    s: "shuffle", S: "shuffle", r: "repeat", R: "repeat",
+};
+
+function shortcut(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || e.isComposing)
+        return;
+    const target = e.target instanceof Element ? e.target : document.body;
+    if (target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])"))
+        return;
+    // Nothing behind an open dialog.
+    if (document.querySelector(".dialog-backdrop, dialog[open]"))
+        return;
+    if (e.key === "/") {
+        e.preventDefault();
+        Blazor.navigateTo("search");
+        return;
+    }
+    let action = keys[e.key];
+    if (!action || !document.querySelector(".player-bar"))
+        return;
+    // Shift with the arrows goes from song to song rather than through one.
+    if (e.shiftKey && (e.key === "ArrowRight" || e.key === "ArrowLeft"))
+        action = e.key === "ArrowRight" ? "next" : "previous";
+    // Space on a focused button or link presses it, as it always does.
+    if (e.key === " " && target.closest("button, a, [role=slider]"))
+        return;
+    e.preventDefault();
+    player.invokeMethodAsync("OnKey", action);
 }
 
 /** Whether the browser expects to play this type; an empty type is given the benefit of the doubt. */

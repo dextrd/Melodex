@@ -214,8 +214,6 @@ public static class PluginEndpoints
             {
                 if (await db.PluginInstances.FindAsync([id], ct) is not { } instance)
                     return Results.NotFound();
-                if (instance.Type == PluginType.Index && await db.PluginInstances.CountAsync(p => p.Type == PluginType.Index, ct) == 1)
-                    return Problem("id", "The catalogue needs an index plugin; add another before removing this one.");
                 db.PluginInstances.Remove(instance);
                 await db.SaveChangesAsync(ct);
                 await ArtworkChangedAsync(db, instance, catalog, artwork, ct);

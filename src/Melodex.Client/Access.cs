@@ -8,9 +8,16 @@ namespace Melodex.Client;
 /// <param name="UserId">The user signed in, or the key's owner.</param>
 /// <param name="IsAdmin">The admin is signed in, who may do everything.</param>
 /// <param name="Permissions">What this caller may do: see <see cref="UserPermissions"/>. The admin has every one, and admin.</param>
-/// <param name="Appearance">How the web app looks to whoever's signed in.</param>
+/// <param name="Appearance">How the web app looks to whoever's signed in: their own look, or everyone's.</param>
+/// <param name="OwnAppearance">They've chosen their own look, rather than following everyone's.</param>
+/// <param name="SetupFinished">The admin has been through setup. Until then the web app shows only its steps.</param>
+/// <param name="Catalogue">
+/// A catalogue is on. Without one, Melodex is a plain music library: files are listed as their tags say, and there's
+/// no missing music, fetching, or searching for music you don't have.
+/// </param>
 public sealed record AuthStatus(bool SetUp, bool SignedIn, bool LetIn, string? Username, Guid? UserId = null, bool IsAdmin = false,
-    IReadOnlyList<string>? Permissions = null, Appearance? Appearance = null)
+    IReadOnlyList<string>? Permissions = null, Appearance? Appearance = null, bool OwnAppearance = false, bool SetupFinished = true,
+    bool Catalogue = true)
 {
     public bool May(string permission) => IsAdmin || Permissions?.Contains(permission) == true || Permissions?.Contains(UserPermissions.Admin) == true;
 }

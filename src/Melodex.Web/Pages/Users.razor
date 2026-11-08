@@ -4,7 +4,7 @@
 @inject MelodexClient Api
 @inject AuthState Auth
 
-<PageTitle>Users · Melodex</PageTitle>
+<SectionTitle>Users · Melodex</SectionTitle>
 
 @*
     Everyone who signs in, and what each may do. The admin, made at setup, may do everything and only they can change
@@ -37,7 +37,7 @@ else
             @foreach (var user in _users)
             {
                 var you = user.Id == Auth.Status?.UserId;
-                <div class="plugin-card">
+                <div class="plugin-card user-card">
                     <div class="plugin-top">
                         <strong class="ellipsis" title="@user.Username">@user.Username</strong>
                         @if (user.IsAdmin) { <span class="badge owned">Admin</span> }

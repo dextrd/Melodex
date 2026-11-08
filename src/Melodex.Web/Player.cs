@@ -89,24 +89,39 @@ public enum PlayerPanel
 /// The queue and the audio element behind the player bar. Tracks you have stream from the music folder; tracks you
 /// don't are fetched to listen to, and the queue waits at one until it's ready.
 /// </summary>
+/// <summary>What happens at the end: stop, go round the queue again, or play the same song again.</summary>
+public enum RepeatMode { Off, All, One }
+
 public sealed class Player : IAsyncDisposable
 {
     private readonly MelodexClient _api;
     private readonly IJSRuntime _js;
     private readonly ServerEvents _events;
+    private readonly Preferences _prefs;
     private readonly List<PlayerEntry> _queue = [];
+
+    // The queue in the order it was given, while it's shuffled, so turning shuffle off puts it back.
+    private List<PlayerEntry>? _ordered;
+    private bool _modesLoaded;
+
+    // Whose queue it is, so it's kept for them in this browser; and where to pick up a song from after a reload.
+    private Guid? _owner;
+    private double? _resumeAt;
+    private int _savedSecond = -1;
     private IJSObjectReference? _audio;
     private DotNetObjectReference<Player>? _self;
     private Timer? _poll;
     private int _starting;
 
-    public Player(MelodexClient api, IJSRuntime js, ServerEvents events)
+    public Player(MelodexClient api, IJSRuntime js, ServerEvents events, Preferences prefs)
     {
         _api = api;
         _js = js;
         _events = events;
+        _prefs = prefs;
         events.Received += OnEvent;
         events.EnsureStarted();
+        Changed += () => _ = SaveAsync();
     }
 
     /// <summary>The queue changed, or what's playing did.</summary>
@@ -118,6 +133,15 @@ public sealed class Player : IAsyncDisposable
     public IReadOnlyList<PlayerEntry> Queue => _queue;
     public int Current { get; private set; } = -1;
     public PlayerEntry? Now => Current >= 0 && Current < _queue.Count ? _queue[Current] : null;
+
+    /// <summary>What's to come is in a random order. Remembered in this browser.</summary>
+    public bool Shuffle { get; private set; }
+
+    /// <summary>Remembered in this browser.</summary>
+    public RepeatMode Repeat { get; private set; }
+
+    /// <summary>There's a song to go on to: a later one, or the first again when repeating.</summary>
+    public bool HasNext => Current + 1 < _queue.Count || Repeat != RepeatMode.Off && _queue.Count > 0;
     public bool Playing { get; private set; }
     public double Position { get; private set; }
     public double Duration { get; private set; }
@@ -205,16 +229,16 @@ public sealed class Player : IAsyncDisposable
         await PlayAsync(entries, start);
     }
 
-    /// <summary>Adds an album to the end of the queue, fetching tracks you don't have to listen to.</summary>
-    public async Task QueueAlbumAsync(AlbumDetail album) => await AddAsync((await AlbumEntriesAsync(album, null)).Entries);
+    /// <summary>Adds an album to the end of the queue, or next, fetching tracks you don't have to listen to.</summary>
+    public async Task QueueAlbumAsync(AlbumDetail album, bool next = false) => await AddAsync((await AlbumEntriesAsync(album, null)).Entries, next);
 
-    /// <summary>Adds an album from a list to the end of the queue, loading its tracks first.</summary>
-    public async Task QueueAlbumAsync(Guid albumId)
+    /// <summary>Adds an album from a list to the end of the queue, or next, loading its tracks first.</summary>
+    public async Task QueueAlbumAsync(Guid albumId, bool next = false)
     {
         if (await _api.GetAlbumAsync(albumId) is { } album)
-            await QueueAlbumAsync(album);
+            await QueueAlbumAsync(album, next);
         else if (await _api.GetLocalAlbumAsync(albumId) is { } own)
-            await AddAsync(own.Tracks.Select(t => PlayerEntry.Owned(t, own)).ToList());
+            await AddAsync(own.Tracks.Select(t => PlayerEntry.Owned(t, own)).ToList(), next);
     }
 
     /// <summary>The album's tracks in order: tracks you have, and the missing ones fetched to listen to.</summary>
@@ -275,34 +299,109 @@ public sealed class Player : IAsyncDisposable
         }
     }
 
-    /// <summary>Replaces the queue and starts playing it.</summary>
-    public Task PlayAsync(IReadOnlyList<PlayerEntry> entries, int start = 0)
+    /// <summary>
+    /// Replaces the queue and starts playing it. When shuffling, the song started from comes first and the rest follow
+    /// in a random order; started from the beginning, all of it is in a random order.
+    /// </summary>
+    public async Task PlayAsync(IReadOnlyList<PlayerEntry> entries, int start = 0)
     {
+        await LoadModesAsync();
         _queue.Clear();
         _queue.AddRange(entries);
         Current = entries.Count == 0 ? -1 : Math.Clamp(start, 0, entries.Count - 1);
-        return StartAsync();
+        _ordered = null;
+        _resumeAt = null;
+        if (Shuffle && Current >= 0)
+        {
+            _ordered = [.. _queue];
+            var first = start > 0 ? _queue[Current] : null;
+            var rest = _queue.Where(e => e != first).OrderBy(_ => Random.Shared.Next()).ToList();
+            _queue.Clear();
+            if (first is not null)
+                _queue.Add(first);
+            _queue.AddRange(rest);
+            Current = 0;
+        }
+        await StartAsync();
     }
 
-    /// <summary>Adds to the end of the queue, starting it if nothing's playing.</summary>
-    public Task AddAsync(IReadOnlyList<PlayerEntry> entries)
+    /// <summary>Adds to the end of the queue, or after what's playing, starting it if nothing's playing.</summary>
+    public async Task AddAsync(IReadOnlyList<PlayerEntry> entries, bool next = false)
     {
+        await LoadModesAsync();
+        if (next && Now is { } now)
+        {
+            _queue.InsertRange(Current + 1, entries);
+            _ordered?.InsertRange(_ordered.IndexOf(now) + 1, entries);
+            Changed?.Invoke();
+            return;
+        }
         _queue.AddRange(entries);
+        _ordered?.AddRange(entries);
         if (Now is null && entries.Count > 0)
         {
             Current = _queue.Count - entries.Count;
-            return StartAsync();
+            await StartAsync();
+            return;
         }
         Changed?.Invoke();
-        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Shuffles what's to come, or puts the queue back in the order it was given, carrying on from the same song.
+    /// </summary>
+    public async Task SetShuffleAsync(bool on)
+    {
+        Shuffle = on;
+        await _prefs.SetAsync("player.shuffle", on);
+        if (on && _queue.Count > 0)
+        {
+            _ordered = [.. _queue];
+            var upcoming = _queue.Skip(Current + 1).OrderBy(_ => Random.Shared.Next()).ToList();
+            _queue.RemoveRange(Current + 1, _queue.Count - Current - 1);
+            _queue.AddRange(upcoming);
+        }
+        else if (!on && _ordered is { } ordered)
+        {
+            var now = Now;
+            var kept = ordered.Where(_queue.Contains).ToList();
+            _queue.Clear();
+            _queue.AddRange(kept);
+            Current = now is null ? -1 : _queue.IndexOf(now);
+            _ordered = null;
+        }
+        Changed?.Invoke();
+    }
+
+    /// <summary>Off, then the whole queue, then the one song, then off again.</summary>
+    public async Task CycleRepeatAsync()
+    {
+        Repeat = Repeat switch { RepeatMode.Off => RepeatMode.All, RepeatMode.All => RepeatMode.One, _ => RepeatMode.Off };
+        await _prefs.SetAsync("player.repeat", Repeat);
+        Changed?.Invoke();
+    }
+
+    private async Task LoadModesAsync()
+    {
+        if (_modesLoaded)
+            return;
+        _modesLoaded = true;
+        Shuffle = await _prefs.GetAsync("player.shuffle", false);
+        Repeat = await _prefs.GetAsync("player.repeat", RepeatMode.Off);
     }
 
     // ---- Controls ----
 
     public async Task ToggleAsync()
     {
-        if (_audio is null || Now is null)
+        if (Now is null)
             return;
+        // A queue picked up after a reload hasn't loaded its song yet.
+        if (_audio is null || _resumeAt is not null)
+        {
+            await StartAsync();
+            return;
+        }
         if (Playing)
             await _audio.InvokeVoidAsync("pause");
         else if (Now.Waiting || Now.Unplayable)
@@ -311,7 +410,8 @@ public sealed class Player : IAsyncDisposable
             await _audio.InvokeVoidAsync("play");
     }
 
-    public Task NextAsync() => JumpAsync(Current + 1);
+    /// <summary>On to the next song, or round to the first when repeating the queue.</summary>
+    public Task NextAsync() => JumpAsync(Current + 1 >= _queue.Count && Repeat != RepeatMode.Off ? 0 : Current + 1);
 
     /// <summary>Back to the start of this track, or to the one before if it's only just started.</summary>
     public async Task PreviousAsync()
@@ -319,7 +419,7 @@ public sealed class Player : IAsyncDisposable
         if (Position > 3 && _audio is not null)
             await SeekAsync(0);
         else
-            await JumpAsync(Math.Max(Current - 1, 0));
+            await JumpAsync(Current == 0 && Repeat != RepeatMode.Off ? _queue.Count - 1 : Math.Max(Current - 1, 0));
     }
 
     public async Task JumpAsync(int index)
@@ -345,6 +445,7 @@ public sealed class Player : IAsyncDisposable
     {
         if (index < 0 || index >= _queue.Count)
             return;
+        _ordered?.Remove(_queue[index]);
         _queue.RemoveAt(index);
         if (index < Current)
             Current--;
@@ -356,10 +457,27 @@ public sealed class Player : IAsyncDisposable
         Changed?.Invoke();
     }
 
+    /// <summary>Moves a song in the queue, carrying on with the same one.</summary>
+    public void Move(int from, int to)
+    {
+        if (from < 0 || from >= _queue.Count || to < 0 || to >= _queue.Count || from == to)
+            return;
+        var now = Now;
+        var entry = _queue[from];
+        _queue.RemoveAt(from);
+        _queue.Insert(to, entry);
+        Current = now is null ? -1 : _queue.IndexOf(now);
+        Changed?.Invoke();
+    }
+
     /// <summary>Stops and empties the queue, which hides the player bar.</summary>
     public async Task ClearAsync()
     {
         _queue.Clear();
+        _ordered = null;
+        _resumeAt = null;
+        // With nothing left to play, there's no player to show.
+        Expanded = false;
         await StopAsync();
     }
 
@@ -399,6 +517,12 @@ public sealed class Player : IAsyncDisposable
                     Position = 0;
                     Duration = entry.DurationSeconds ?? 0;
                     await audio.InvokeVoidAsync("load", url, new { title = entry.Title, artist = entry.ArtistCredit, album = entry.AlbumTitle, cover = entry.CoverUrl });
+                    if (_resumeAt is { } at)
+                    {
+                        Position = at;
+                        await audio.InvokeVoidAsync("seek", at);
+                    }
+                    _resumeAt = null;
                     break;
                 }
                 entry.Unplayable = true;
@@ -535,6 +659,65 @@ public sealed class Player : IAsyncDisposable
         if (duration > 0)
             Duration = duration;
         TimeChanged?.Invoke();
+        // Where it's got to is kept every few seconds, to pick up from after a reload.
+        if ((int)position / 5 != _savedSecond)
+        {
+            _savedSecond = (int)position / 5;
+            _ = SaveAsync();
+        }
+    }
+
+    /// <summary>A key pressed anywhere in the app, outside a text box: see the guide's list of shortcuts.</summary>
+    [JSInvokable]
+    public Task OnKey(string action) => action switch
+    {
+        "toggle" => ToggleAsync(),
+        "next" => HasNext ? NextAsync() : Task.CompletedTask,
+        "previous" => PreviousAsync(),
+        "forward" when Now is not null && _resumeAt is null => SeekAsync(Math.Min(Position + 10, Math.Max(Duration - 1, 0))),
+        "back" when Now is not null && _resumeAt is null => SeekAsync(Math.Max(Position - 10, 0)),
+        "shuffle" => SetShuffleAsync(!Shuffle),
+        "repeat" => CycleRepeatAsync(),
+        _ => Task.CompletedTask,
+    };
+
+    // ---- Kept per person in this browser ----
+
+    private sealed record Saved(List<PlayerEntry> Queue, int Current, double Position, List<int>? Ordered);
+
+    private string SavedKey => $"player.queue.{_owner:N}";
+
+    /// <summary>
+    /// Picks up the queue this person left in this browser, paused where they were, and starts the keyboard shortcuts.
+    /// </summary>
+    public async Task AttachAsync(Guid? userId)
+    {
+        await AudioAsync();
+        if (userId is null || userId == _owner)
+            return;
+        _owner = userId;
+        await LoadModesAsync();
+        if (_queue.Count > 0)
+            return;
+        var saved = await _prefs.GetAsync<Saved?>(SavedKey, null);
+        if (saved is not { Queue.Count: > 0 } || saved.Current < 0 || saved.Current >= saved.Queue.Count)
+            return;
+        _queue.AddRange(saved.Queue);
+        // The order it was given in, while shuffled, as places in the queue.
+        _ordered = saved.Ordered?.Where(i => i >= 0 && i < _queue.Count).Select(i => _queue[i]).ToList();
+        Current = saved.Current;
+        Position = saved.Position;
+        Duration = Now!.DurationSeconds ?? 0;
+        _resumeAt = saved.Position;
+        Changed?.Invoke();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_owner is null)
+            return;
+        var ordered = _ordered?.Select(e => _queue.IndexOf(e)).ToList();
+        await _prefs.SetAsync(SavedKey, _queue.Count == 0 ? null : new Saved([.. _queue], Current, _resumeAt ?? Position, ordered));
     }
 
     [JSInvokable]
@@ -544,8 +727,9 @@ public sealed class Player : IAsyncDisposable
         Changed?.Invoke();
     }
 
+    /// <summary>A song finished: the same again when repeating one, otherwise the next.</summary>
     [JSInvokable]
-    public Task OnEnded() => NextAsync();
+    public Task OnEnded() => Repeat == RepeatMode.One && Now is not null ? StartAsync() : NextAsync();
 
     [JSInvokable]
     public Task OnError(string message)
@@ -555,7 +739,8 @@ public sealed class Player : IAsyncDisposable
             entry.Unplayable = true;
             entry.Detail = message;
         }
-        return NextAsync();
+        // Not round again when repeating, or a queue that can't be played would go round for ever.
+        return JumpAsync(Current + 1);
     }
 
     [JSInvokable]

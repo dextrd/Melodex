@@ -20,6 +20,7 @@ public enum PlaylistSyncState
 /// <param name="Covers">Its own picture, or up to four covers of the albums in it, for a mosaic.</param>
 /// <param name="Pinned">Pinned by you, to show first.</param>
 /// <param name="OwnCover">It has a picture of its own, rather than its albums' covers.</param>
+/// <param name="AddToTop">Songs added in Melodex go at the top; otherwise at the bottom.</param>
 public sealed record PlaylistSummary(
     Guid Id,
     string Name,
@@ -30,7 +31,8 @@ public sealed record PlaylistSummary(
     DateTime UpdatedAt,
     PlaylistSyncState Sync,
     bool Pinned = false,
-    bool OwnCover = false);
+    bool OwnCover = false,
+    bool AddToTop = false);
 
 /// <summary>Body of <c>PUT /playlists/{id}/cover</c>: a picture, base64, up to 10 MB: JPEG, PNG, WebP or GIF.</summary>
 public sealed record SetPlaylistCover(string Upload);
@@ -74,10 +76,13 @@ public sealed record PlaylistSong(
 public sealed record PlaylistDetail(PlaylistSummary Playlist, IReadOnlyList<PlaylistSong> Songs);
 
 /// <summary>Body of <c>POST /playlists</c>.</summary>
-public sealed record CreatePlaylist(string Name, string? Comment = null, IReadOnlyList<PlaylistItem>? Songs = null);
+/// <param name="AddToTop">Songs added later go at the top; otherwise at the bottom.</param>
+public sealed record CreatePlaylist(string Name, string? Comment = null, IReadOnlyList<PlaylistItem>? Songs = null, bool AddToTop = false);
 
-/// <summary>Body of <c>PUT /playlists/{id}</c>: a new name or comment. An empty comment removes it.</summary>
-public sealed record UpdatePlaylist(string? Name = null, string? Comment = null);
+/// <summary>
+/// Body of <c>PUT /playlists/{id}</c>: a new name or comment, or where songs added go. An empty comment removes it.
+/// </summary>
+public sealed record UpdatePlaylist(string? Name = null, string? Comment = null, bool? AddToTop = null);
 
 /// <summary>Body of <c>POST /playlists/{id}/songs</c>.</summary>
 /// <param name="Duplicates">Add songs already in it again; otherwise they're left out.</param>

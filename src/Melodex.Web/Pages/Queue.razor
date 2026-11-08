@@ -1,0 +1,118 @@
+@page "/queue"
+@implements IDisposable
+@inject Player Player
+
+<PageTitle>Queue · Melodex</PageTitle>
+
+@*
+    The player's queue as a page: the same songs as its pop-up, as a track list, to play from, move about, take out or
+    keep as a playlist. It changes as the player does.
+*@
+<h1>Queue</h1>
+
+@if (Player.Queue.Count == 0)
+{
+    <div class="empty card">Nothing's queued. Play or queue songs from any album, playlist or search.</div>
+}
+else
+{
+    var total = Player.Queue.Sum(e => e.DurationSeconds ?? 0);
+    var keepable = Keepable();
+    <div class="toolbar">
+        <span class="muted">@Player.Queue.Count @(Player.Queue.Count == 1 ? "song" : "songs") · @Format.Duration(total)</span>
+        <span class="spacer"></span>
+        <IconButton Icon="shuffle" On="Player.Shuffle" Title="@(Player.Shuffle ? "Shuffled: click to put it back in order" : "Shuffle what's still to play")"
+                    OnClick="() => Player.SetShuffleAsync(!Player.Shuffle)" />
+        @if (keepable.Count > 0)
+        {
+            <IconButton Icon="playlist" Requires="@UserPermissions.Listen" Label="Save as a playlist"
+                        Title="Add the songs in your library to a playlist" OnClick="() => _adding = keepable" />
+        }
+        <IconButton Icon="cancel" Label="Clear" Title="Stop and clear the queue" OnClick="Player.ClearAsync" />
+    </div>
+    <div class="card">
+        <table class="table track-list" data-reorder>
+            <colgroup><col class="num-col" /><col class="cover-col" /><col /><col class="album-col hide-narrow" /><col class="length-col hide-narrow" /><col class="icons-3-col" /></colgroup>
+            <thead>
+                <tr>
+                    <th class="num">#</th>
+                    <th class="cover-col"></th>
+                    <th>Title</th>
+                    <th class="hide-narrow">Album</th>
+                    <th class="num hide-narrow">Length</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (var i = 0; i < Player.Queue.Count; i++)
+                {
+                    var index = i;
+                    var entry = Player.Queue[i];
+                    var now = index == Player.Current;
+                    var albumHref = entry.AlbumHref;
+                    <tr @key="entry" class="@(now ? "playing" : "") @(entry.Unplayable ? "dim" : "") @Drag.Class(index)"
+                        @ondragover="() => Drag.Over(index)" @ondragover:preventDefault="true" @ondrop="() => Drag.Drop(index, Player.Move)" @ondrop:preventDefault="true">
+                        <td class="num muted"><div class="drag-num"><DragHandle OnStart="() => Drag.Start(index)" OnEnd="Drag.End" />@(i + 1)</div></td>
+                        <td class="cover-col">
+                            @if (albumHref is not null) { <a href="@albumHref" tabindex="-1"><Cover Url="@entry.CoverUrl" /></a> } else { <Cover Url="@entry.CoverUrl" /> }
+                        </td>
+                        <td class="track-main">
+                            <div class="ellipsis">@entry.Title</div>
+                            <div class="muted small ellipsis">
+                                @if (entry.ArtistId is { } artist) { <a class="muted" href="artists/@artist">@entry.ArtistCredit</a> } else { @entry.ArtistCredit }
+                                @if (State(entry) is { } state) { <span> · @state</span> }
+                            </div>
+                        </td>
+                        <td class="hide-narrow muted small ellipsis">
+                            @if (albumHref is not null) { <a class="muted" href="@albumHref">@entry.AlbumTitle</a> } else { @entry.AlbumTitle }
+                        </td>
+                        <td class="num hide-narrow muted">@Format.Duration(entry.DurationSeconds)</td>
+                        <td class="num actions">
+                            <div class="row-actions">
+                                <IconButton Icon="@(now && Player.Playing ? "pause" : "play")" Primary="now"
+                                            Title="@(now ? (Player.Playing ? "Pause" : "Play") : "Play from here")"
+                                            OnClick="() => now ? Player.ToggleAsync() : Player.JumpAsync(index)" />
+                                <MoveMenu First="index == 0" Last="index == Player.Queue.Count - 1" OnMove="by => Move(index, by)" />
+                                <IconButton Icon="cancel" Title="Take it out of the queue" OnClick="() => Player.RemoveAsync(index)" />
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_adding is { } adding)
+{
+    <AddToPlaylistDialog Name="Queue" Songs="adding" OnClose="() => _adding = null" />
+}
+
+@code {
+    private readonly DragOrder Drag = new();
+    private IReadOnlyList<PlaylistItem>? _adding;
+
+    protected override void OnInitialized() => Player.Changed += Redraw;
+
+    private void Redraw() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Player.Changed -= Redraw;
+
+    private void Move(int index, int by) =>
+        Player.Move(index, Math.Clamp(by is int.MinValue or int.MaxValue ? by : index + by, 0, Player.Queue.Count - 1));
+
+    // Only songs in the library can go in a playlist: not those fetched just to listen to.
+    private List<PlaylistItem> Keepable() => Player.Queue
+        .Where(e => e.ListenId is null)
+        .Select(e => e.FileId is { } file ? new PlaylistItem(FileId: file) : new PlaylistItem(e.TrackId))
+        .ToList();
+
+    private static string? State(PlayerEntry entry) => entry switch
+    {
+        { Unplayable: true } => entry.Detail ?? "Can't play",
+        { Waiting: true } => "Fetching…",
+        { ListenState: ListenNowState.Playable } => "Listen now",
+        { ListenState: ListenNowState.Importing } => "Adding…",
+        _ => null,
+    };
+}

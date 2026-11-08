@@ -139,7 +139,7 @@
                                 <td class="num hide-narrow muted">@Format.Duration(track.DurationSeconds)</td>
                                 <td class="num actions">
                                     <IconButton Icon="play" Requires="@UserPermissions.Listen" Title="Play the tracks listed from here" OnClick="() => PlayFromAsync(track)" />
-                                    <IconButton Icon="queue" Requires="@UserPermissions.Listen" Title="Add to the queue" Confirm="true" OnClick="() => Player.AddAsync([PlayerEntry.Owned(track)])" />
+                                    <QueueButton Title="Add to the queue: next, or at the end" OnQueue="next => Player.AddAsync([PlayerEntry.Owned(track)], next)" />
                                     <IconButton Icon="remove" Requires="@UserPermissions.Remove" Class="remove" Title="Remove from your library…"
                                                 OnClick="() => RemoveTrack(track)" />
                                 </td>

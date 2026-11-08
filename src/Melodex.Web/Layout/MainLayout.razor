@@ -1,6 +1,7 @@
 ﻿@inherits LayoutComponentBase
 @implements IDisposable
 @inject AuthState Auth
+@inject Player Player
 @inject Theme Theme
 @inject MelodexClient Api
 @inject NavigationManager Nav
@@ -33,9 +34,12 @@
     <AccountMenu />
 </header>
 
-<main>
-    @Body
-</main>
+@* The page scrolls below the top bar, so on a computer its scrollbar starts under the bar rather than beside it. *@
+<div class="page-scroll">
+    <main>
+        @Body
+    </main>
+</div>
 
 @if (Auth.May(UserPermissions.Listen))
 {
@@ -75,7 +79,11 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
+        {
             await Js.InvokeVoidAsync("melodexTopbar.watch", _topbar);
+            // Their queue from last time, and the keyboard shortcuts.
+            await Player.AttachAsync(Auth.Status?.UserId);
+        }
     }
 
     // The first settings tab they may open.
@@ -89,23 +97,6 @@
         Auth.Changed += Redraw;
         Sections.Changed += Moved;
         await ApplyThemeAsync();
-        await OfferSetupAsync();
-    }
-
-    // A new install walks whoever may set it up through the setup steps, until they finish or skip them.
-    private async Task OfferSetupAsync()
-    {
-        if (!Auth.May(UserPermissions.Settings) || Nav.ToBaseRelativePath(Nav.Uri).StartsWith("setup"))
-            return;
-        try
-        {
-            if (!(await Api.GetSetupAsync()).Done)
-                Nav.NavigateTo("setup");
-        }
-        catch (MelodexApiException)
-        {
-            // Not worth stopping the app for: setup is under Settings too.
-        }
     }
 
     // Whoever signed in sees their own theme, here and next time in this browser.
@@ -118,6 +109,7 @@
     private void Redraw() => InvokeAsync(async () =>
     {
         await ApplyThemeAsync();
+        await Player.AttachAsync(Auth.Status?.UserId);
         StateHasChanged();
     });
 

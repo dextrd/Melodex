@@ -1,0 +1,14 @@
+@*
+    A Settings section's page title, left out when the section is shown inside setup, which has its own: a section's
+    title would otherwise win, as it's drawn after setup's.
+*@
+@if (!InSetup)
+{
+    <PageTitle>@ChildContent</PageTitle>
+}
+
+@code {
+    [CascadingParameter(Name = "InSetup")] public bool InSetup { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

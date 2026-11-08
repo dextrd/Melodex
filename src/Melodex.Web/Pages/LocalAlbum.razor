@@ -33,7 +33,7 @@ else
             </div>
             <div class="row album-actions" style="margin-top: .5rem;">
                 <IconButton Icon="play" Requires="@UserPermissions.Listen" Primary="true" Large="true" Label="Play" Title="Play the album" OnClick="() => PlayFromAsync(0)" />
-                <IconButton Icon="queue" Requires="@UserPermissions.Listen" Large="true" Confirm="true" Title="Add to the queue" OnClick="() => Player.AddAsync(Entries())" />
+                <QueueButton Large="true" Left="true" Title="Add to the queue: next, or at the end" OnQueue="next => Player.AddAsync(Entries(), next)" />
                 <IconButton Icon="playlist" Requires="@UserPermissions.Listen" Large="true" Title="Add to a playlist"
                             OnClick="() => _adding = (album.Title, album.Tracks.Select(t => new PlaylistItem(FileId: t.FileId)).ToList())" />
             </div>
@@ -65,7 +65,7 @@ else
                         <td class="num hide-narrow muted">@Format.Duration(track.DurationSeconds)</td>
                         <td class="num actions">
                             <IconButton Icon="play" Requires="@UserPermissions.Listen" Title="Play from here" OnClick="() => PlayFromAsync(index)" />
-                            <IconButton Icon="queue" Requires="@UserPermissions.Listen" Title="Add to the queue" Confirm="true" OnClick="() => Player.AddAsync([PlayerEntry.Owned(track, album)])" />
+                            <QueueButton Title="Add to the queue: next, or at the end" OnQueue="next => Player.AddAsync([PlayerEntry.Owned(track, album)], next)" />
                             <IconButton Icon="playlist" Requires="@UserPermissions.Listen" Class="hide-narrow" Title="Add to a playlist"
                                         OnClick="() => _adding = (track.Title, [new PlaylistItem(FileId: track.FileId)])" />
                             <a class="small" href="@($"search?q={Uri.EscapeDataString($"{track.Artist} {track.Title}")}&file={track.FileId}")"

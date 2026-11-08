@@ -27,7 +27,8 @@ public sealed class LibraryMatcher(
 
     /// <param name="Waiting">Files left pending because the index was unavailable; the next scan matches them.</param>
     /// <param name="StillDeferred">Deferred files tried again that still didn't beat the threshold, so stay deferred.</param>
-    public sealed record Result(int Matched, int Review, int Waiting, int StillDeferred = 0);
+    /// <param name="NoCatalogue">Files left unmatched because no catalogue is on; the library shows them as their tags say.</param>
+    public sealed record Result(int Matched, int Review, int Waiting, int StillDeferred = 0, int NoCatalogue = 0);
 
     public async Task<Result> MatchPendingAsync(IProgress<string>? progress, CancellationToken ct)
     {
@@ -46,6 +47,17 @@ public sealed class LibraryMatcher(
             .ThenBy(g => g.Select(x => x.Path).Min(StringComparer.Ordinal), StringComparer.Ordinal)
             .ThenBy(g => g.Key, StringComparer.Ordinal)
             .ToList();
+        // Without a catalogue there's nothing to match against: the files wait, shown as their tags say, until one is added.
+        if (!await catalogue.HasCatalogueAsync(ct))
+        {
+            foreach (var x in groups.SelectMany(g => g))
+                feed.Set(x.Path, ScanFileState.Waiting, x.Tags.Title, x.Tags.Artist, "No catalogue is set up, so it's shown as its tags say");
+            return new Result(0, 0, 0, NoCatalogue: pending.Count);
+        }
+        // Every file to match is on the Activity page's list from the start, in the order they're matched, so you can see
+        // what's to come; files the scan didn't read again, such as those matched again on request, aren't there yet.
+        foreach (var x in groups.SelectMany(g => g))
+            feed.Set(x.Path, ScanFileState.Queued, x.Tags.Title, x.Tags.Artist);
 
         // A group the source was too busy for goes to the back, so it gets time to recover before the next attempt.
         var queue = new Queue<(IGrouping<string, (Guid Id, FileTags Tags, string Path)> Group, int Attempt)>(groups.Select(g => (g, 1)));

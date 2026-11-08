@@ -1,0 +1,36 @@
+@*
+    Moving something in a list: a "more" button opening up, down, to the top and to the bottom, which are used less
+    than the buttons beside it.
+*@
+<span class="move-menu">
+    <IconButton Icon="more" On="_open" Title="Move it" Disabled="Disabled" OnClick="() => _open = !_open" />
+    @if (_open)
+    {
+        <div class="menu-backdrop" @onclick="() => _open = false"></div>
+        <div class="menu right" role="menu">
+            <button type="button" role="menuitem" disabled="@First" @onclick="() => MoveAsync(int.MinValue)">Move to the top</button>
+            <button type="button" role="menuitem" disabled="@First" @onclick="() => MoveAsync(-1)">Move up</button>
+            <button type="button" role="menuitem" disabled="@Last" @onclick="() => MoveAsync(1)">Move down</button>
+            <button type="button" role="menuitem" disabled="@Last" @onclick="() => MoveAsync(int.MaxValue)">Move to the bottom</button>
+        </div>
+    }
+</span>
+
+@code {
+    [Parameter] public bool First { get; set; }
+
+    [Parameter] public bool Last { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Where to: -1 or 1 for a step, <see cref="int.MinValue"/> for the top, <see cref="int.MaxValue"/> for the bottom.</summary>
+    [Parameter] public EventCallback<int> OnMove { get; set; }
+
+    private bool _open;
+
+    private async Task MoveAsync(int by)
+    {
+        _open = false;
+        await OnMove.InvokeAsync(by);
+    }
+}

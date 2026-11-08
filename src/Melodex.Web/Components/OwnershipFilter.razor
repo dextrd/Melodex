@@ -1,4 +1,5 @@
 @inject Preferences Prefs
+@inject AuthState Auth
 @inject ViewTransitions Transitions
 
 @*
@@ -20,7 +21,8 @@
     [Parameter] public string MissingHint { get; set; } = "Only what has something missing";
 
     private IReadOnlyList<(OwnershipView, string, string?)> Options =>
-        [(OwnershipView.Owned, "Owned", OwnedHint), (OwnershipView.All, "All", "Everything"), (OwnershipView.Missing, "Missing", MissingHint)];
+        [(OwnershipView.Owned, "Owned", OwnedHint), (OwnershipView.All, "All", "Everything"), (OwnershipView.Missing, "Missing",
+            Auth.Status?.Catalogue == false ? "Nothing can be missing without a catalogue: add one under Settings → Plugins" : MissingHint)];
 
     private bool _busy;
 

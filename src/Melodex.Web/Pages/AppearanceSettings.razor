@@ -1,88 +1,12 @@
 @page "/settings/appearance"
 @layout SettingsLayout
-@inject MelodexClient Api
 @inject AuthState Auth
-@inject Theme Theme
 
 <PageTitle>Appearance · Melodex</PageTitle>
 
-@* How the web app looks to whoever's signed in. Each choice shows at once and is kept with their account. *@
-<section class="panel" aria-label="Appearance">
-    <header class="panel-head">
-        <div class="panel-title">
-            <h2>Appearance</h2>
-            <p class="muted small">How Melodex looks and behaves for you, on every device you sign in on. Others choose their own.</p>
-        </div>
-        @if (_saving) { <span class="spinner"></span> }
-    </header>
-    <div class="appearance">
-        <div class="field-label">Colour</div>
-        <div class="swatches" role="radiogroup" aria-label="Colour">
-            @foreach (var (color, name, light, dark) in Theme.Colors)
-            {
-                <button type="button" role="radio" aria-checked="@(_appearance.Color == color ? "true" : "false")"
-                        class="swatch @(_appearance.Color == color ? "selected" : "")" @onclick="() => SaveAsync(_appearance with { Color = color })">
-                    <span class="swatch-dot" style="--light: @light; --dark: @dark" aria-hidden="true"></span>
-                    @name
-                </button>
-            }
-        </div>
-
-        <div class="field-label">Light or dark</div>
-        <div class="mode-choices" role="radiogroup" aria-label="Light or dark">
-            @foreach (var (mode, name, hint) in Theme.Modes)
-            {
-                <label class="dialog-choice">
-                    <input type="radio" name="mode" checked="@(_appearance.Mode == mode)" @onchange="() => SaveAsync(_appearance with { Mode = mode })" />
-                    <span><strong>@name</strong><span class="muted small">@hint</span></span>
-                </label>
-            }
-        </div>
-
-        <label class="dialog-choice">
-            <input type="checkbox" checked="@_appearance.HighContrast" @onchange="e => SaveAsync(_appearance with { HighContrast = (bool)e.Value! })" />
-            <span>
-                <strong>High contrast</strong>
-                <span class="muted small">Stronger text and borders, and owned, partial, covered and missing in colours that colour-blind people can tell apart</span>
-            </span>
-        </label>
-        <div class="field-label">Long lists</div>
-        <p class="small">
-            The Library and playlists show
-            <NumberField Value="_appearance.ListPage" Min="20" Max="500" Step="20" Label="How many to show at a time"
-                         ValueChanged="v => SaveAsync(_appearance with { ListPage = v })" />
-            at a time, and more as you scroll down. <span class="muted">Fewer opens long lists faster.</span>
-        </p>
-        @if (_error is not null) { <p class="error small">@_error</p> }
-    </div>
-</section>
-
-@code {
-    private Appearance _appearance = new();
-    private bool _saving;
-    private string? _error;
-
-    protected override void OnInitialized() => _appearance = Auth.Status?.Appearance ?? new Appearance();
-
-    private async Task SaveAsync(Appearance appearance)
-    {
-        _appearance = appearance;
-        _error = null;
-        await Theme.ApplyAsync(appearance);
-        _saving = true;
-        try
-        {
-            await Api.SetAppearanceAsync(appearance);
-            if (Auth.Status is { } status)
-                Auth.Set(status with { Appearance = appearance });
-        }
-        catch (MelodexApiException e)
-        {
-            _error = $"Couldn't keep it with your account: {e.Message}";
-        }
-        finally
-        {
-            _saving = false;
-        }
-    }
+@* Your own look, and for whoever may change settings, everyone's: what people see until they choose their own. *@
+<AppearancePanel />
+@if (Auth.May(UserPermissions.Settings))
+{
+    <AppearancePanel ForEveryone="true" />
 }

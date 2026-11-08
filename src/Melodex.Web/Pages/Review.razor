@@ -218,6 +218,10 @@ else
                             </td>
                             <td class="num actions">
                                 <IconButton Icon="search" Class="small" Title="Search for what it is" OnClick="() => Nav.NavigateTo(SearchLink(item))" />
+                                @foreach (var (aside, verb, icon) in Asides.Where(a => a.As != AsideOf(list)))
+                                {
+                                    <IconButton Icon="@icon" Class="small" Title="@($"{verb} instead. {AsideHint(aside)}")" Disabled="_busy" OnClick="() => SetAsideAsync(item, aside)" />
+                                }
                                 <IconButton Icon="putback" Class="small" Title="Put back: on the review list again, and matched again at the next scan" Disabled="_busy"
                                             OnClick="() => SetAsideAsync(item, SetAside.None)" />
                             </td>
@@ -244,6 +248,13 @@ else
         (ReviewList.Deferred, "Deferred files", "Each scan tries these again, and matches one only when it's confident."),
         (ReviewList.Hidden, "Hidden files", "Out of the library altogether, though they stay in your music folder."),
     ];
+
+    private static SetAside AsideOf(ReviewList list) => list switch
+    {
+        ReviewList.Deferred => SetAside.Deferred,
+        ReviewList.Hidden => SetAside.Hidden,
+        _ => SetAside.Excluded,
+    };
 
     private static string AsideHint(SetAside aside) => aside switch
     {

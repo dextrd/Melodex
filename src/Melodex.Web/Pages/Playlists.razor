@@ -135,6 +135,10 @@ else
                 </span>
             }
         </div>
+        @if (_renamingFolder is null)
+        {
+            <AddToTopField @bind-Value="_addToTop" />
+        }
         @if (_nameError is not null) { <p class="error small">@_nameError</p> }
         <div class="toolbar">
             <span class="spacer"></span>
@@ -397,11 +401,14 @@ else
 
     private void StartNew(string? folder)
     {
+        _addToTop = false;
         _renamingFolder = null;
         _name = folder is null ? "" : folder + Delimiter;
         _nameError = null;
         _naming = true;
     }
+
+    private bool _addToTop;
 
     private void StartRename(string folder)
     {
@@ -427,7 +434,7 @@ else
             }
             else
             {
-                var made = await Api.CreatePlaylistAsync(new CreatePlaylist(_name.Trim()));
+                var made = await Api.CreatePlaylistAsync(new CreatePlaylist(_name.Trim(), AddToTop: _addToTop));
                 foreach (var parent in PlaylistNames.Folders(made.Playlist.Name, Delimiter))
                     _closed.RemoveWhere(c => c.EndsWith(parent, StringComparison.Ordinal));
             }

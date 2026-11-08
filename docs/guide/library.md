@@ -40,7 +40,8 @@ sure the match is, the files' names, their paths or when they last changed; the 
 - **Hide** it: it leaves the library altogether.
 
 Every file stays in your music folder whichever you choose. The lists at the bottom of Review (Excluded, Incomplete
-metadata, Deferred and Hidden) put any file back.
+metadata, Deferred and Hidden) move a file from one to another, or put it back on the review list, where the next scan
+tries to match it again.
 
 ## Your own music
 

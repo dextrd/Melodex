@@ -246,8 +246,9 @@ up() {
     -v "$MUSIC:/music:ro,z" -v melodex-sandbox-navidrome:/data \
     -e ND_LOGLEVEL=warn -e ND_SCANNER_SCHEDULE=0 -e ND_ENABLEINSIGHTSCOLLECTOR=false \
     "$NAVIDROME_IMAGE" >/dev/null
-  # The core first, so the staging volume takes its ownership from the core's image.
-  "$ENGINE" run -d --name melodex-sandbox-core "${SHARED[@]}" --network-alias melodex \
+  # The core first, so the staging volume takes its ownership from the core's image. It restarts when it stops, as in
+  # the compose file, so a factory reset brings it back.
+  "$ENGINE" run -d --name melodex-sandbox-core "${SHARED[@]}" --network-alias melodex --restart unless-stopped \
     -p "$MELODEX_PORT:8080" \
     -v "$MUSIC:/music:ro,z" -v melodex-sandbox-config:/config -v melodex-sandbox-staging:/staging \
     localhost/melodex/core:dev >/dev/null

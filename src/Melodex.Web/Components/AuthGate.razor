@@ -2,7 +2,7 @@
 @inject MelodexClient Api
 @inject AuthState Auth
 
-@* The app, once this browser is signed in; until then, making the admin account or signing in. *@
+@* The app, once this browser is signed in and Melodex is set up; until then, setting it up or signing in. *@
 @if (Auth.Status is not { } status)
 {
     @if (_error is not null)
@@ -14,28 +14,36 @@
         <div class="boot loading"><span class="spinner"></span> Loading Melodex…</div>
     }
 }
+else if (!status.SetUp || status is { LetIn: true, SetupFinished: false } && status.IsAdmin)
+{
+    <SetupWizard />
+}
+else if (status is { LetIn: true, SetupFinished: false })
+{
+    <PageTitle>Being set up · Melodex</PageTitle>
+    <div class="auth-page">
+        <div class="auth-card">
+            <div class="brand"><Logo />Melodex</div>
+            <h1>Nearly ready</h1>
+            <p class="muted">The admin is still setting Melodex up. Once they've finished, it opens here.</p>
+            <div class="toolbar">
+                <button @onclick="LoadAsync">Check again</button>
+                <button class="link" @onclick="SignOutAsync">Sign out</button>
+            </div>
+        </div>
+    </div>
+}
 else if (status.LetIn)
 {
     @ChildContent
 }
 else
 {
-    <PageTitle>@(status.SetUp ? "Sign in" : "Set up") · Melodex</PageTitle>
+    <PageTitle>Sign in · Melodex</PageTitle>
     <div class="auth-page">
         <form class="auth-card" @onsubmit="SubmitAsync" @onsubmit:preventDefault="true">
             <div class="brand"><Logo />Melodex</div>
-            @if (status.SetUp)
-            {
-                <h1>Sign in</h1>
-            }
-            else
-            {
-                <h1>Make the admin account</h1>
-                <p class="muted small">
-                    The admin may do everything in Melodex, including adding other people under Settings → Users with only what they need.
-                    Everyone signs in, even at home.
-                </p>
-            }
+            <h1>Sign in</h1>
 
             <label class="field">
                 <span class="field-label">Username</span>
@@ -43,41 +51,27 @@ else
             </label>
             <label class="field">
                 <span class="field-label">Password</span>
-                <input type="password" autocomplete="@(status.SetUp ? "current-password" : "new-password")" @bind="_password" @bind:event="oninput" required />
-                @if (!status.SetUp) { <span class="muted small">At least 8 characters.</span> }
+                <input type="password" autocomplete="current-password" @bind="_password" @bind:event="oninput" required />
             </label>
-            @if (!status.SetUp)
-            {
-                <label class="field">
-                    <span class="field-label">Password again</span>
-                    <input type="password" autocomplete="new-password" @bind="_confirm" @bind:event="oninput" required />
-                </label>
-            }
-            else
-            {
-                <label class="auth-check">
-                    <input type="checkbox" @bind="_remember" />
-                    <span>
-                        Remember me
-                        <span class="muted small">Stay signed in on this browser for 30 days from your last visit. Leave it off on a shared computer.</span>
-                    </span>
-                </label>
-            }
+            <label class="auth-check">
+                <input type="checkbox" @bind="_remember" />
+                <span>
+                    Remember me
+                    <span class="muted small">Stay signed in on this browser for 30 days from your last visit. Leave it off on a shared computer.</span>
+                </span>
+            </label>
 
             @if (_error is not null) { <p class="error small">@_error</p> }
 
-            <button class="primary" type="submit" disabled="@(_busy || !Ready(status))">
+            <button class="primary" type="submit" disabled="@(_busy || !Ready())">
                 @if (_busy) { <span class="spinner"></span> }
-                @(status.SetUp ? "Sign in" : "Make the admin account")
+                Sign in
             </button>
 
-            @if (status.SetUp)
-            {
-                <p class="muted small">
-                    Forgotten your password? The admin can set a new one under Settings → Users. If you're the admin, start Melodex once with
-                    <code>Melodex__ResetLogin=true</code> to choose a new one.
-                </p>
-            }
+            <p class="muted small">
+                Forgotten your password? The admin can set a new one under Settings → Users. If you're the admin, start Melodex once with
+                <code>Melodex__ResetLogin=true</code> to choose a new one.
+            </p>
         </form>
     </div>
 }
@@ -87,7 +81,6 @@ else
 
     private string _username = "";
     private string _password = "";
-    private string _confirm = "";
     private bool _remember;
     private bool _busy;
     private string? _error;
@@ -96,8 +89,6 @@ else
     {
         Auth.Changed += OnChanged;
         await LoadAsync();
-        if (Auth.Status is { SetUp: false })
-            _username = "admin";
     }
 
     private async Task LoadAsync()
@@ -115,31 +106,21 @@ else
 
     private void OnChanged()
     {
-        _password = _confirm = "";
+        _password = "";
         InvokeAsync(StateHasChanged);
     }
 
-    private bool Ready(AuthStatus status) =>
-        _username.Trim().Length > 0 && _password.Length > 0 && (status.SetUp || _confirm.Length > 0);
+    private bool Ready() => _username.Trim().Length > 0 && _password.Length > 0;
 
     private async Task SubmitAsync()
     {
-        var status = Auth.Status!;
-        if (!Ready(status))
+        if (!Ready())
             return;
-        if (!status.SetUp && _password != _confirm)
-        {
-            _error = "The passwords don't match.";
-            return;
-        }
         _busy = true;
         _error = null;
         try
         {
-            if (status.SetUp)
-                await Api.SignInAsync(new SignIn(_username, _password, _remember));
-            else
-                await Api.SetUpLoginAsync(new SetUpLogin(_username, _password));
+            await Api.SignInAsync(new SignIn(_username, _password, _remember));
             Auth.Set(await Api.GetAuthStatusAsync());
         }
         catch (MelodexApiException e)
@@ -150,6 +131,12 @@ else
         {
             _busy = false;
         }
+    }
+
+    private async Task SignOutAsync()
+    {
+        await Api.SignOutAsync();
+        await LoadAsync();
     }
 
     public void Dispose() => Auth.Changed -= OnChanged;

@@ -86,7 +86,7 @@ else
                 @if (owned)
                 {
                     <IconButton Icon="play" Requires="@UserPermissions.Listen" Primary="true" Large="true" Label="Play" Title="Play it" OnClick="() => Player.PlayAsync([Entry(track)])" />
-                    <IconButton Icon="queue" Requires="@UserPermissions.Listen" Large="true" Confirm="true" Title="Add to the queue" OnClick="() => Player.AddAsync([Entry(track)])" />
+                    <QueueButton Large="true" Left="true" Title="Add to the queue: next, or at the end" OnQueue="next => Player.AddAsync([Entry(track)], next)" />
                     <IconButton Icon="playlist" Requires="@UserPermissions.Listen" Large="true" Title="Add to a playlist" OnClick="() => _adding = (track.Title, [new PlaylistItem(track.Id)])" />
                     <IconButton Icon="format" Requires="@UserPermissions.Format" Large="true" Label="Format" Title="Rewrite this song's files: their tags, cover and where they live" OnClick="() => _formatting = true" />
                     <IconButton Icon="image" Requires="@UserPermissions.Format" Large="true" Label="Cover" Title="Choose this song's cover, from any release it's on or a picture of your own" OnClick="() => _choosingCover = true" />

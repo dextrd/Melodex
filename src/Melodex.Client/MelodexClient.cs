@@ -465,10 +465,35 @@ public sealed class MelodexClient(HttpClient http)
         await EnsureAsync(response, ct);
     }
 
+    /// <summary>Resets Melodex as it was first installed. The admin only; Melodex restarts.</summary>
+    public async Task FactoryResetAsync(string confirm, CancellationToken ct = default)
+    {
+        using var response = await http.PostAsJsonAsync($"{Api}/setup/reset", new FactoryResetRequest(confirm), MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+    }
+
     /// <summary>Keeps how the web app looks with your account.</summary>
     public async Task SetAppearanceAsync(Appearance appearance, CancellationToken ct = default)
     {
         using var response = await http.PutAsJsonAsync($"{Api}/auth/appearance", appearance, MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+    }
+
+    /// <summary>Go back to everyone's look; returns it.</summary>
+    public async Task<Appearance> ClearAppearanceAsync(CancellationToken ct = default)
+    {
+        using var response = await http.DeleteAsync($"{Api}/auth/appearance", ct);
+        await EnsureAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<Appearance>(MelodexJson.Options, ct))!;
+    }
+
+    public async Task<Appearance> GetDefaultAppearanceAsync(CancellationToken ct = default) =>
+        (await http.GetFromJsonAsync<Appearance>($"{Api}/auth/appearance/default", MelodexJson.Options, ct))!;
+
+    /// <summary>How Melodex looks for everyone who hasn't chosen their own look.</summary>
+    public async Task SetDefaultAppearanceAsync(Appearance appearance, CancellationToken ct = default)
+    {
+        using var response = await http.PutAsJsonAsync($"{Api}/auth/appearance/default", appearance, MelodexJson.Options, ct);
         await EnsureAsync(response, ct);
     }
 

@@ -35,7 +35,7 @@
                             RenderFragment play = @<text>
                                 <IconButton Icon="@(missing ? "listen" : "play")" Requires="@UserPermissions.Listen" Title="@(missing ? "Listen: fetch it to play now, without adding it to your library" : album.Status == AlbumStatus.Partial ? "Play, fetching the tracks you don't have to listen to" : "Play")"
                                             OnClick="() => Player.PlayAlbumAsync(album.Id)" />
-                                <IconButton Icon="queue" Requires="@UserPermissions.Listen" Class="@(album.Status is AlbumStatus.Partial or AlbumStatus.Missing ? "hide-narrow" : null)" Title="Add to the queue" Confirm="true" OnClick="() => Player.QueueAlbumAsync(album.Id)" />
+                                <QueueButton Class="@(album.Status is AlbumStatus.Partial or AlbumStatus.Missing ? "hide-narrow" : null)" Title="Add to the queue: next, or at the end" OnQueue="next => Player.QueueAlbumAsync(album.Id, next)" />
                             </text>;
                         }
                         @if (album.Ignored)
