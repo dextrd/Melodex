@@ -5,9 +5,9 @@ Melodex is pluggable in five ways. Manage them under **Settings → Plugins**, w
 
 | Kind | Does | Comes with Melodex |
 | --- | --- | --- |
-| **Catalogue** | Where artists, albums and songs come from | MusicBrainz (its public server, or your own mirror) |
+| **Catalogue** | Where artists, albums and songs come from | MusicBrainz (its public server, or your own mirror), Deezer |
 | **Media server** | Told to scan when music arrives; also lends its covers, and can sync playlists | Navidrome |
-| **Retrieval** | Fetches music | YouTube Music (yt-dlp) and the inbox folder, as containers in the compose file |
+| **Retrieval** | Fetches music | YouTube Music (yt-dlp) and the inbox folder; Internet Archive, Prowlarr, Qobuz, Tidal and Bandcamp when you turn them on |
 | **Artwork** | Covers and artist pictures | Cover Art Archive, Wikimedia Commons, Deezer, fanart.tv (with your own key) |
 | **Lyrics** | The words of songs, synced where they can be | LRCLIB |
 
@@ -18,6 +18,10 @@ and played as their tags say, as [your own music](library.md#your-own-music) is.
 fetch, and search finds only what you have. Add a catalogue whenever you like, and the next scan matches your files
 against it. Files matched before it was removed stay as they are. Beets doesn't need MusicBrainz either: music fetched
 through a catalogue that isn't MusicBrainz, such as Deezer, is filed as it's tagged.
+
+Each retrieval plugin runs as a container of its own, from the same compose file: yt-dlp and the inbox always, the
+others when named in `COMPOSE_PROFILES` (see [installing](installing.md#retrieval-plugins)). Add one under **Add**,
+where each is a template with its address filled in, and fill in its settings.
 
 Retrieval, artwork and lyrics plugins are tried in order; move them up and down to change it. A retrieval plugin is a separate service that
 speaks a small HTTP contract, so anyone can write one: see [the plugin contracts](../contracts/README.md).

@@ -2,11 +2,30 @@
 
 What changed in each release of Melodex. Versions follow [semantic versioning](https://semver.org).
 
-## Unreleased
+## [1.0.0]
 
-Everything on the way to 1.0.
+The first release. Melodex finds what's missing from your music library, fetches it through the plugins you choose,
+files it beside the rest, and lets you listen before you keep it, alongside the Navidrome you already have. It installs
+from one compose file, by hand or in a dashboard such as OpenMediaVault's: see
+[installing](docs/guide/installing.md). Coming from a build of the source, see
+[upgrading](docs/guide/upgrading.md#from-a-source-build).
 
 ### New
+
+- **Installing**: one compose file pulls the released images, for amd64 and arm64. yt-dlp and the inbox always run;
+  Internet Archive, Prowlarr, Qobuz, Tidal and Bandcamp run when named in `COMPOSE_PROFILES`.
+- **First-run setup**: a full-screen wizard for people, music, plugins, apps, the look and the first scan. The look
+  chosen there is everyone's, until each person chooses their own.
+- **Catalogues in order**: MusicBrainz first, with Deezer filling in what it doesn't have. Any catalogue can be
+  removed, MusicBrainz included, and Melodex is then a plain music library, listed as its files' tags say.
+- **Sources**: Internet Archive (the Live Music Archive and netlabels), Prowlarr with qBittorrent (sharing disk space
+  with what you seed, through reflinks), Qobuz and Tidal with your own subscription, and what you've bought on
+  Bandcamp.
+- **Factory reset**: the admin can put Melodex back as it was first installed, leaving the music alone.
+- **The player**: shuffle, repeat, play next, a queue that's kept in the browser and opens as a page of its own, songs
+  dragged into place by their handle, and keyboard shortcuts. On a phone the bar is one line that opens the
+  full-screen player; in a narrow window the volume folds into a button.
+- **Playlists** can take new songs at the top, and songs move to the top or bottom from their ⋮ menu.
 
 - **Melodex**: Navidex has a new name, a logo and a pink theme. Installs from before upgrade in place; see
   [upgrading](docs/guide/upgrading.md#from-navidex).
@@ -81,6 +100,9 @@ Everything on the way to 1.0.
   album. It used to behave as *keep it with the main album*.
 
 ### Changed
+
+- Formatting writes each file to a copy that then takes its place, so a song already playing carries on, and tells the
+  media server what's changed as it goes. Songs may still not play reliably while a format runs, and it says so.
 
 - Settings is a gear beside your account button, top right, instead of a link in the bar.
 - On a phone, the top bar is two lines: Melodex, Settings and your account on the first, the pages and Scan on the

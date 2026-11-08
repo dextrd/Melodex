@@ -13,6 +13,17 @@ The database is migrated when the core starts. Back up the `config` volume first
 version can't open a database a newer one has migrated. What changed in each release is in the
 [changelog](https://github.com/joeatethebeans/Melodex/blob/main/CHANGELOG.md).
 
+## From a source build
+
+If you ran Melodex from a checkout of the repository with `docker-compose.build.yml`, switch to the released images:
+
+- **To keep your data**, stay in the checkout's folder: `git pull`, then `docker compose pull` and
+  `docker compose up -d`, leaving out `-f docker-compose.build.yml` and `--build` from now on. Set `MELODEX_VERSION`
+  to the release, as the images you built locally were also called `latest`.
+- **To start afresh**, stop the old stack and remove it with its volumes (`docker compose down -v` in its folder),
+  then set Melodex up anew, from a folder or a compose dashboard, as in [installing](installing.md). Setup runs again,
+  and the first scan matches your music again. Your music folder isn't touched either way.
+
 ## From Navidex
 
 Melodex was called Navidex. An install from then upgrades in place, with nothing to do by hand:

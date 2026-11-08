@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      notes: ${{ steps.version.outputs.notes }}
     steps:
       - uses: actions/checkout@v4
       - name: The tag, Directory.Build.props and the changelog agree
@@ -23,8 +24,11 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           props=$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props)
           if [ "$props" != "$version" ]; then echo "Directory.Build.props says $props, the tag says $version"; exit 1; fi
-          if ! grep -q "^## \[$version\]" CHANGELOG.md; then echo "CHANGELOG.md has no section for [$version]"; exit 1; fi
+          # A pre-release such as 1.0.0-rc.1 has the notes of the release it leads to.
+          notes="${version%%-*}"
+          if ! grep -q "^## \[$notes\]" CHANGELOG.md; then echo "CHANGELOG.md has no section for [$notes]"; exit 1; fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "notes=$notes" >> "$GITHUB_OUTPUT"
 
   images:
     needs: check
@@ -44,6 +48,21 @@ jobs:
           - image: melodex-retriever-inbox
             context: plugins/retriever-inbox
             file: plugins/retriever-inbox/Dockerfile
+          - image: melodex-retriever-archive
+            context: plugins/retriever-archive
+            file: plugins/retriever-archive/Dockerfile
+          - image: melodex-retriever-prowlarr
+            context: plugins/retriever-prowlarr
+            file: plugins/retriever-prowlarr/Dockerfile
+          - image: melodex-retriever-qobuz
+            context: plugins/retriever-qobuz
+            file: plugins/retriever-qobuz/Dockerfile
+          - image: melodex-retriever-tidal
+            context: plugins/retriever-tidal
+            file: plugins/retriever-tidal/Dockerfile
+          - image: melodex-retriever-bandcamp
+            context: plugins/retriever-bandcamp
+            file: plugins/retriever-bandcamp/Dockerfile
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -84,8 +103,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.check.outputs.version }}
+          NOTES: ${{ needs.check.outputs.notes }}
         run: |
-          awk -v v="$VERSION" '
+          awk -v v="$NOTES" '
             $0 ~ "^## \\[" v "\\]" { found = 1; next }
             found && /^## / { exit }
             found { print }

@@ -26,7 +26,9 @@ curl -O https://raw.githubusercontent.com/joeatethebeans/Melodex/main/docker-com
 MUSIC_PATH=/path/to/your/music PUID=$(id -u) PGID=$(id -g) docker compose up -d
 ```
 
-Open `http://<your server>:8787`, make the admin account, and follow the setup steps. The
+Or paste `docker-compose.yml` into a compose dashboard, such as OpenMediaVault's, Portainer or Dockge, with
+`MUSIC_PATH`, `PUID` and `PGID` as its environment. Open `http://<your server>:8787`, make the admin account, and
+follow the setup steps. The
 [installing guide](docs/guide/installing.md) has the details.
 
 Coming from Navidex? It upgrades in place: see [upgrading](docs/guide/upgrading.md#from-navidex).

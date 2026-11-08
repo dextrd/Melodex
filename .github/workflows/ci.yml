@@ -29,6 +29,10 @@ jobs:
 
   docker:
     runs-on: ubuntu-latest
+    # Every plugin, so each image is built and started.
+    env:
+      MUSIC_PATH: ./music
+      COMPOSE_PROFILES: archive,prowlarr,qobuz,tidal,bandcamp
     steps:
       - uses: actions/checkout@v4
       - run: docker compose -f docker-compose.yml -f docker-compose.build.yml build

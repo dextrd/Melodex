@@ -6,24 +6,56 @@ have.
 
 ## With Docker Compose
 
-Download [`docker-compose.yml`](https://github.com/joeatethebeans/Melodex/blob/main/docker-compose.yml) into a folder
-of its own, then start it, pointing it at the folder Navidrome reads:
+Everything is in one file, [`docker-compose.yml`](https://github.com/joeatethebeans/Melodex/blob/main/docker-compose.yml),
+which pulls the released images. Save it into a folder of its own, beside a `.env` file with your settings:
 
 ```bash
-MUSIC_PATH=/path/to/your/music PUID=$(id -u) PGID=$(id -g) docker compose up -d
+MUSIC_PATH=/path/to/your/music
+PUID=1000
+PGID=1000
 ```
 
-| Variable | What | Default |
+Then start it:
+
+```bash
+docker compose up -d
+```
+
+and open `http://<your server>:8787`. Setup walks you through the rest: the admin account, Navidrome, plugins and
+the first scan.
+
+| Setting | What | Default |
 | --- | --- | --- |
-| `MUSIC_PATH` | Your music folder, the same one Navidrome reads | `./music` |
-| `PUID`, `PGID` | The user and group that own the music folder. The beets worker and plugins run as them. | `1000` |
+| `MUSIC_PATH` | Your music folder, the same one Navidrome reads. Needed. | |
+| `PUID`, `PGID` | The user and group that own the music folder, as `id` shows them. The beets worker and plugins run as them. | `1000` |
 | `MELODEX_PORT` | The port the web app listens on | `8787` |
 | `MELODEX_VERSION` | Which release to run, such as `1.0.0`; `latest` follows each release | `latest` |
 | `INBOX_PATH` | The folder the inbox plugin watches for files you drop in | `./inbox` |
+| `COMPOSE_PROFILES` | More retrieval plugins to run, comma-separated: `archive`, `prowlarr`, `qobuz`, `tidal`, `bandcamp` | none |
+| `DOWNLOADS_PATH` | qBittorrent's downloads folder, for the `prowlarr` plugin | `./downloads` |
 
-You can put these in a `.env` file beside `docker-compose.yml` instead of typing them each time.
+### In a compose dashboard
 
-Then open `http://<your server>:8787`.
+Server dashboards that run compose files, such as OpenMediaVault's (**Services → Compose → Files**), Portainer's
+stacks or Dockge, take the same file. Paste `docker-compose.yml` in as a new file or stack, put the settings above in
+its environment box (one `NAME=value` a line), and start it. Use full paths for `MUSIC_PATH`, `INBOX_PATH` and
+`DOWNLOADS_PATH`, as the dashboard's working folder may not be where you expect.
+
+### Retrieval plugins
+
+yt-dlp (YouTube Music) and the inbox folder always run. The others start only when named in `COMPOSE_PROFILES`, so
+the install stays small until you want them:
+
+| Profile | Plugin | Needs |
+| --- | --- | --- |
+| `archive` | Internet Archive: concerts from the Live Music Archive and netlabel releases | Nothing |
+| `prowlarr` | Prowlarr and qBittorrent | Your own Prowlarr and qBittorrent, and `DOWNLOADS_PATH` set to qBittorrent's downloads folder |
+| `qobuz` | Qobuz | Your own subscription |
+| `tidal` | Tidal | Your own subscription |
+| `bandcamp` | Albums and songs you've bought on Bandcamp | Your Bandcamp account |
+
+For example `COMPOSE_PROFILES=archive,bandcamp`. Once it's running, add it under **Settings → Plugins**, where it's
+among the templates under **Add**: see [plugins](plugins.md).
 
 ## The folders Melodex keeps
 

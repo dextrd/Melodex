@@ -11,3 +11,13 @@ services:
     build: plugins/retriever-ytdlp
   retriever-inbox:
     build: plugins/retriever-inbox
+  retriever-archive:
+    build: plugins/retriever-archive
+  retriever-prowlarr:
+    build: plugins/retriever-prowlarr
+  retriever-qobuz:
+    build: plugins/retriever-qobuz
+  retriever-tidal:
+    build: plugins/retriever-tidal
+  retriever-bandcamp:
+    build: plugins/retriever-bandcamp
