@@ -77,6 +77,9 @@ from one compose file, by hand or in a dashboard such as OpenMediaVault's: see
 
 ### Fixed
 
+- The Prowlarr plugin signs in to qBittorrent 5.2 and later, which answer differently, and says when qBittorrent has
+  turned it away after too many failed sign-ins.
+
 - The Library's colour key sits above the artists, with room beneath it, rather than under a "No artists match" box,
   and the Albums view has one too.
 - An album's tracks arriving no longer move the page: rows on their way are as tall and as wide as those arrived.

@@ -147,6 +147,26 @@ def fakes(monkeypatch, tmp_path):
     return TestClient(main.app), prowlarr, qb, settings
 
 
+@pytest.mark.parametrize("answer, error", [
+    (httpx.Response(200, text="Ok."), None),
+    (httpx.Response(204), None),
+    (httpx.Response(200, text="Fails."), "refused the username and password"),
+    (httpx.Response(401), "refused the username and password"),
+    (httpx.Response(403), "too many failed sign-ins"),
+])
+def test_signing_in_to_qbittorrent_understands_old_and_new_answers(monkeypatch, answer, error):
+    # qBittorrent 5.2 answers a sign-in with 204 and nothing else, where earlier versions said "Ok.".
+    def handler(request):
+        return answer if request.url.path.endswith("/auth/login") else httpx.Response(200, text="v5.2.0")
+    monkeypatch.setattr(clients, "http", lambda base_url, headers: httpx.Client(base_url=base_url, transport=httpx.MockTransport(handler)))
+    settings = {"qbittorrentUrl": "http://qbittorrent:8080", "qbittorrentUsername": "admin", "qbittorrentPassword": "secret"}
+    if error is None:
+        assert clients.QBittorrent(settings).version() == "v5.2.0"
+    else:
+        with pytest.raises(PermissionError, match=error):
+            clients.QBittorrent(settings)
+
+
 def wait(client, job_id):
     for _ in range(300):
         status = client.get(f"/v1/fetch/{job_id}").json()

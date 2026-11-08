@@ -77,9 +77,13 @@ class QBittorrent:
         if username:
             response = self.client.post("/auth/login", data={"username": username,
                                                              "password": str(settings.get("qbittorrentPassword") or "")})
-            response.raise_for_status()
-            if response.text.strip() != "Ok.":
+            if response.status_code == 403:
+                raise PermissionError("qBittorrent has turned this address away after too many failed sign-ins. Restart "
+                                      "qBittorrent, or wait (an hour, unless it's set otherwise), then try again.")
+            # Up to 5.1 it answers "Ok." or "Fails."; from 5.2, 204 with nothing, or 401.
+            if response.status_code == 401 or response.text.strip() == "Fails.":
                 raise PermissionError("qBittorrent refused the username and password.")
+            response.raise_for_status()
 
     def __enter__(self) -> QBittorrent:
         return self
