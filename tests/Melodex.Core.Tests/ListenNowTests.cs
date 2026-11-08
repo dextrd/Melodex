@@ -16,7 +16,7 @@ namespace Melodex.Core.Tests;
 public sealed class ListenNowTests(RequestFixture fixture, ITestOutputHelper output) : IAsyncLifetime
 {
     // Albums the request tests fetch, so these tests stay out of their way.
-    private static readonly string[] Taken = ["Human After All", "Third", "Homework", "Dummy", "Portishead", "Roseland NYC Live"];
+    private static readonly string[] Taken = ["Human After All", "Third", "Homework", "Dummy", "Portishead", "Roseland NYC Live", "Magic Doors", "Random Access Memories"];
 
     private MelodexClient Api => fixture.Api;
 
