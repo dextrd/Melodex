@@ -79,14 +79,17 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
         var albumIds = albums.Select(a => a.Id).ToList();
         var editions = await db.Editions.AsNoTracking().Where(e => albumIds.Contains(e.AlbumId)).ToListAsync(ct);
         var editionIds = editions.Select(e => e.Id).ToList();
+        var showing = albums.ToDictionary(a => a.Id, a => settings.ShowingOf(a));
         // A page shows each song's credit and length, read from the song where its listing has none. The whole library's
-        // lists need only which songs each edition has, so they don't read every song too.
+        // lists need only which songs each edition has, so they don't read every song too, and their titles only to
+        // compare songs on releases shown for new songs only.
+        var titled = showing.ContainsValue(ReleaseShowing.NewSongsOnly);
         var listings = scoped
             ? await db.EditionTracks.Where(et => editionIds.Contains(et.EditionId))
                 .Select(et => new Listing(et.EditionId, et.Disc, et.Position, et.Number, et.Title, et.TrackId, et.Track.ArtistCredit, et.Duration ?? et.Track.Duration))
                 .ToListAsync(ct)
             : await db.EditionTracks.Where(et => editionIds.Contains(et.EditionId))
-                .Select(et => new Listing(et.EditionId, et.Disc, et.Position, "", et.Title, et.TrackId, "", null))
+                .Select(et => new Listing(et.EditionId, et.Disc, et.Position, "", titled ? et.Title : "", et.TrackId, "", null))
                 .ToListAsync(ct);
         var listingTracks = listings.Select(l => l.TrackId).Distinct().ToList();
 
@@ -119,7 +122,6 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
         var providerIds = await db.Crosswalk.Where(m => m.EntityKind == EntityKind.Album && albumIds.Contains(m.EntityId))
             .Select(m => new { m.EntityId, m.Provider, m.Value }).ToListAsync(ct);
 
-        var showing = albums.ToDictionary(a => a.Id, a => settings.ShowingOf(a));
         var full = new List<(Guid TrackId, string Title, Album Album)>();
         if (showing.ContainsValue(ReleaseShowing.NewSongsOnly) && onlyAlbums is null)
         {

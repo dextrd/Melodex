@@ -2,6 +2,9 @@
 
   <PropertyGroup>
     <RootNamespace>Melodex.Core</RootNamespace>
+    <!-- The server collector suits busy web servers, taking memory freely and seldom giving it back; Melodex serves a
+         household, so the workstation collector keeps it small at no cost anyone would notice. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>

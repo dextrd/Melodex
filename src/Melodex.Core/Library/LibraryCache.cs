@@ -47,6 +47,11 @@ public sealed class LibraryCache(IServiceScopeFactory scopes, IOptions<MelodexOp
     private long _generation;
     private long _lastWrite;
     private int _warming;
+    private int _refreshing;
+
+    // Working out a view reads much of the catalogue into memory for a moment: one at a time, so they don't all hold
+    // theirs at once.
+    private readonly SemaphoreSlim _computing = new(1, 1);
     private readonly Dictionary<string, Entry> _entries = Views.Keys.ToDictionary(k => k, k => new Entry(k));
 
     private sealed class Entry(string name)
@@ -219,14 +224,26 @@ public sealed class LibraryCache(IServiceScopeFactory scopes, IOptions<MelodexOp
     private async Task RefreshAsync(Entry entry)
     {
         await Task.Yield();
+        Interlocked.Increment(ref _refreshing);
         try
         {
-            // Read before computing, so a write while it runs leaves the answer stale.
-            var generation = Interlocked.Read(ref _generation);
-            using var scope = scopes.CreateScope();
+            await _computing.WaitAsync();
+            long generation;
+            object value;
+            byte[] json;
             var watch = System.Diagnostics.Stopwatch.StartNew();
-            var value = await Views[entry.Name].Compute(scope.ServiceProvider.GetRequiredService<LibraryView>(), CancellationToken.None);
-            var json = JsonSerializer.SerializeToUtf8Bytes(value, Views[entry.Name].Type, MelodexJson.Options);
+            try
+            {
+                // Read before computing, so a write while it runs leaves the answer stale.
+                generation = Interlocked.Read(ref _generation);
+                using var scope = scopes.CreateScope();
+                value = await Views[entry.Name].Compute(scope.ServiceProvider.GetRequiredService<LibraryView>(), CancellationToken.None);
+                json = JsonSerializer.SerializeToUtf8Bytes(value, Views[entry.Name].Type, MelodexJson.Options);
+            }
+            finally
+            {
+                _computing.Release();
+            }
             var tag = TagOf(json);
             if (watch.Elapsed > SlowView)
                 logger.LogInformation("Working out the library's {View} took {Seconds:0.0} s", entry.Name, watch.Elapsed.TotalSeconds);
@@ -251,6 +268,9 @@ public sealed class LibraryCache(IServiceScopeFactory scopes, IOptions<MelodexOp
         {
             lock (entry.Gate)
                 entry.Refresh = null;
+            // What was read to work the views out is let go and its memory handed back, rather than kept for the next time.
+            if (Interlocked.Decrement(ref _refreshing) == 0)
+                GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
         }
     }
 
