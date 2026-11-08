@@ -91,6 +91,10 @@ public sealed class FormatTask(
     public const string TaskKind = "library-format";
     private const int BatchSize = 50;
 
+    // How often the media server is told what's been written while a format runs, so a moved song is missing from it
+    // for no longer than this and its scan, without asking it to scan after every batch.
+    private static readonly TimeSpan TellEvery = TimeSpan.FromSeconds(20);
+
     public string Kind => TaskKind;
 
     /// <summary>A format's payload: what it covers and how, and its title for the Activity page.</summary>
@@ -125,7 +129,9 @@ public sealed class FormatTask(
         var touched = new List<string>();
         var moved = new List<Guid>();
         var failures = new List<string>();
-        progress.Report($"Formatting: {done} of {total} files");
+        var untold = new List<string>();
+        var told = DateTime.UtcNow;
+        progress.Report(Progress(done, total));
 
         foreach (var batch in todo.GroupBy(f => f.EditionId).SelectMany(g => g.Chunk(BatchSize)))
         {
@@ -155,20 +161,29 @@ public sealed class FormatTask(
                     logger.LogWarning("Couldn't format {Path}: {Reason}", formatted.Path, formatted.Error);
                     continue;
                 }
-                touched.Add(file.Path);
+                untold.Add(file.Path);
                 if (file.Path != formatted.NewPath)
                     moved.Add(file.Id);
                 file.Path = formatted.NewPath;
-                touched.Add(file.Path);
+                untold.Add(file.Path);
                 Reread(file, root, logger);
                 file.FormattedAt = now;
             }
             // Saved even if it's cancelled now: the files have been written.
             await db.SaveChangesAsync(CancellationToken.None);
             done += batch.Length;
-            progress.Report($"Formatting: {done} of {total} files");
+            progress.Report(Progress(done, total));
+            touched.AddRange(untold);
+            if (DateTime.UtcNow - told >= TellEvery)
+            {
+                await TellMediaServerAsync(connectors, untold.Distinct().ToList(), logger, ct);
+                untold.Clear();
+                told = DateTime.UtcNow;
+            }
         }
 
+        // A scan asked for while one runs is ignored, so the last word waits for it, and covers everything written.
+        await WaitForMediaServerAsync(connectors, ct);
         await TellMediaServerAsync(connectors, touched.Distinct().ToList(), logger, ct);
         // Moved files may have new IDs on the media server, so the playlists they're in find them there again.
         foreach (var user in await PlaylistSync.FilesMovedAsync(db, moved, CancellationToken.None))
@@ -230,6 +245,30 @@ public sealed class FormatTask(
             }
         }
         return null;
+    }
+
+    // Activity says so while it runs: files being rewritten and moved don't always play.
+    private static string Progress(int done, int total) =>
+        $"Formatting: {done} of {total} files. Songs may not play reliably until it's done.";
+
+    /// <summary>Waits, for a few minutes at most, while the media server scans.</summary>
+    private static async Task WaitForMediaServerAsync(ConnectorPlugins connectors, CancellationToken ct)
+    {
+        if (await connectors.GetActiveAsync(ct) is not { } active)
+            return;
+        for (var tries = 0; tries < 90; tries++)
+        {
+            try
+            {
+                if (!(await active.Connector.GetScanStatusAsync(ct)).Scanning)
+                    return;
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                return;
+            }
+            await Task.Delay(TimeSpan.FromSeconds(2), ct);
+        }
     }
 
     /// <summary>Asks the media server to pick up files that have been written, if there is one.</summary>

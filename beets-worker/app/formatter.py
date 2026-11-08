@@ -46,6 +46,22 @@ def write_tags(full: Path, tags: dict[str, str], artwork: bytes | None, remove_a
         raise FormatFailed(f"Melodex doesn't write the tag {', '.join(unknown)}.")
     if not tags and artwork is None and not remove_artwork:
         return
+    # Written to a copy beside it, which then takes its place in one step: a song playing from it carries on reading
+    # the old file to its end, and nothing ever finds it half written.
+    copy = full.with_name(WORKING_PREFIX + full.name)
+    try:
+        shutil.copy2(full, copy)
+        _write(copy, tags, artwork, remove_artwork)
+        os.replace(copy, full)
+    finally:
+        copy.unlink(missing_ok=True)
+
+
+# Beside a file while its copy is written. Melodex's scans pass them by, and media servers pass by hidden files.
+WORKING_PREFIX = ".melodex-"
+
+
+def _write(full: Path, tags: dict[str, str], artwork: bytes | None, remove_artwork: bool) -> None:
     media = MediaFile(full)
     for name, value in tags.items():
         if name in DATE_FIELDS:

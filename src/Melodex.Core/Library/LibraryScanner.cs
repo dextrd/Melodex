@@ -42,6 +42,9 @@ public sealed class LibraryScanner(MelodexDbContext db, IOptions<MelodexOptions>
         ".mp3", ".flac", ".m4a", ".mp4", ".aac", ".ogg", ".oga", ".opus", ".wma", ".wav", ".aif", ".aiff", ".ape", ".wv", ".mpc", ".dsf",
     };
 
+    /// <summary>How the beets worker names the copy of a file it's formatting, beside it (its formatter.py).</summary>
+    public const string FormattingCopyPrefix = ".melodex-";
+
     /// <param name="SkippedFolders">Folders that couldn't be read; their files are kept as they were.</param>
     public sealed record Result(int Files, int Added, int Changed, int Removed, int Unreadable, int SkippedFolders);
 
@@ -158,7 +161,8 @@ public sealed class LibraryScanner(MelodexDbContext db, IOptions<MelodexOptions>
                     entries++;
                     if (entry is DirectoryInfo sub)
                         pending.Push(sub.FullName);
-                    else
+                    // A copy the beets worker is formatting, about to take the file's place.
+                    else if (!entry.Name.StartsWith(FormattingCopyPrefix, StringComparison.Ordinal))
                         files.Add(entry.FullName);
                 }
             }

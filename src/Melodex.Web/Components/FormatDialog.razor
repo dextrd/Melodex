@@ -9,6 +9,7 @@
     @if (_started is { } task)
     {
         <p>Formatting has started. It runs in the background; you can follow it, pause it or cancel it on <a href="activity">Activity</a>.</p>
+        <p class="notice warning">@PlayingWarning</p>
         <div class="toolbar dialog-buttons"><button class="primary" @onclick="CloseAsync">Close</button></div>
     }
     else if (_plan is null)
@@ -29,6 +30,7 @@
             This rewrites @Format.Count(_plan.Formattable, "file", "files") in your music folder@(Writes). It can't be undone.
             @if (Scope.Kind == FormatScopeKind.Library) { <span>Over the whole library this can take a while. It runs in the background, and you can pause it on Activity.</span> }
         </p>
+        <p class="notice warning">@PlayingWarning</p>
         @if (_plan.Files > _plan.Formattable)
         {
             <p class="muted small">@Format.Count(_plan.Files - _plan.Formattable, "file isn't", "files aren't") matched to the catalogue, so @(_plan.Files - _plan.Formattable == 1 ? "it's" : "they're") left as @(_plan.Files - _plan.Formattable == 1 ? "it is" : "they are").</p>
@@ -80,6 +82,10 @@
 </Dialog>
 
 @code {
+    // Files are rewritten, and maybe moved, one after another, and the media server catches up every so often.
+    private const string PlayingWarning = "While it runs, songs may not play reliably, here or in your media server's apps: "
+        + "a song whose file is being rewritten or moved can stop or go missing for a moment, until the media server catches up.";
+
     [Parameter, EditorRequired] public FormatScope Scope { get; set; } = null!;
 
     /// <summary>What's being formatted, until the plan says.</summary>

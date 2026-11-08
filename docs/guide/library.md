@@ -85,6 +85,11 @@ a deluxe edition, a compilation) is fetched once or for each, and whether owning
 each artist, album and track page, and for the whole library in the Scan menu. It shows what will change first, and
 nothing is written until you confirm. Set the folder layout under **Settings → General**.
 
+**While a format runs, songs may not play reliably**, in Melodex or in your media server's apps. Each file is written
+to a copy that then takes its place, so a song already playing carries on, but a song whose file has just been moved
+can't be found until the media server catches up. Melodex tells it what's changed every 20 seconds or so, and again
+at the end. Over a whole library, it's best to format when nobody's listening.
+
 ## Choosing a cover
 
 **Cover**, on an album or track page, picks the picture for it. The choices are the usual cover and each edition's

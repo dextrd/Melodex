@@ -180,6 +180,28 @@ def test_formatting_without_a_template_leaves_files_where_they_are(client, roots
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
+def test_formatting_writes_a_copy_that_takes_the_files_place(client, roots):
+    library = roots[1]
+    song = library / "a" / "song.flac"
+    silent_flac(song, title="old")
+    # A song playing from the file keeps reading what it opened: the new file is a different one.
+    playing = song.open("rb")
+    response = client.post("/v1/format", json={"files": [{"path": "a/song.flac", "tags": {"title": "New"}}]})
+    assert response.json()["files"][0]["newPath"] == "a/song.flac"
+    assert MediaFile(song).title == "New"
+    assert os.fstat(playing.fileno()).st_ino != song.stat().st_ino
+    playing.close()
+
+    # One that can't be written is left as it was, with no copy beside it.
+    broken = library / "a" / "broken.flac"
+    broken.write_bytes(b"not really a flac")
+    response = client.post("/v1/format", json={"files": [{"path": "a/broken.flac", "tags": {"title": "New"}}]})
+    assert "error" in response.json()["files"][0]
+    assert broken.read_bytes() == b"not really a flac"
+    assert sorted(p.name for p in (library / "a").iterdir()) == ["broken.flac", "song.flac"]
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
 def test_a_chosen_cover_is_embedded_and_replaces_the_folder_image(client, roots):
     library = roots[1]
     silent_flac(library / "Dummy" / "01 Mysterons.flac", title="Mysterons")
