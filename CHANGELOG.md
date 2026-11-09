@@ -9,8 +9,14 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 - **Long lists of songs** ([#9](https://github.com/joeatethebeans/Melodex/issues/9)): a playlist's page, the Library's
   tracks, the queue page and the queue pop-up draw only the songs near the screen, so a playlist of thousands scrolls
   smoothly, to the bottom by its scrollbar included, rather than slowing down and then crashing. A song not drawn yet
-  is a shimmering slot shaped like its row until it is. The # column fits four-digit numbers and more, and a song dragged near the top or
-  bottom of the list scrolls it, so it can be moved further than one screen.
+  is a shimmering slot shaped like its row until it is. The # column fits four-digit numbers and more, and a song
+  dragged near the top or bottom of the list scrolls it, so it can be moved further than one screen.
+- **Formatting leaves no empty folders** ([#11](https://github.com/joeatethebeans/Melodex/issues/11)): moving files
+  removes every folder they leave with no music in it, not only those holding loose artwork: one with empty folders,
+  artwork in a folder of its own (`Scans/`), or the clutter computers leave (`.DS_Store`, `Thumbs.db`, a Synology's
+  `@eaDir`) goes too, as does a two-disc album's own folder once both discs have moved. Artwork and the like move along
+  with the songs. Formatting the whole library also clears away such folders that were already there, listing them
+  before it starts, and Activity says how many went. Removing music from the library tidies its folders the same way.
 
 ## [1.0.0] - 2026-11-09
 

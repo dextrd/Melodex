@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
-# What a folder may still hold and be deleted with its music: artwork, playlists, lyrics, rip logs and notes.
-LEFTOVERS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".cue", ".log", ".m3u", ".m3u8", ".nfo", ".txt",
-             ".sfv", ".accurip", ".md5", ".lrc"}
+from .folders import clear_away
 
 
 def delete(library: str, paths: list[str]) -> tuple[list[str], list[dict[str, str]]]:
-    """Deletes each file, then any folder left with nothing but leftovers, up to the library. Returns the paths deleted
+    """Deletes each file, then any folder left with no music in it (see folders.py), up to the library. Returns the paths deleted
     and those that couldn't be, with why. A file that's already gone counts as deleted."""
     root = os.path.realpath(library)
     deleted: list[str] = []
@@ -36,19 +35,6 @@ def delete(library: str, paths: list[str]) -> tuple[list[str], list[dict[str, st
         except OSError:
             pass
     for folder in sorted(folders, key=len, reverse=True):
-        _remove_emptied(folder, root)
+        clear_away(Path(folder), Path(root))
     return deleted, failed
 
-
-def _remove_emptied(folder: str, root: str) -> None:
-    while folder.startswith(root + os.sep) and os.path.isdir(folder):
-        try:
-            entries = list(os.scandir(folder))
-            if any(e.is_dir() or os.path.splitext(e.name)[1].lower() not in LEFTOVERS for e in entries):
-                return
-            for entry in entries:
-                os.remove(entry.path)
-            os.rmdir(folder)
-        except OSError:
-            return
-        folder = os.path.dirname(folder)

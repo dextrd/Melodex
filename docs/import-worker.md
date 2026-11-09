@@ -87,9 +87,9 @@ Deletes files from the library, for removing an artist, album or track from the 
 { "paths": ["Portishead/Dummy/01 Mysterons.opus", "Portishead/Dummy/02 Sour Times.opus"] }
 ```
 
-Each path is relative to the library. After the files go, so does any folder left holding nothing but artwork,
-playlists, rip logs or notes (`.jpg`, `.png`, `.cue`, `.log`, `.m3u`, `.nfo`, `.txt` and the like), then its parent
-the same way, up to the library itself. A path outside the library is refused.
+Each path is relative to the library. After the files go, so does any folder left with
+[no music in it](#folders-with-no-music-in-them), with what's in it, then its parent the same way, up to the library
+itself. A path outside the library is refused.
 
 Response `200`, listing a file that was already gone as deleted:
 
@@ -123,15 +123,45 @@ out every value from its catalogue; the worker only writes them.
 | `folderArtwork` | The key of an image in `artwork` to write as each formatted file's folder image too, for an album's chosen cover. It replaces a `cover`, `folder` or `front` image already there, under that name, or else goes in as `cover.jpg` (`.png` for a PNG). |
 
 A moved file never overwrites another: `.1`, `.2` and so on go before the extension. Its `.lrc`, if it has one, moves
-with it under its new name. Once a folder holds no music,
-its artwork and the like follow the music to its new folder, and the folder goes, then any parent left empty.
+with it under its new name. Once a folder a file moved out of has [no music in it](#folders-with-no-music-in-them), its
+artwork and the like follow the music to its new folder, keeping any folder they're in (`Scans/`), and the folder goes.
+So does each folder above it left the same, its leftovers going to the folder above the music's new one, or to that
+one itself above a disc's folder (`CD1`, `Disc 2`). A leftover the new folder already has a file of that name for is
+deleted, as is system clutter. Leftovers with nowhere to go, as where that would be the library itself, are deleted.
 
-Response `200`, a result for each file in order. A file that couldn't be formatted, for example because it's gone
-or outside the library, says why, and the rest carry on:
+Response `200`, a result for each file in order, and the folders removed, by the topmost of each. A file that couldn't
+be formatted, for example because it's gone or outside the library, says why, and the rest carry on:
 
 ```json
-{ "files": [{ "path": "incoming/glory box.flac", "newPath": "Portishead/Dummy/11 Glory Box.flac", "size": 72970 }, { "path": "gone.flac", "error": "It isn't in the music folder any more." }] }
+{
+  "files": [{ "path": "incoming/glory box.flac", "newPath": "Portishead/Dummy/11 Glory Box.flac", "size": 72970 }, { "path": "gone.flac", "error": "It isn't in the music folder any more." }],
+  "removedFolders": ["incoming"]
+}
 ```
+
+## `POST /v1/folders/musicless`
+
+The library's folders with [no music in them](#folders-with-no-music-in-them), the topmost of each, so a format of the
+whole library can show them first, and with `{ "remove": true }`, removes them with what's in them, as that format does
+once its files are done. Beside an album's music, or its discs' folders, a folder of artwork (`Scans/`) is the album's
+and stays; only one with nothing in it at all goes from there. Not while an import or a format runs. Response `200`:
+
+```json
+{ "folders": ["Unknown Artist/Old Rip", "incoming"], "failed": [{ "path": "Locked", "error": "Permission denied" }] }
+```
+
+## Folders with no music in them
+
+A folder has no music in it when it holds nothing but:
+
+- leftovers: artwork, playlists, rip logs, lyrics and notes (`.jpg`, `.png`, `.gif`, `.webp`, `.bmp`, `.cue`, `.log`,
+  `.m3u`, `.m3u8`, `.nfo`, `.txt`, `.sfv`, `.accurip`, `.md5`, `.lrc`);
+- system clutter: `.DS_Store`, `Thumbs.db`, `ehthumbs.db`, `desktop.ini`, `._` files, and `@eaDir`, `.AppleDouble` and
+  `__MACOSX` folders;
+- folders like that, empty ones included.
+
+Anything else keeps it: music, a video, a PDF, a file of a kind not listed, one of Melodex's own `.melodex-` working
+copies, a link, or a hidden folder, which may be another program's (`.stfolder`), as may `lost+found`.
 
 ## `POST /v1/reflinks`
 

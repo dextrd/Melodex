@@ -16,7 +16,7 @@ from typing import Any, Callable
 
 from mediafile import Image, ImageType, MediaFile
 
-from .removal import LEFTOVERS
+from .folders import clear_away
 
 TEXT_FIELDS = {"title", "artist", "album", "albumartist", "country", "media", "albumtype", "label", "catalognum",
                "isrc", "lyrics", "mb_trackid", "mb_releasetrackid", "mb_albumid", "mb_artistid", "mb_albumartistid",
@@ -80,10 +80,12 @@ def _write(full: Path, tags: dict[str, str], artwork: bytes | None, remove_artwo
 
 
 def format_files(library: Path, files: list[FormatFile], artwork: dict[str, bytes],
-                 destination: Callable[[Path], Path] | None, folder_artwork: bytes | None = None) -> list[dict[str, Any]]:
+                 destination: Callable[[Path], Path] | None,
+                 folder_artwork: bytes | None = None) -> tuple[list[dict[str, Any]], list[str]]:
     """Formats each file, moving it to <destination> of it (library-relative) when that's given. A file that can't be
     formatted is reported with why and the rest carry on. With folder artwork, each formatted file's folder gets it as
-    its cover image too."""
+    its cover image too. Returns what happened to each file, and the folders that moving them left with no music in
+    them, and so removed (see folders.py), by the topmost of each."""
     results = []
     folders: set[Path] = set()
     moved_from: dict[Path, list[Path]] = defaultdict(list)
@@ -118,12 +120,17 @@ def format_files(library: Path, files: list[FormatFile], artwork: dict[str, byte
             results.append({"path": file.path, "error": str(e) or type(e).__name__})
         except Exception as e:  # mediafile raises its own errors for files it can't read or write
             results.append({"path": file.path, "error": f"{type(e).__name__}: {e}"})
-    for folder, targets in moved_from.items():
-        tidy(folder, Counter(targets).most_common(1)[0][0], library)
+    removed: list[Path] = []
+    # Deepest first, so a disc's folder goes before its album's.
+    for folder in sorted(moved_from, key=lambda f: len(f.parts), reverse=True):
+        removed += clear_away(folder, library, Counter(moved_from[folder]).most_common(1)[0][0])
+    # After the tidying, so the cover written takes the place of any the old folders brought along.
     if folder_artwork is not None:
         for folder in folders:
             write_folder_cover(folder, folder_artwork)
-    return results
+    # Each by the topmost folder that went, as the ones in it went with it.
+    topmost = [f for f in removed if not any(other in f.parents for other in removed)]
+    return results, [f.relative_to(library).as_posix() for f in topmost]
 
 
 FOLDER_COVERS = ("cover", "folder", "front")
@@ -138,28 +145,6 @@ def write_folder_cover(folder: Path, data: bytes) -> None:
         old.unlink()
     target = folder / f"{existing[0].stem if existing else 'cover'}{extension}"
     target.write_bytes(data)
-
-
-def tidy(folder: Path, moved_to: Path, library: Path) -> None:
-    """Once a folder holds no music, moves its cover art and the like to where its music went, then removes it and any
-    parent folder left empty. A folder that still holds music, or anything else, stays."""
-    try:
-        entries = list(os.scandir(folder))
-    except OSError:
-        return
-    if any(e.is_dir() or os.path.splitext(e.name)[1].lower() not in LEFTOVERS for e in entries):
-        return
-    for entry in entries:
-        if not (moved_to / entry.name).exists():
-            shutil.move(entry.path, moved_to / entry.name)
-        else:
-            os.remove(entry.path)
-    while folder != library and library in folder.parents:
-        try:
-            folder.rmdir()
-        except OSError:
-            return
-        folder = folder.parent
 
 
 def inside(library: Path, path: str) -> Path:

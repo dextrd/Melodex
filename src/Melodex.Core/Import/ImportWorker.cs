@@ -73,7 +73,19 @@ public sealed record FormatFile(string Path, IReadOnlyDictionary<string, string>
 /// <param name="Data">The image, base64.</param>
 public sealed record FormatArtwork(string Data);
 
-public sealed record FormatResult(IReadOnlyList<FormattedFile> Files);
+/// <param name="RemovedFolders">Folders moving the files left with no music in them, and so removed, with their artwork and
+/// the like, by the topmost of each. Relative to the library root.</param>
+public sealed record FormatResult(IReadOnlyList<FormattedFile> Files, IReadOnlyList<string>? RemovedFolders = null);
+
+/// <summary>Body of <c>POST /v1/folders/musicless</c>.</summary>
+/// <param name="Remove">Remove them, rather than only list them.</param>
+public sealed record MusiclessRequest(bool Remove);
+
+/// <summary>Answer to <c>POST /v1/folders/musicless</c>.</summary>
+/// <param name="Folders">The library's folders holding nothing but artwork, notes and the like, or nothing at all: the
+/// topmost of each, relative to the library root. Removed, when asked to.</param>
+/// <param name="Failed">Those that couldn't be removed, with why.</param>
+public sealed record MusiclessResult(IReadOnlyList<string> Folders, IReadOnlyList<DeleteFailure> Failed);
 
 /// <param name="Path">The file's path, as sent.</param>
 /// <param name="NewPath">Where it is now; null when it couldn't be formatted.</param>
@@ -90,6 +102,9 @@ public interface IImportWorker
 
     /// <summary>Rewrites files in the library: their tags, embedded cover and place.</summary>
     Task<FormatResult> FormatAsync(FormatRequest request, CancellationToken ct);
+
+    /// <summary>The library's folders with no music in them, and with <see cref="MusiclessRequest.Remove"/>, removes them.</summary>
+    Task<MusiclessResult> MusiclessAsync(MusiclessRequest request, CancellationToken ct);
 
     Task<HealthReport> CheckHealthAsync(CancellationToken ct);
 
@@ -144,6 +159,14 @@ public sealed class HttpImportWorker(HttpClient http) : IImportWorker
         if (!response.IsSuccessStatusCode)
             throw new ImportException(await ErrorAsync(response, ct));
         return (await response.Content.ReadFromJsonAsync<FormatResult>(RetrievalJson.Options, ct))!;
+    }
+
+    public async Task<MusiclessResult> MusiclessAsync(MusiclessRequest request, CancellationToken ct)
+    {
+        using var response = await http.PostAsJsonAsync("v1/folders/musicless", request, RetrievalJson.Options, ct);
+        if (!response.IsSuccessStatusCode)
+            throw new ImportException(await ErrorAsync(response, ct));
+        return (await response.Content.ReadFromJsonAsync<MusiclessResult>(RetrievalJson.Options, ct))!;
     }
 
     public async Task<ReflinkCheck> CheckReflinksAsync(CancellationToken ct)

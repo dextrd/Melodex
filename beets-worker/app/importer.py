@@ -25,6 +25,7 @@ from beets.util import displayable_path
 from mediafile import MediaFile
 
 from . import reflinks
+from .folders import find_musicless, remove_musicless
 from .formatter import FormatFile, format_files
 
 # Beets fields returned to Melodex after an import.
@@ -173,7 +174,7 @@ class Importer:
                     item.remove(delete=False)
 
     def format(self, files: list[FormatFile], artwork: dict[str, bytes], template: str | None,
-               folder_artwork: bytes | None = None) -> list[dict[str, Any]]:
+               folder_artwork: bytes | None = None) -> tuple[list[dict[str, Any]], list[str]]:
         """Rewrites files in the library: see formatter.py. With a template, moves each one to where beets would file
         it now, going by its new tags."""
         with self._lock:
@@ -191,6 +192,16 @@ class Importer:
                         item.remove(delete=False)
 
             return format_files(self.library, files, artwork, destination, folder_artwork)
+
+    def musicless(self, remove: bool) -> tuple[list[str], list[dict[str, str]]]:
+        """The library's folders with no music in them (see folders.py), and with <remove>, removes them. Not while an
+        import or a format runs, as either makes folders before it moves files into them."""
+        with self._lock:
+            if not remove:
+                found, failed = find_musicless(self.library), []
+            else:
+                found, failed = remove_musicless(self.library)
+            return [f.relative_to(self.library).as_posix() for f in found], failed
 
     def _as_tagged(self, work: Path) -> list[Item]:
         """The pre-tagged files as beets items, for an edition with no MusicBrainz release: nothing is looked up."""

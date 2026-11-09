@@ -52,6 +52,26 @@ public sealed class FormatTests(RequestFixture fixture)
     }
 
     [TestLibraryFact]
+    public async Task The_whole_librarys_plan_lists_the_folders_with_no_music_in_them()
+    {
+        var empty = Path.Combine(fixture.Music, "Old Rips", "Nothing Here");
+        Directory.CreateDirectory(empty);
+        try
+        {
+            var library = await Api.GetFormatPlanAsync(new FormatScope(FormatScopeKind.Library));
+            Assert.Equal(["Old Rips"], library.MusiclessFolders);
+            Assert.False(fixture.Importer.Sweeps.Last().Remove, "It's only looked at until the format runs");
+
+            var album = await OwnedAlbumAsync("Discovery");
+            Assert.Null((await Api.GetFormatPlanAsync(new FormatScope(FormatScopeKind.Album, album.Album.Id))).MusiclessFolders);
+        }
+        finally
+        {
+            Directory.Delete(Path.Combine(fixture.Music, "Old Rips"), recursive: true);
+        }
+    }
+
+    [TestLibraryFact]
     public async Task An_album_is_tagged_from_the_catalogue_and_moved_without_being_matched_again()
     {
         var album = await OwnedAlbumAsync("Random Access Memories");
