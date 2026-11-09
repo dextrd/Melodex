@@ -10,7 +10,7 @@ Make one with **New playlist**, or from the playlist button on a song's or album
 an album, or in the player for the song that's playing. Adding a song that's in the playlist already leaves it out.
 
 On a playlist's page, play it, shuffle it or add it to the queue, whole or a song at a time, and take songs out. Move a
-song by dragging the six dots on its left, or from its **⋮** menu: up, down, to the top or to the bottom. **Edit** renames it, gives it a
+song by dragging the six dots on its left (near the top or bottom of the list it scrolls), or from its **⋮** menu: up, down, to the top or to the bottom. **Edit** renames it, gives it a
 comment, and says where songs you add go: at the bottom, as usual, or at the top, so the newest come first. That's
 only for songs added in Melodex; songs added on the media server go wherever it puts them. Deleting a playlist leaves
 its songs in your library.
