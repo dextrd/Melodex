@@ -19,7 +19,7 @@
     <div class="toolbar one-line">
         @* Held while a view loads or is drawn, so a second change doesn't pile up behind the first. *@
         <Segmented T="string" Value="_picked" Options="Views" OnChange="ShowAsync" Label="View" Disabled="Busy" />
-        <input class="filter" type="search" placeholder="@FilterHint" aria-label="@FilterHint" disabled="@Busy" @bind="_filter" @bind:event="oninput" @bind:after="ResetLimit" />
+        <input class="filter" type="search" placeholder="@FilterHint" aria-label="@FilterHint" disabled="@Busy" @bind="_filter" @bind:event="oninput" />
         <button class="icon-button filter-toggle @(_filterOpen || _filter.Length > 0 ? "on" : "")" type="button" disabled="@Busy" title="@FilterHint" aria-label="@FilterHint"
                 aria-expanded="@(_filterOpen ? "true" : "false")" @onclick="ToggleFilter">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="M20 20l-4.5-4.5" /></svg>
@@ -28,7 +28,7 @@
                   OnChange="key => SortAsync(key, null)" OnReverse="() => SortAsync(_sort.Key, !_sort.Descending)" />
         @if (_view != "tracks")
         {
-            <OwnershipFilter OnChange="ResetLimit" Busy="Busy" OwnedHint="@(_view == "albums" ? "Only albums you have every track of" : "Only artists with nothing missing")"
+            <OwnershipFilter OnChange="StateHasChanged" Busy="Busy" OwnedHint="@(_view == "albums" ? "Only albums you have every track of" : "Only artists with nothing missing")"
                              MissingHint="@(_view == "albums" ? "Only albums with tracks missing" : "Only artists with something missing")" />
         }
         else
@@ -43,7 +43,7 @@
     @if (_filterOpen)
     {
         <div class="filter-drop">
-            <input type="search" placeholder="@FilterHint" aria-label="@FilterHint" disabled="@Busy" @ref="_filterDrop" @bind="_filter" @bind:event="oninput" @bind:after="ResetLimit" />
+            <input type="search" placeholder="@FilterHint" aria-label="@FilterHint" disabled="@Busy" @ref="_filterDrop" @bind="_filter" @bind:event="oninput" />
         </div>
     }
 </div>
@@ -71,10 +71,8 @@
                 <span><i class="missing"></i>Tracks missing</span>
             </div>
             @if (albums.Count == 0) { <div class="empty card">@(Prefs.Ownership switch { OwnershipView.Missing => "No partly owned albums", OwnershipView.Owned => "No complete albums", _ => "No albums" }) @(_filter.Length > 0 ? "match that filter." : "right now.")</div> }
-            <div class="tiles">
-                @foreach (var item in albums.Take(_limit))
-                {
-                    var album = item.Album;
+            <TileGrid Items="albums" Context="item">
+                @{ var album = item.Album; }
                     <div class="tile-wrap" @key="album.Id" data-vt="@album.Id.ToString("N")">
                         <a class="tile" href="@Format.AlbumHref(album)" title="@album.Title · @item.ArtistName">
                             <Cover Url="@album.CoverUrl" />
@@ -92,9 +90,7 @@
                                         OnClick="() => RemoveAlbum(item)" />
                         }
                     </div>
-                }
-            </div>
-            @if (albums.Count > _limit) { <MoreOnScroll OnMore="More" Remaining="albums.Count - _limit" /> }
+            </TileGrid>
         }
         break;
 
@@ -165,10 +161,8 @@
                 <span><i class="missing"></i>Missing</span>
             </div>
             @if (artists.Count == 0) { <div class="empty card">@(Prefs.Ownership switch { OwnershipView.Missing => "Nothing missing", OwnershipView.Owned => "No artist you have everything of", _ => "No artists" }) @(_filter.Length == 0 ? "right now." : Prefs.Ownership == OwnershipView.All ? "match that filter." : "matches that filter.")</div> }
-            <div class="tiles">
-                @foreach (var artist in artists.Take(_limit))
-                {
-                    var total = artist.OwnedAlbums + artist.MissingAlbums;
+            <TileGrid Items="artists" Context="artist">
+                @{ var total = artist.OwnedAlbums + artist.MissingAlbums; }
                     <div class="tile-wrap" @key="artist.Id" data-vt="@artist.Id.ToString("N")">
                         <a class="tile" href="@(artist.Local ? "local/artists" : "artists")/@artist.Id" title="@Title(artist)">
                             <Cover Url="@artist.ImageUrl" Artist="true" />
@@ -184,9 +178,7 @@
                                         OnClick="() => Remove(LibraryItemKind.Artist, artist.Id, artist.Name)" />
                         }
                     </div>
-                }
-            </div>
-            @if (artists.Count > _limit) { <MoreOnScroll OnMore="More" Remaining="artists.Count - _limit" /> }
+            </TileGrid>
         }
         break;
 }
@@ -233,7 +225,6 @@
         await Transitions.RunAsync(() =>
         {
             _sort = choice;
-            _limit = Page;
             StateHasChanged();
             return Task.CompletedTask;
         });
@@ -251,10 +242,6 @@
 
     private static double Ratio(int? part, int? whole) => whole is > 0 ? (double)(part ?? 0) / whole.Value : 0;
 
-    // Tiles are drawn a page at a time as the page is scrolled: drawing hundreds at once makes every change slow.
-    // How many of a list are drawn at a time, as the user chose.
-    private int Page => Auth.Status?.Appearance?.ListPage ?? Appearance.DefaultListPage;
-
     [SupplyParameterFromQuery(Name = "view")] public string? ViewParameter { get; set; }
 
     private string _view = "";
@@ -266,7 +253,6 @@
     private ElementReference _filterDrop;
     private string _filter = "";
     private string? _error;
-    private int _limit = Appearance.DefaultListPage;
     private (LibraryItemKind Kind, Guid Id, string Name)? _removing;
 
     private static string LoadingText => ScanStatus.Preparing
@@ -335,10 +321,6 @@
 
     private static string Title(LibraryArtist a) => a.Disambiguation is null ? a.Name : $"{a.Name} ({a.Disambiguation})";
 
-    private void ResetLimit() => _limit = Page;
-
-    private void More() => _limit += Page;
-
     private void ToggleFilter()
     {
         _filterOpen = !_filterOpen;
@@ -356,7 +338,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _limit = Page;
         ScanStatus.LibraryChanged += Reload;
         // The song playing is marked in the Tracks view.
         Player.Changed += Redraw;
@@ -376,7 +357,6 @@
         if (view != _view)
         {
             _view = _picked = view;
-            _limit = Page;
             _sort = await Prefs.GetAsync<SortChoice?>(SortKey(view), null) is { } saved && SortOptions.Any(o => o.Key == saved.Key)
                 ? saved
                 : new SortChoice(SortOptions[0].Key, false);

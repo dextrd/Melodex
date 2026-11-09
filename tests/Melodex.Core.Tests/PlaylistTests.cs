@@ -83,7 +83,11 @@ public sealed class PlaylistTests : IDisposable
     {
         await ScanAsync();
         var (a, b) = await TwoTracksAsync();
-        var c = (await _api.GetLibraryTracksAsync()).First(t => !t.Local && t.TrackId != a.TrackId && t.TrackId != b.TrackId);
+        // One the server can only mean one way: it's sent back by title and artist alone, which a song on two editions
+        // shares with itself.
+        var tracks = await _api.GetLibraryTracksAsync();
+        var c = tracks.First(t => !t.Local && t.TrackId != a.TrackId && t.TrackId != b.TrackId
+                                  && tracks.Count(o => o.Title == t.Title && o.ArtistCredit == t.ArtistCredit) == 1);
         var server = new FakePlaylistServer();
         var made = await _api.CreatePlaylistAsync(new CreatePlaylist("Moods/Calm", "Quiet ones", [new PlaylistItem(a.TrackId), new PlaylistItem(b.TrackId)]));
 

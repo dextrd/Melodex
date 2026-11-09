@@ -1,0 +1,81 @@
+@typeparam TItem
+@implements IAsyncDisposable
+@using Microsoft.JSInterop
+@inject IJSRuntime Js
+
+@*
+    A grid of tiles (the Library's artists or albums) that draws only the rows near the screen, however many there are.
+    How many tiles fit in a row depends on the width, so the grid is measured and its tiles grouped into rows of that
+    many, again as it's resized. Rows not drawn are slots, shimmering in the shape of tiles, so the grid is as tall as
+    all of them from the start and its scrollbar can be dragged anywhere.
+*@
+<div class="tile-grid" @ref="_element">
+    @* An empty grid laid out as the rows are, to measure how many fit. *@
+    <div class="tiles tile-probe" aria-hidden="true"></div>
+    @if (_columns > 0)
+    {
+        <Virtualize Items="Rows" Context="row" ItemSize="_rowHeight" OverscanCount="3">
+            <div class="tiles tile-row" @key="row.Start">
+                @for (var i = row.Start; i < Math.Min(row.Start + _columns, Items.Count); i++)
+                {
+                    @ChildContent(Items[i])
+                }
+            </div>
+        </Virtualize>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<TItem> Items { get; set; } = [];
+
+    [Parameter, EditorRequired] public RenderFragment<TItem> ChildContent { get; set; } = null!;
+
+    private sealed record Row(int Start);
+
+    private ElementReference _element;
+    private IJSObjectReference? _module, _observer;
+    private DotNetObjectReference<TileGrid<TItem>>? _self;
+    private int _columns;
+    private float _rowHeight = 250;
+
+    private List<Row> Rows => Enumerable.Range(0, (Items.Count + _columns - 1) / _columns).Select(r => new Row(r * _columns)).ToList();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+        _self = DotNetObjectReference.Create(this);
+        _module = await Js.InvokeAsync<IJSObjectReference>("import", "./js/grid.js");
+        _observer = await _module.InvokeAsync<IJSObjectReference>("observe", _element, _self);
+    }
+
+    /// <summary>How many tiles fit in a row now, and how tall a row is with the gap below it.</summary>
+    [JSInvokable]
+    public void Measured(int columns, float rowHeight)
+    {
+        if (columns == _columns && (rowHeight <= 0 || Math.Abs(rowHeight - _rowHeight) < 1))
+            return;
+        _columns = Math.Max(1, columns);
+        if (rowHeight > 0)
+            _rowHeight = rowHeight;
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_observer is not null)
+            {
+                await _observer.InvokeVoidAsync("dispose");
+                await _observer.DisposeAsync();
+            }
+            if (_module is not null)
+                await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        _self?.Dispose();
+    }
+}

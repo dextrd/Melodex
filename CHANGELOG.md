@@ -11,6 +11,10 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   smoothly, to the bottom by its scrollbar included, rather than slowing down and then crashing. A song not drawn yet
   is a shimmering slot shaped like its row until it is. The # column fits four-digit numbers and more, and a song
   dragged near the top or bottom of the list scrolls it, so it can be moved further than one screen.
+- **Long grids of artists and albums** ([#13](https://github.com/joeatethebeans/Melodex/issues/13)): the Library's
+  artists and albums draw only the rows near the screen, so dragging the scrollbar to the bottom of thousands no longer
+  hangs. A row not drawn yet is a row of shimmering slots shaped like its tiles until it is, and rows regroup as the
+  window is resized. The Appearance setting **Long lists**, how many to show at a time, is gone: there's no need for it.
 - **Formatting leaves no empty folders** ([#11](https://github.com/joeatethebeans/Melodex/issues/11)): moving files
   removes every folder they leave with no music in it, not only those holding loose artwork: one with empty folders,
   artwork in a folder of its own (`Scans/`), or the clutter computers leave (`.DS_Store`, `Thumbs.db`, a Synology's

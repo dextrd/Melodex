@@ -345,6 +345,27 @@ p.error { max-width: none; white-space: normal; }
 .tile .tile-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile .meter { min-width: 0; }
 @media (max-width: 640px) { .tiles { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: .75rem; } }
+/* A long grid of tiles draws only the rows near the screen (see TileGrid.razor). An empty grid beside them measures how
+   many fit in a row; each row is a grid of its own, as far from the next as tiles are from each other. */
+.tile-probe { height: 0; overflow: hidden; }
+.tile-row { margin-bottom: 1rem; }
+@media (max-width: 640px) { .tile-row { margin-bottom: .75rem; } }
+/* Each row not drawn is a row of slots shaped like the tiles drawn: their background, and their cover and lines of text
+   shimmering, so a grid scrolled quickly fills in rather than flashing blank. A slot's shapes are measured from a tile
+   drawn (grid.js), and until one is there's nothing to draw. They're masks of the slot's two layers, which have nothing
+   in them: a mask over something with things in it is drawn whole, and one thousands of rows tall isn't drawn at all.
+   Above the rows drawn, the slots line up with the first of them. */
+.tile-grid > div:not([class]) { position: relative; }
+.tile-grid[style*="--slot-tile"] > div:not([class])::before, .tile-grid[style*="--slot-tile"] > div:not([class])::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none; mask-repeat: repeat;
+}
+.tile-grid > div:not([class])::before { background: var(--surface); mask-image: var(--slot-tile); mask-size: var(--slot-cell); }
+.tile-grid > div:not([class])::after {
+    background: linear-gradient(100deg, var(--bg) 30%, var(--border) 50%, var(--bg) 70%) 0 0 / 300% 100%;
+    animation: shimmer 1.4s linear infinite;
+    mask-image: var(--slot-parts); mask-size: var(--slot-cell);
+}
+.tile-probe + div:not([class])::before, .tile-probe + div:not([class])::after { mask-position: 0 100%; }
 
 /* "Only missing" stands out from the other filters: it changes what the library and artist pages are for. */
 .toggle {
