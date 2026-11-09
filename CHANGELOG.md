@@ -2,6 +2,15 @@
 
 What changed in each release of Melodex. Versions follow [semantic versioning](https://semver.org).
 
+## [Unreleased]
+
+### Fixed
+
+- **Playlist folders' arrows** ([#27](https://github.com/joeatethebeans/Melodex/issues/27)) no longer have a line down
+  their side and along their bottom.
+- **The Sign in button's spinner** ([#28](https://github.com/joeatethebeans/Melodex/issues/28)) turns while signing in
+  is checked, rather than showing as a thin bar.
+
 ## [1.0.1] - 2026-11-09
 
 ### Fixed
