@@ -2,7 +2,7 @@
 
 What changed in each release of Melodex. Versions follow [semantic versioning](https://semver.org).
 
-## [Unreleased]
+## [1.0.1] - 2026-11-09
 
 ### Fixed
 
