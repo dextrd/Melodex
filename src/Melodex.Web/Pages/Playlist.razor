@@ -66,10 +66,10 @@ else
     }
     else
     {
-        <div class="card">
+        <div class="card" style="@Format.NumberColumn(_playlist.Songs.Count)">
             <table class="table track-list playlist-songs slots" data-reorder>
                 @* Fixed widths, so the columns stay put as more rows are drawn. *@
-                <colgroup><col class="num-col" style="@Format.NumberColumn(_playlist.Songs.Count)" /><col class="cover-col" /><col /><col class="album-col hide-narrow" /><col class="length-col hide-narrow" /><col class="icons-4-col" /></colgroup>
+                <colgroup><col class="num-col" /><col class="cover-col" /><col /><col class="album-col hide-narrow" /><col class="length-col hide-narrow" /><col class="icons-4-col" /></colgroup>
                 <thead>
                     <tr>
                         <th class="num">#</th>

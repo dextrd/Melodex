@@ -1419,25 +1419,62 @@ button.icon.mode.on::after {
 .drop-before { box-shadow: inset 0 2px 0 var(--accent); }
 .drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
 
-/* A long list draws only the rows near the screen. Each row it hasn't drawn is a slot, a shimmering line, so a list
-   scrolled quickly fills in rather than flashing blank. The drawn rows cover the slots behind them. A table's body
-   paints nothing where it has no cells, so the slots are the table's own background, starting below its head. */
-table.slots {
-    --slot-gap: var(--surface);
+/* A long list draws only the rows near the screen. Each row it hasn't drawn is a slot shaped like a song's row: its
+   number, cover, title and artist, album, length and buttons, shimmering, so a list scrolled quickly fills in rather
+   than flashing blank. A table's body paints nothing where it has no cells, so the slots are drawn behind the table,
+   by its card, with the table's own background only the lines between rows. Lines vary in length over every three
+   rows. The columns' widths are those of .track-list's cols; drawn rows cover the slots behind them. */
+.card:has(> table.slots) {
+    position: relative;
     --slot-head: 32px;
-    background:
-        repeating-linear-gradient(to bottom, transparent 0 55px, var(--border) 55px 56px) 0 var(--slot-head) / 100% 100% no-repeat,
-        linear-gradient(to right, var(--slot-gap) 0 .75rem, transparent .75rem 50%, var(--slot-gap) 50%) 0 var(--slot-head) / 100% 100% no-repeat,
-        repeating-linear-gradient(to bottom, var(--slot-gap) 0 20px, transparent 20px 36px, var(--slot-gap) 36px 56px) 0 var(--slot-head) / 100% 100% no-repeat,
-        linear-gradient(100deg, var(--bg) 30%, var(--border) 50%, var(--bg) 70%) 0 var(--slot-head) / 300% 100% no-repeat;
-    animation: slot-shimmer 1.4s linear infinite;
+    --slot-num: 0px;
+    --slot-pad: .75rem;
+    --slot-album: 32%;
+    --slot-length: 4.5rem;
+    --slot-actions: 9.5rem;
+    --slot-buttons: 3;
+    /* Drawn in a box as tall as the row and as wide as they are, they sit in its middle at whatever size they are. */
+    --slot-cover: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'><rect x='0' width='1' height='1' rx='0.16'/></svg>");
+    --slot-button-row: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6.6 2'><rect x='0.0' width='2' height='2' rx='0.4'/><rect x='2.3' width='2' height='2' rx='0.4'/><rect x='4.6' width='2' height='2' rx='0.4'/></svg>");
+    /* What's left for the title. */
+    --slot-title: calc(100% - var(--slot-num) - 3.5rem - var(--slot-album) - var(--slot-length) - var(--slot-actions) - 2 * var(--slot-pad));
 }
-table.slots thead th { height: var(--slot-head); box-sizing: border-box; }
+.card:has(> table.slots[data-reorder]) { --slot-num: calc(2.4rem + var(--digits, 2) * 1ch); }
+.card:has(> table.playlist-songs) { --slot-actions: 12.5rem; --slot-buttons: 4; --slot-button-row: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8.9 2'><rect x='0.0' width='2' height='2' rx='0.4'/><rect x='2.3' width='2' height='2' rx='0.4'/><rect x='4.6' width='2' height='2' rx='0.4'/><rect x='6.9' width='2' height='2' rx='0.4'/></svg>"); }
+@media (max-width: 640px) {
+    .card:has(> table.slots) {
+        --slot-pad: .5rem; --slot-album: 0px; --slot-length: 0px;
+    }
+    .card:has(> table.playlist-songs) { --slot-actions: 7.75rem; --slot-buttons: 3; --slot-button-row: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6.6 2'><rect x='0.0' width='2' height='2' rx='0.4'/><rect x='2.3' width='2' height='2' rx='0.4'/><rect x='4.6' width='2' height='2' rx='0.4'/></svg>"); }
+}
+.card:has(> table.slots)::before {
+    content: ""; position: absolute; inset: var(--slot-head) 0 0; pointer-events: none;
+    background: linear-gradient(100deg, var(--bg) 30%, var(--border) 50%, var(--bg) 70%) 0 0 / 300% 100%;
+    animation: shimmer 1.4s linear infinite;
+    mask-repeat: repeat-y;
+    mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><rect x='0' y='23' width='100%25' height='10' rx='4'/></svg>"), var(--slot-cover), url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><rect x='0' y='13' width='100%25' height='11' rx='4'/><rect x='0' y='69' width='72%25' height='11' rx='4'/><rect x='0' y='125' width='86%25' height='11' rx='4'/></svg>"), url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><rect x='0' y='34' width='58%25' height='9' rx='4'/><rect x='0' y='90' width='80%25' height='9' rx='4'/><rect x='0' y='146' width='44%25' height='9' rx='4'/></svg>"), url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><rect x='0' y='23' width='70%25' height='10' rx='4'/><rect x='0' y='79' width='100%25' height='10' rx='4'/><rect x='0' y='135' width='52%25' height='10' rx='4'/></svg>"), url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><rect x='0' y='23' width='100%25' height='10' rx='4'/></svg>"), var(--slot-button-row);
+    /* The number, the cover, the title and artist, the album, the length, the buttons. */
+    mask-size: calc(var(--slot-num) * .28) 56px, 2.5rem 56px, calc(var(--slot-title) * .6) 168px, calc(var(--slot-title) * .4) 168px,
+        calc(var(--slot-album) * .6) 168px, calc(var(--slot-length) * .45) 56px, calc(var(--slot-buttons) * 2.3rem - .3rem) 56px;
+    /* A percentage places that point of the shape on that point of the box: 100% puts its right edge on the box's.
+       The album's column starts 68% of the way along, less the columns after it, which for a shape 32% × .6 wide is
+       84.16% of the way. */
+    mask-position: calc(var(--slot-num) - var(--slot-pad) - var(--slot-num) * .28) 0, calc(var(--slot-num) + var(--slot-pad)) 0,
+        calc(var(--slot-num) + 3.5rem + var(--slot-pad)) 0, calc(var(--slot-num) + 3.5rem + var(--slot-pad)) 0,
+        calc(84.16% - var(--slot-actions) - var(--slot-length) + var(--slot-pad)) 0, calc(100% - var(--slot-actions) - var(--slot-pad)) 0,
+        calc(100% - 1rem) 0;
+}
+/* Positioned, so it's drawn over its card's slots. Borders apart, not collapsed, so that a row is exactly as tall as
+   its cells, 56px, as a slot is: a fraction more, and over thousands they'd drift apart. */
+table.slots {
+    position: relative; border-collapse: separate; border-spacing: 0;
+    background: repeating-linear-gradient(to bottom, transparent 0 55px, var(--border) 55px 56px) 0 32px / 100% 100% no-repeat;
+}
+/* Rows are their height, not their padding plus their content, which on a phone comes to a fraction more. Cells
+   centre what's in them. */
+table.slots td, table.slots th { padding-top: 0; padding-bottom: 0; }
+table.slots thead th { height: 32px; box-sizing: border-box; }
 :where(table.slots > tbody > tr) > td { background-color: var(--surface); }
-@keyframes slot-shimmer {
-    from { background-position: 0 var(--slot-head), 0 var(--slot-head), 0 var(--slot-head), 100% var(--slot-head); }
-    to { background-position: 0 var(--slot-head), 0 var(--slot-head), 0 var(--slot-head), 0 var(--slot-head); }
-}
 /* The # column fits the list's longest number beside the handle that moves it. */
 .track-list[data-reorder] col.num-col { width: calc(2.4rem + var(--digits, 2) * 1ch); }
 .track-list[data-reorder] td.num { font-variant-numeric: tabular-nums; }

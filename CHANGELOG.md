@@ -9,7 +9,7 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 - **Long lists of songs** ([#9](https://github.com/joeatethebeans/Melodex/issues/9)): a playlist's page, the Library's
   tracks, the queue page and the queue pop-up draw only the songs near the screen, so a playlist of thousands scrolls
   smoothly, to the bottom by its scrollbar included, rather than slowing down and then crashing. A song not drawn yet
-  is a shimmering slot until it is. The # column fits four-digit numbers and more, and a song dragged near the top or
+  is a shimmering slot shaped like its row until it is. The # column fits four-digit numbers and more, and a song dragged near the top or
   bottom of the list scrolls it, so it can be moved further than one screen.
 
 ## [1.0.0] - 2026-11-09

@@ -30,9 +30,9 @@ else
         }
         <IconButton Icon="cancel" Label="Clear" Title="Stop and clear the queue" OnClick="Player.ClearAsync" />
     </div>
-    <div class="card">
+    <div class="card" style="@Format.NumberColumn(Player.Queue.Count)">
         <table class="table track-list slots" data-reorder>
-            <colgroup><col class="num-col" style="@Format.NumberColumn(Player.Queue.Count)" /><col class="cover-col" /><col /><col class="album-col hide-narrow" /><col class="length-col hide-narrow" /><col class="icons-3-col" /></colgroup>
+            <colgroup><col class="num-col" /><col class="cover-col" /><col /><col class="album-col hide-narrow" /><col class="length-col hide-narrow" /><col class="icons-3-col" /></colgroup>
             <thead>
                 <tr>
                     <th class="num">#</th>
