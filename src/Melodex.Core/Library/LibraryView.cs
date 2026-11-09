@@ -398,7 +398,31 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
         var ids = await db.Crosswalk.Where(m => m.EntityKind == EntityKind.Artist && m.EntityId == id)
             .Select(m => new ProviderId(m.Provider, m.Value)).ToListAsync(ct);
         return new ArtistDetail(artist.Id, artist.Name, artist.SortName, artist.Disambiguation, artist.Country, ids,
-            artist.InLibrary, artist.AlbumsRefreshedAt, albums, ArtistImageUrl(artist.Id)) { OwnShowing = s.Settings.ArtistShowing.ContainsKey(id) };
+            artist.InLibrary, artist.AlbumsRefreshedAt, albums, ArtistImageUrl(artist.Id))
+        {
+            OwnShowing = s.Settings.ArtistShowing.ContainsKey(id),
+            Songs = await SongsOnNoAlbumAsync(id, ct),
+        };
+    }
+
+    /// <summary>
+    /// An artist's songs matched on their own that aren't on any album the catalogue has: on no album, they'd be on no
+    /// page, so the artist's page lists them.
+    /// </summary>
+    private async Task<IReadOnlyList<LibraryTrack>> SongsOnNoAlbumAsync(Guid artistId, CancellationToken ct)
+    {
+        var rows = await db.LibraryFiles.Where(f => f.TrackId != null && f.EditionId == null && f.ExcludedAt == null && f.HiddenAt == null
+                                                    && (f.Track!.ArtistId == artistId || f.ArtistId == artistId))
+            .Select(f => new { f.Id, TrackId = f.TrackId!.Value, f.Path, f.Format, f.Duration, f.Track!.Title, f.Track.ArtistCredit, f.Track.ArtistId, TrackDuration = f.Track.Duration, f.TagsJson })
+            .ToListAsync(ct);
+        if (rows.Count == 0)
+            return [];
+        var places = await LooseSongs.PlacesAsync(db, rows.GroupBy(r => r.TrackId).ToDictionary(g => g.Key, _ => (string?)null), ct);
+        return rows.Where(r => !places.ContainsKey(r.TrackId))
+            .Select(r => new LibraryTrack(r.Id, r.TrackId, r.Title, r.ArtistCredit, r.ArtistId, null, FileTags.Parse(r.TagsJson).Album, null, null,
+                (r.Duration ?? r.TrackDuration)?.TotalSeconds, r.Path, r.Format, LocalMusic.CoverUrl(r.Id)))
+            .OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
     }
 
     public async Task<AlbumDetail?> GetAlbumAsync(Guid id, Guid? editionId, CancellationToken ct)

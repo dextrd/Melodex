@@ -9,11 +9,15 @@ namespace Melodex.Core.Tests.Support;
 /// <summary>
 /// Answers plugin HTTP requests from recorded responses, so tests that talk to MusicBrainz run offline and give the same
 /// answer every time. With <c>MELODEX_RECORD=1</c> it passes requests through to the real service and records them;
-/// do that after changing what the plugin asks for, and commit the new fixtures.
+/// do that after changing what the plugin asks for, and commit the new fixtures. With <c>MELODEX_RECORD=missing</c> it
+/// records only what hasn't been recorded, so a new test's requests are added without the others' answers changing as
+/// MusicBrainz's data does.
 /// </summary>
 public sealed class ReplayHandler(string fixtures) : DelegatingHandler(new SocketsHttpHandler())
 {
-    public static bool Recording => Environment.GetEnvironmentVariable("MELODEX_RECORD") == "1";
+    public static bool Recording => Environment.GetEnvironmentVariable("MELODEX_RECORD") is "1" or "missing";
+
+    private static bool OnlyMissing => Environment.GetEnvironmentVariable("MELODEX_RECORD") == "missing";
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -21,7 +25,7 @@ public sealed class ReplayHandler(string fixtures) : DelegatingHandler(new Socke
         var key = $"{request.Method} {request.RequestUri!.PathAndQuery}";
         var path = Path.Combine(fixtures, Convert.ToHexStringLower(SHA1.HashData(Encoding.UTF8.GetBytes(key)))[..16] + ".json.gz");
 
-        if (Recording)
+        if (Recording && !(OnlyMissing && File.Exists(path)))
         {
             var response = await base.SendAsync(request, cancellationToken);
             var body = await response.Content.ReadAsStringAsync(cancellationToken);

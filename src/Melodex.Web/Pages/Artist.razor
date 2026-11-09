@@ -115,6 +115,24 @@ else
         </details>
     }
 
+    @if (Prefs.Ownership != OwnershipView.Missing && _artist.Songs.Count > 0)
+    {
+        <h2 class="section">Other songs <span class="muted small">@_artist.Songs.Count</span></h2>
+        <p class="muted small">Songs of theirs you have that aren't on any album the catalogue lists.</p>
+        <div class="card">
+            <table class="table other-songs">
+                <tbody>
+                    @foreach (var song in _artist.Songs)
+                    {
+                        <tr @key="song.FileId">
+                            <td><a href="tracks/@song.TrackId">@song.Title</a>@if (song.AlbumTitle is { } album) { <div class="muted small">@album</div> }</td>
+                            <td class="muted small numeric">@Format.Duration(song.DurationSeconds)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
     @if (Prefs.Ownership != OwnershipView.Missing && _artist.Albums.Any(a => a.Local))
     {
         <h2 class="section">From your own files <span class="muted small">@_artist.Albums.Count(a => a.Local)</span></h2>

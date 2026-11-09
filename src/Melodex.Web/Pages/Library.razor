@@ -169,7 +169,8 @@
                             <div class="tile-name">@artist.Name</div>
                             <OwnershipMeter Complete="artist.OwnedAlbums - artist.PartialAlbums" Partial="artist.PartialAlbums" Covered="artist.CoveredAlbums" Missing="artist.MissingAlbums" />
                             <div class="muted small">
-                                @artist.OwnedAlbums of @total owned@(artist.MissingAlbums > 0 ? $" · {artist.MissingAlbums} missing" : "")@(artist.PartialAlbums > 0 ? $" · {artist.PartialAlbums} partly owned" : "")@(artist.CoveredAlbums > 0 ? $" · {artist.CoveredAlbums} covered" : "")
+                                @* An artist with only songs on no album has no albums to count, but songs. *@
+                                @if (total == 0) { @Format.Count(artist.Files, "song", "songs") } else { <text>@artist.OwnedAlbums of @total owned@(artist.MissingAlbums > 0 ? $" · {artist.MissingAlbums} missing" : "")@(artist.PartialAlbums > 0 ? $" · {artist.PartialAlbums} partly owned" : "")@(artist.CoveredAlbums > 0 ? $" · {artist.CoveredAlbums} covered" : "")</text> }
                             </div>
                         </a>
                         @if (!artist.Local)
