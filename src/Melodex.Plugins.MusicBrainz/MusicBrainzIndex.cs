@@ -9,7 +9,7 @@ using Melodex.Contracts.Plugins.Index;
 namespace Melodex.Plugins.MusicBrainz;
 
 /// <summary>An index plugin instance talking to one MusicBrainz server.</summary>
-public sealed class MusicBrainzIndex : IIndexPlugin, IIsrcLookup
+public sealed class MusicBrainzIndex : IIndexPlugin, IIsrcLookup, IRecordingAlbums
 {
     private const int PageSize = 100;
 
@@ -143,6 +143,33 @@ public sealed class MusicBrainzIndex : IIndexPlugin, IIsrcLookup
         {
             var result = await _query.LookupIsrcAsync(isrc, Include.ArtistCredits | Include.Isrcs, cancellationToken);
             return result.Recordings?.Select(MapTrack).ToList() ?? [];
+        }
+        catch (HttpError e) when (e.Status is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+        {
+            return [];
+        }
+    }
+
+    public Task<IReadOnlyList<IndexAlbum>> GetRecordingAlbumsAsync(string recordingId, CancellationToken cancellationToken) =>
+        Guarded(() => GetRecordingAlbumsAsyncCore(recordingId, cancellationToken));
+
+    private async Task<IReadOnlyList<IndexAlbum>> GetRecordingAlbumsAsyncCore(string recordingId, CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(recordingId, out var id))
+            return [];
+        try
+        {
+            var recording = await _query.LookupRecordingAsync(id, Include.Releases | Include.ReleaseGroups | Include.ArtistCredits, cancellationToken: cancellationToken);
+            return (recording.Releases ?? [])
+                .Where(r => r.ReleaseGroup is not null)
+                .GroupBy(r => r.ReleaseGroup!.Id)
+                .Select(g => MapAlbum(g.First().ReleaseGroup!, g.Any(r => string.Equals(r.Status, "Official", StringComparison.OrdinalIgnoreCase)) ? true : null) with
+                {
+                    // A release-group from a recording comes without its artist; its releases' or the recording's is it.
+                    Artist = PrimaryArtist(g.First().ReleaseGroup!.ArtistCredit ?? g.First().ArtistCredit ?? recording.ArtistCredit),
+                    ArtistCredit = Credit(g.First().ReleaseGroup!.ArtistCredit ?? g.First().ArtistCredit ?? recording.ArtistCredit),
+                })
+                .ToList();
         }
         catch (HttpError e) when (e.Status is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
         {

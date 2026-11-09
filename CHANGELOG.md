@@ -6,6 +6,12 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ### Fixed
 
+- **Songs on no album** ([#26](https://github.com/joeatethebeans/Melodex/issues/26)): an album whose files name it
+  otherwise than the catalogue does (アニップス, tagged Anipps) is found by its songs' recordings, so they're on it rather
+  than on no album and missing from their artist's page. Songs matched like that before are matched again at the next
+  scan, except those matched by hand. An artist's songs that really are on no album the catalogue lists show on their
+  page, under **Other songs**, and an artist with no albums to count shows how many songs they have, with an empty bar
+  rather than a full one.
 - **Playlist folders' arrows** ([#27](https://github.com/joeatethebeans/Melodex/issues/27)) no longer have a line down
   their side and along their bottom.
 - **The Sign in button's spinner** ([#28](https://github.com/joeatethebeans/Melodex/issues/28)) turns while signing in

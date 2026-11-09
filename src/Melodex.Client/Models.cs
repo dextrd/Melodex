@@ -292,6 +292,9 @@ public sealed record ArtistDetail(
 
     /// <summary>The artist has their own choices of which releases the missing view shows, rather than the ones in Settings.</summary>
     public bool OwnShowing { get; init; }
+
+    /// <summary>Songs of theirs you have that aren't on any album the catalogue lists.</summary>
+    public IReadOnlyList<LibraryTrack> Songs { get; init; } = [];
 }
 
 /// <summary>Which releases the missing view shows for one artist.</summary>

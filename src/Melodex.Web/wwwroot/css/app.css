@@ -796,6 +796,7 @@ tr.playing td:nth-child(2) { color: var(--accent); font-weight: 600; }
 .segmented-meter > .partial { background: var(--partial-fill); }
 .segmented-meter > .covered { background: var(--covered-fill); }
 .segmented-meter > span + span { box-shadow: -1px 0 0 var(--surface); }
+.segmented-meter.none { background: var(--border); }
 .legend { display: flex; gap: 1rem; flex-wrap: wrap; margin: -.25rem 0 1rem; }
 .legend span { display: inline-flex; align-items: center; gap: .35rem; }
 .legend i { width: .7rem; height: .7rem; border-radius: 3px; display: inline-block; }

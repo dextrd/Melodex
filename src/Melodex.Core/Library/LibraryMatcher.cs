@@ -213,6 +213,10 @@ public sealed class LibraryMatcher(
         {
             var albums = await CandidateAlbumsAsync(files, artist, ct);
             unplaced = await MatchToAlbumsAsync(files, albums, ct);
+            // The album's name isn't the catalogue's (アニップス, tagged Anipps), or names another album: the songs say
+            // which they're on.
+            if (unplaced.Count > 0 && await RecordingsAlbumsAsync(unplaced, albums, ct) is { Count: > 0 } byRecordings)
+                unplaced = await MatchToAlbumsAsync(unplaced, byRecordings, ct);
         }
 
         foreach (var file in unplaced)
@@ -402,6 +406,56 @@ public sealed class LibraryMatcher(
             await catalogue.RefreshEditionsAsync(album, false, ct);
         return albums;
     }
+
+    /// <summary>
+    /// The albums the files' recordings are on, by their MusicBrainz recording IDs or ISRCs, most shared first: those the
+    /// most of them are on, then those named most like the files' album, then albums before singles and compilations.
+    /// Albums already tried are left out. Matching the files to an album's editions checks each recording, so one
+    /// that's on the album but isn't one of these files' is never placed on it.
+    /// </summary>
+    private async Task<List<Album>> RecordingsAlbumsAsync(List<Candidate> files, List<Album> tried, CancellationToken ct)
+    {
+        var plugin = await catalogue.PluginAsync(ct);
+        if (plugin is not IRecordingAlbums lookup)
+            return [];
+        var title = TextMatch.NormaliseAlbum(files[0].Tags.Album);
+        var found = new Dictionary<string, (IndexAlbum Album, int Files)>();
+        var asked = 0;
+        // A few songs say which album most of them share; asking about every one would only wait on the rate limit. In
+        // path order, so the songs asked about (and the requests made) never depend on the order they were read in.
+        foreach (var file in files.OrderBy(f => f.File.Path, StringComparer.Ordinal))
+        {
+            if (asked == RecordingsToAsk)
+                break;
+            var recording = file.Tags.MusicBrainzRecordingId;
+            if (recording is null && file.Tags.Isrc is { } isrc && plugin is IIsrcLookup isrcLookup)
+                recording = (await isrcLookup.LookupIsrcAsync(isrc, ct)).FirstOrDefault()?.Id.Value;
+            if (recording is null)
+                continue;
+            asked++;
+            foreach (var album in await lookup.GetRecordingAlbumsAsync(recording, ct))
+                found[album.Id.Value] = (album, found.GetValueOrDefault(album.Id.Value).Files + 1);
+        }
+
+        var albums = new List<Album>();
+        foreach (var (hit, _) in found.Values
+                     .OrderByDescending(x => x.Files)
+                     .ThenByDescending(x => TextMatch.Similarity(TextMatch.NormaliseAlbum(x.Album.Title), title))
+                     .ThenBy(x => x.Album.Type switch { AlbumType.Album => 0, AlbumType.Ep => 1, AlbumType.Single => 2, _ => 3 })
+                     .ThenBy(x => x.Album.SecondaryTypes.Count))
+        {
+            if (albums.Count == 3)
+                break;
+            if (await catalogue.GetAlbumAsync(hit.Id, ct) is { } album && tried.All(a => a.Id != album.Id) && albums.All(a => a.Id != album.Id))
+            {
+                await catalogue.RefreshEditionsAsync(album, false, ct);
+                albums.Add(album);
+            }
+        }
+        return albums;
+    }
+
+    private const int RecordingsToAsk = 3;
 
     private sealed record Listing(Guid EditionId, int Disc, int Position, string Title, TimeSpan? Duration, Guid TrackId,
         string TrackTitle, string ArtistCredit, Guid? TrackArtistId, TimeSpan? TrackDuration, HashSet<string> Recordings, HashSet<string> Isrcs);

@@ -1,16 +1,10 @@
-@* An artist's albums as one bar: owned, partly owned, covered by tracks on other albums, and missing. *@
+@* An artist's albums as one bar: owned, partly owned, covered by tracks on other albums, and missing. With no albums to
+   count, it's empty: neither all owned nor all missing. *@
 @{ var total = Complete + Partial + Covered + Missing; }
-<div class="meter segmented-meter" title="@Summary()">
-    @if (total == 0)
-    {
-        <span class="complete" style="width: 100%"></span>
-    }
-    else
-    {
-        @Segment("complete", Complete, total)
-        @Segment("partial", Partial, total)
-        @Segment("covered", Covered, total)
-    }
+<div class="meter segmented-meter @(total == 0 ? "none" : "")" title="@(total == 0 ? "No albums to count" : Summary())">
+    @Segment("complete", Complete, total)
+    @Segment("partial", Partial, total)
+    @Segment("covered", Covered, total)
 </div>
 
 @code {

@@ -67,6 +67,15 @@ public interface IIsrcLookup
     Task<IReadOnlyList<IndexTrack>> LookupIsrcAsync(string isrc, CancellationToken cancellationToken);
 }
 
+/// <summary>Optional: the albums a recording is on. Capability <see cref="IndexCapabilities.RecordingAlbums"/>.</summary>
+public interface IRecordingAlbums
+{
+    /// <summary>
+    /// The albums with an edition this recording is on, of every type. Empty when the recording isn't known.
+    /// </summary>
+    Task<IReadOnlyList<IndexAlbum>> GetRecordingAlbumsAsync(string recordingId, CancellationToken cancellationToken);
+}
+
 /// <summary>Optional: find editions by barcode. Capability <see cref="IndexCapabilities.UpcLookup"/>.</summary>
 public interface IUpcLookup
 {
@@ -86,6 +95,9 @@ public static class IndexCapabilities
 {
     /// <summary>Implements <see cref="IIsrcLookup"/>.</summary>
     public const string IsrcLookup = "isrc-lookup";
+
+    /// <summary>Implements <see cref="IRecordingAlbums"/>.</summary>
+    public const string RecordingAlbums = "recording-albums";
 
     /// <summary>Implements <see cref="IUpcLookup"/>.</summary>
     public const string UpcLookup = "upc-lookup";
