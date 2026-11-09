@@ -165,6 +165,40 @@ def test_formatting_tags_a_file_embeds_the_cover_and_files_it_by_the_template(cl
     # The old folder held only the song and its cover: the cover goes with the song, and the folder goes.
     assert (library / "Portishead" / "Dummy" / "cover.jpg").read_bytes() == b"jpeg"
     assert not (library / "incoming").exists()
+    assert response.json()["removedFolders"] == ["incoming"]
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
+def test_formatting_an_album_on_two_discs_leaves_none_of_its_old_folders(client, roots):
+    library = roots[1]
+    old = library / "Rips" / "Dummy"
+    silent_flac(old / "CD1" / "1.flac")
+    silent_flac(old / "CD2" / "1.flac")
+    (old / "folder.jpg").write_bytes(b"jpeg")
+    (old / "Thumbs.db").write_bytes(b"x")
+    (old / "Artwork").mkdir()
+
+    files = [{"path": f"Rips/Dummy/CD{disc}/1.flac", "tags": {"title": f"Song {disc}", "album": "Dummy",
+                                                               "albumartist": "Portishead", "disc": str(disc), "track": "1"}}
+             for disc in (1, 2)]
+    response = client.post("/v1/format", json={"files": files, "pathTemplate": "$albumartist/$album/$disc-$track $title"})
+    assert response.status_code == 200, response.json()
+    assert response.json()["removedFolders"] == ["Rips"]
+    assert not (library / "Rips").exists()
+    assert sorted(p.name for p in (library / "Portishead" / "Dummy").iterdir()) == ["01-01 Song 1.flac", "02-01 Song 2.flac", "folder.jpg"]
+
+
+def test_folders_with_no_music_are_listed_then_removed(client, roots):
+    library = roots[1]
+    (library / "Artist" / "Album").mkdir(parents=True)
+    (library / "Artist" / "Album" / "01.flac").write_bytes(b"x")
+    (library / "Artist" / "Old").mkdir()
+    (library / "Artist" / "Old" / "cover.jpg").write_bytes(b"x")
+
+    assert client.post("/v1/folders/musicless", json={}).json() == {"folders": ["Artist/Old"], "failed": []}
+    assert (library / "Artist" / "Old").exists()
+    assert client.post("/v1/folders/musicless", json={"remove": True}).json() == {"folders": ["Artist/Old"], "failed": []}
+    assert not (library / "Artist" / "Old").exists()
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")

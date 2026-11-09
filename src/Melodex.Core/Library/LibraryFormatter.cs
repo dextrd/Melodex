@@ -43,7 +43,21 @@ public sealed class LibraryFormatter(MelodexDbContext db, IImportWorker worker, 
             ],
             (await settings.GetFetchAsync(ct)).PathTemplate,
             health.Status == HealthStatus.Healthy,
-            health.Status == HealthStatus.Healthy ? null : health.Message);
+            health.Status == HealthStatus.Healthy ? null : health.Message,
+            scope.Kind == FormatScopeKind.Library && health.Status == HealthStatus.Healthy ? await MusiclessAsync(ct) : null);
+    }
+
+    // The folders a format of the whole library that moves files will remove, besides those its moves leave with no music.
+    private async Task<IReadOnlyList<string>?> MusiclessAsync(CancellationToken ct)
+    {
+        try
+        {
+            return (await worker.MusiclessAsync(new MusiclessRequest(false), ct)).Folders;
+        }
+        catch (Exception e) when (e is HttpRequestException or ImportException or TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            return null;
+        }
     }
 
     /// <summary>Queues the format, or returns the same one already queued or running.</summary>
@@ -129,6 +143,7 @@ public sealed class FormatTask(
         var touched = new List<string>();
         var moved = new List<Guid>();
         var failures = new List<string>();
+        var removed = new List<string>();
         var untold = new List<string>();
         var told = DateTime.UtcNow;
         progress.Report(Progress(done, total));
@@ -150,6 +165,7 @@ public sealed class FormatTask(
                 template);
 
             var result = await worker.FormatAsync(request, ct);
+            removed.AddRange(result.RemovedFolders ?? []);
             var now = DateTime.UtcNow;
             foreach (var formatted in result.Files)
             {
@@ -182,13 +198,25 @@ public sealed class FormatTask(
             }
         }
 
+        // Moving the whole library also tidies away the folders that already had no music in them.
+        if (job.Scope.Kind == FormatScopeKind.Library && job.Options.Move)
+        {
+            var swept = await worker.MusiclessAsync(new MusiclessRequest(true), ct);
+            removed.AddRange(swept.Folders);
+            foreach (var failed in swept.Failed)
+                logger.LogWarning("Couldn't remove {Folder}, which has no music in it: {Reason}", failed.Path, failed.Error);
+        }
+        foreach (var folder in removed)
+            logger.LogInformation("Removed {Folder}, as it had no music left in it", folder);
+
         // A scan asked for while one runs is ignored, so the last word waits for it, and covers everything written.
         await WaitForMediaServerAsync(connectors, ct);
         await TellMediaServerAsync(connectors, touched.Distinct().ToList(), logger, ct);
         // Moved files may have new IDs on the media server, so the playlists they're in find them there again.
         foreach (var user in await PlaylistSync.FilesMovedAsync(db, moved, CancellationToken.None))
             playlists.Changed(user);
-        var summary = $"Formatted {LibraryMatcher.Plural(total - failures.Count, "file", "files")}";
+        var summary = $"Formatted {LibraryMatcher.Plural(total - failures.Count, "file", "files")}"
+            + (removed.Count == 0 ? "" : $" and removed {LibraryMatcher.Plural(removed.Count, "folder", "folders")} with no music left in them");
         progress.Report(failures.Count == 0 ? summary : $"{summary}; {failures.Count} couldn't be: {failures[0]}");
         logger.LogInformation("{Summary} for {Title}", summary, job.Title);
     }

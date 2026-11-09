@@ -71,6 +71,8 @@ public sealed record FormatSource(string Id, string Name);
 /// <param name="PathTemplate">Where files move to when moving, in beets' path format.</param>
 /// <param name="WorkerReady">Whether the beets worker, which writes the files, is reachable.</param>
 /// <param name="WorkerProblem">Why not, when it isn't.</param>
+/// <param name="MusiclessFolders">For the whole library, the folders already with no music in them (nothing but artwork,
+/// notes and the like, or nothing at all), which moving the files removes too; null when it couldn't be looked at.</param>
 public sealed record FormatPlan(
     string Title,
     int Files,
@@ -79,7 +81,8 @@ public sealed record FormatPlan(
     IReadOnlyList<FormatSource> Artwork,
     string PathTemplate,
     bool WorkerReady,
-    string? WorkerProblem);
+    string? WorkerProblem,
+    IReadOnlyList<string>? MusiclessFolders = null);
 
 /// <summary>Body of <c>POST /library/format</c>.</summary>
 public sealed record StartFormat(FormatScope Scope, FormatOptions Options);

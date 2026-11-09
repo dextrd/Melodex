@@ -134,6 +134,8 @@ h2 { font-size: 1.15rem; margin: 1.75rem 0 .5rem; }
     padding: .6rem 1rem; background: var(--surface); border-bottom: 1px solid var(--border);
     position: sticky; top: 0; z-index: 10;
 }
+/* A dialog opened from the top bar (the Scan menu's) is drawn in it, so the bar comes above the player while it's open. */
+.topbar:has(.dialog-backdrop) { z-index: 100; }
 .brand { display: inline-flex; align-items: center; gap: .5rem; font-weight: 700; font-size: 1.1rem; color: var(--text); }
 .brand:hover { text-decoration: none; }
 .logo { width: 1.6rem; height: 1.6rem; flex: none; }
@@ -1416,3 +1418,8 @@ button.icon.mode.on::after {
 .dragging { opacity: .45; }
 .drop-before { box-shadow: inset 0 2px 0 var(--accent); }
 .drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+
+/* The folders a format will remove, listed before it starts. */
+.format-folders { margin: -.25rem 0 .75rem; }
+.format-folders summary { cursor: pointer; }
+.format-folders ul { max-height: 12rem; overflow: auto; margin: .4rem 0 0; padding-left: 1.2rem; font-size: .85rem; }

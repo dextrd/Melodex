@@ -61,6 +61,26 @@
                 <span class="muted small">To where an import would put them now, going by their new tags: <code>@_plan.PathTemplate</code>. The layout is set in <a href="settings">Settings</a>.</span>
             </span>
         </label>
+        @if (_options.Move)
+        {
+            <p class="muted small">
+                A folder they leave with no music in it is removed, its artwork, notes and the like going along with the songs.
+                One with anything else in it stays.
+            </p>
+            @if (_plan.MusiclessFolders is { Count: > 0 } folders)
+            {
+                <details class="format-folders">
+                    <summary class="small">
+                        @Format.Count(folders.Count, "folder", "folders") in your music folder already @(folders.Count == 1 ? "has" : "have") no music in @(folders.Count == 1 ? "it" : "them"),
+                        and will be removed too
+                    </summary>
+                    <ul>
+                        @foreach (var folder in folders.Take(ShownFolders)) { <li><code>@folder</code></li> }
+                        @if (folders.Count > ShownFolders) { <li class="muted">and @(folders.Count - ShownFolders) more</li> }
+                    </ul>
+                </details>
+            }
+        }
 
         @if (!_plan.WorkerReady)
         {
@@ -85,6 +105,9 @@
     // Files are rewritten, and maybe moved, one after another, and the media server catches up every so often.
     private const string PlayingWarning = "While it runs, songs may not play reliably, here or in your media server's apps: "
         + "a song whose file is being rewritten or moved can stop or go missing for a moment, until the media server catches up.";
+
+    // Of the folders with no music already, how many are listed.
+    private const int ShownFolders = 200;
 
     [Parameter, EditorRequired] public FormatScope Scope { get; set; } = null!;
 

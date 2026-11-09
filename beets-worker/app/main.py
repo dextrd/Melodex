@@ -78,6 +78,10 @@ class DeleteRequest(Model):
     paths: list[str]
 
 
+class MusiclessRequest(Model):
+    remove: bool = False
+
+
 app = FastAPI(title="Melodex beets worker", version="0.1.0")
 importer: Importer | None = None
 
@@ -138,8 +142,16 @@ async def run_format(body: FormatRequest) -> dict[str, Any]:
         raise HTTPException(400, {"error": f"There's no artwork {body.folder_artwork} in the request.", "code": "invalid-request"})
     files = [FormatFile(f.path, f.tags, f.artwork, f.remove_artwork, f.lrc) for f in body.files]
     folder = artwork[body.folder_artwork] if body.folder_artwork is not None else None
-    results = await run_in_threadpool(get_importer().format, files, artwork, body.path_template, folder)
-    return {"files": results}
+    results, removed = await run_in_threadpool(get_importer().format, files, artwork, body.path_template, folder)
+    return {"files": results, "removedFolders": removed}
+
+
+@app.post("/v1/folders/musicless")
+async def musicless_folders(body: MusiclessRequest) -> dict[str, Any]:
+    """The library's folders with no music in them, to show before a format of the whole library; with remove, removes
+    them, as that format does once its files are done."""
+    folders, failed = await run_in_threadpool(get_importer().musicless, body.remove)
+    return {"folders": folders, "failed": failed}
 
 
 @app.post("/v1/delete")

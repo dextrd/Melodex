@@ -2,6 +2,17 @@
 
 What changed in each release of Melodex. Versions follow [semantic versioning](https://semver.org).
 
+## [Unreleased]
+
+### Fixed
+
+- **Formatting leaves no empty folders** ([#11](https://github.com/joeatethebeans/Melodex/issues/11)): moving files
+  removes every folder they leave with no music in it, not only those holding loose artwork: one with empty folders,
+  artwork in a folder of its own (`Scans/`), or the clutter computers leave (`.DS_Store`, `Thumbs.db`, a Synology's
+  `@eaDir`) goes too, as does a two-disc album's own folder once both discs have moved. Artwork and the like move along
+  with the songs. Formatting the whole library also clears away such folders that were already there, listing them
+  before it starts, and Activity says how many went. Removing music from the library tidies its folders the same way.
+
 ## [1.0.0] - 2026-11-09
 
 The first release. Melodex finds what's missing from your music library, fetches it through the plugins you choose,

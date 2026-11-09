@@ -85,6 +85,12 @@ a deluxe edition, a compilation) is fetched once or for each, and whether owning
 each artist, album and track page, and for the whole library in the Scan menu. It shows what will change first, and
 nothing is written until you confirm. Set the folder layout under **Settings → General**.
 
+Moving files also leaves no folders behind with no music in them. A folder they leave with nothing but artwork, notes,
+rip logs and the like (or nothing at all, or only empty folders and the clutter computers leave, such as
+`.DS_Store` and `Thumbs.db`) goes, its artwork and the like moving along with the songs, and so does each folder above
+it left the same. Formatting the whole library also clears away such folders that were already there, and lists them
+before you confirm; a folder of an album's artwork beside its music, such as `Scans`, is the album's and stays. A folder with anything else in it, such as a video or a PDF, stays. Activity says how many went.
+
 **While a format runs, songs may not play reliably**, in Melodex or in your media server's apps. Each file is written
 to a copy that then takes its place, so a song already playing carries on, but a song whose file has just been moved
 can't be found until the media server catches up. Melodex tells it what's changed every 20 seconds or so, and again

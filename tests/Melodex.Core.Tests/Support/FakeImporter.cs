@@ -68,6 +68,7 @@ public sealed class FakeImporter(string stagingRoot, string libraryRoot) : IImpo
     {
         Formats.Enqueue(request);
         var results = new List<FormattedFile>();
+        var left = new HashSet<string>();
         foreach (var file in request.Files)
         {
             var full = Path.Combine(libraryRoot, file.Path);
@@ -87,13 +88,45 @@ public sealed class FakeImporter(string stagingRoot, string libraryRoot) : IImpo
                 path = $"{Safe(artist)}/{Safe(album)}/{Safe(title)}{Path.GetExtension(file.Path)}";
                 Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(libraryRoot, path))!);
                 File.Move(full, Path.Combine(libraryRoot, path), overwrite: true);
+                left.Add(Path.GetDirectoryName(full)!);
             }
             results.Add(new FormattedFile(file.Path, path, new FileInfo(Path.Combine(libraryRoot, path)).Length, null));
             if (request.FolderArtwork is { } folderArt)
                 File.WriteAllBytes(Path.Combine(Path.GetDirectoryName(Path.Combine(libraryRoot, path))!, "cover.jpg"),
                     Convert.FromBase64String(request.Artwork[folderArt].Data));
         }
-        return Task.FromResult(new FormatResult(results));
+        // Folders the files left with nothing in them go, as the worker's do with nothing but artwork and the like.
+        var removed = new List<string>();
+        foreach (var folder in left)
+            for (var gone = folder; gone != libraryRoot && Directory.Exists(gone) && !Directory.EnumerateFileSystemEntries(gone).Any(); gone = Path.GetDirectoryName(gone)!)
+            {
+                Directory.Delete(gone);
+                removed.RemoveAll(r => Path.GetDirectoryName(Path.Combine(libraryRoot, r)) == gone);
+                removed.Add(Path.GetRelativePath(libraryRoot, gone).Replace('\\', '/'));
+            }
+        return Task.FromResult(new FormatResult(results, removed));
+    }
+
+    public ConcurrentQueue<MusiclessRequest> Sweeps { get; } = new();
+
+    // Folders with no files anywhere in them, the topmost of each.
+    public Task<MusiclessResult> MusiclessAsync(MusiclessRequest request, CancellationToken ct)
+    {
+        Sweeps.Enqueue(request);
+        var found = new List<string>();
+        void Visit(string folder)
+        {
+            foreach (var child in Directory.EnumerateDirectories(folder).Order())
+                if (!Directory.EnumerateFiles(child, "*", SearchOption.AllDirectories).Any())
+                    found.Add(Path.GetRelativePath(libraryRoot, child).Replace('\\', '/'));
+                else
+                    Visit(child);
+        }
+        Visit(libraryRoot);
+        if (request.Remove)
+            foreach (var folder in found)
+                Directory.Delete(Path.Combine(libraryRoot, folder), recursive: true);
+        return Task.FromResult(new MusiclessResult(found, []));
     }
 
     private static string Safe(string name) => string.Concat(name.Split(Path.GetInvalidFileNameChars()));
