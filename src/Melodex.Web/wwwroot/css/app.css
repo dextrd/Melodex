@@ -270,6 +270,12 @@ label { display: inline-flex; align-items: center; gap: .4rem; }
 .quality.low { color: var(--partial); background: var(--partial-bg); border-color: transparent; }
 .tile-quality .quality, .track-main .quality { margin: 0 0 0 .4rem; }
 .page-head .row .quality { margin: 0; }
+/* In a heading, a chip like the others there. */
+.badge.quality-chip.hires { color: var(--accent); background: var(--bg); border: 1px solid var(--accent); }
+.badge.quality-chip.lossless { color: var(--owned); background: var(--owned-bg); }
+.badge.quality-chip.good { color: var(--covered); background: var(--covered-bg); }
+.badge.quality-chip.low { color: var(--partial); background: var(--partial-bg); }
+.badge.quality-chip.unknown { color: var(--muted); background: var(--bg); border: 1px solid var(--border); }
 
 .meter { height: 6px; background: var(--missing-fill); border-radius: 999px; overflow: hidden; min-width: 80px; }
 .meter > span { display: block; height: 100%; background: var(--owned-fill); }

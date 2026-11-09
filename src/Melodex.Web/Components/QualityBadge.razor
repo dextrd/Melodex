@@ -5,11 +5,14 @@
 @* Nothing, where nothing's known: a file not yet read for it, or that couldn't be. *@
 @if (Quality is { Codec: not null } quality)
 {
-    <span class="quality @Class(quality.Level)" title="@Title(quality)">@(Mixed ? $"{quality.Label} and up" : quality.Label)</span>
+    <span class="@(Chip ? "badge quality-chip" : "quality") @Class(quality.Level)" title="@Title(quality)">@(Mixed ? $"{quality.Label} and up" : quality.Label)</span>
 }
 
 @code {
     [Parameter] public FileQuality? Quality { get; set; }
+
+    /// <summary>As the chips beside it in a page's heading are, rather than a small tag.</summary>
+    [Parameter] public bool Chip { get; set; }
 
     /// <summary>Several files' worst quality, of files not all alike.</summary>
     [Parameter] public bool Mixed { get; set; }
