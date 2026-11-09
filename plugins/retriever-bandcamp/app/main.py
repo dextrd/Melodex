@@ -39,7 +39,7 @@ MANIFEST: dict[str, Any] = {
     "type": "retrieval",
     "contractVersion": CONTRACT_VERSION,
     "description": "Downloads albums and songs you've bought on Bandcamp, in FLAC or another format Bandcamp offers.",
-    "homepage": "https://github.com/joeatethebeans/Melodex/tree/main/plugins/retriever-bandcamp",
+    "homepage": "https://github.com/dextrd/Melodex/tree/main/plugins/retriever-bandcamp",
     "capabilities": ["fetch-track", "fetch-album", "cancel"],
     "settingsSchema": SETTINGS_SCHEMA,
     "access": {"network": ["bandcamp.com", "*.bandcamp.com", "*.bcbits.com"], "files": ["staging (write)"]},

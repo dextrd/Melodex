@@ -23,7 +23,7 @@ x-plugin: &plugin
 
 services:
   core:
-    image: ghcr.io/joeatethebeans/melodex:${MELODEX_VERSION:-latest}
+    image: ghcr.io/dextrd/melodex:${MELODEX_VERSION:-latest}
     container_name: melodex-core
     ports:
       - "${MELODEX_PORT:-8787}:8080"
@@ -40,7 +40,7 @@ services:
   # The import engine, and the only thing that writes the library; the core and Navidrome only read it.
   beets-worker:
     <<: *plugin
-    image: ghcr.io/joeatethebeans/melodex-beets-worker:${MELODEX_VERSION:-latest}
+    image: ghcr.io/dextrd/melodex-beets-worker:${MELODEX_VERSION:-latest}
     container_name: melodex-beets-worker
     volumes:
       - ${MUSIC_PATH:?Set MUSIC_PATH to the folder Navidrome reads}:/music
@@ -49,14 +49,14 @@ services:
   # Retrieval plugins, one container each. Add each under Settings → Plugins, where they're among the templates.
   retriever-ytdlp:
     <<: *plugin
-    image: ghcr.io/joeatethebeans/melodex-retriever-ytdlp:${MELODEX_VERSION:-latest}
+    image: ghcr.io/dextrd/melodex-retriever-ytdlp:${MELODEX_VERSION:-latest}
     container_name: melodex-retriever-ytdlp
     volumes:
       - staging:/staging
 
   retriever-inbox:
     <<: *plugin
-    image: ghcr.io/joeatethebeans/melodex-retriever-inbox:${MELODEX_VERSION:-latest}
+    image: ghcr.io/dextrd/melodex-retriever-inbox:${MELODEX_VERSION:-latest}
     container_name: melodex-retriever-inbox
     volumes:
       - ${INBOX_PATH:-./inbox}:/inbox
@@ -66,7 +66,7 @@ services:
   retriever-archive:
     <<: *plugin
     profiles: [archive]
-    image: ghcr.io/joeatethebeans/melodex-retriever-archive:${MELODEX_VERSION:-latest}
+    image: ghcr.io/dextrd/melodex-retriever-archive:${MELODEX_VERSION:-latest}
     container_name: melodex-retriever-archive
     volumes:
       - staging:/staging
@@ -75,7 +75,7 @@ services:
   retriever-prowlarr:
     <<: *plugin
     profiles: [prowlarr]
-    image: ghcr.io/joeatethebeans/melodex-retriever-prowlarr:${MELODEX_VERSION:-latest}
+    image: ghcr.io/dextrd/melodex-retriever-prowlarr:${MELODEX_VERSION:-latest}
     container_name: melodex-retriever-prowlarr
     volumes:
       - staging:/staging
@@ -84,7 +84,7 @@ services:
   retriever-qobuz:
     <<: *plugin
     profiles: [qobuz]
-    image: ghcr.io/joeatethebeans/melodex-retriever-qobuz:${MELODEX_VERSION:-latest}
+    image: ghcr.io/dextrd/melodex-retriever-qobuz:${MELODEX_VERSION:-latest}
     container_name: melodex-retriever-qobuz
     volumes:
       - staging:/staging
@@ -93,7 +93,7 @@ services:
   retriever-tidal:
     <<: *plugin
     profiles: [tidal]
-    image: ghcr.io/joeatethebeans/melodex-retriever-tidal:${MELODEX_VERSION:-latest}
+    image: ghcr.io/dextrd/melodex-retriever-tidal:${MELODEX_VERSION:-latest}
     container_name: melodex-retriever-tidal
     volumes:
       - staging:/staging
@@ -102,7 +102,7 @@ services:
   retriever-bandcamp:
     <<: *plugin
     profiles: [bandcamp]
-    image: ghcr.io/joeatethebeans/melodex-retriever-bandcamp:${MELODEX_VERSION:-latest}
+    image: ghcr.io/dextrd/melodex-retriever-bandcamp:${MELODEX_VERSION:-latest}
     container_name: melodex-retriever-bandcamp
     volumes:
       - staging:/staging

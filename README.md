@@ -22,7 +22,7 @@ tagged and filed by beets, and Navidrome is told. Melodex finds, fetches and imp
 ## Quick start
 
 ```bash
-curl -O https://raw.githubusercontent.com/joeatethebeans/Melodex/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/dextrd/Melodex/main/docker-compose.yml
 MUSIC_PATH=/path/to/your/music PUID=$(id -u) PGID=$(id -g) docker compose up -d
 ```
 

@@ -43,7 +43,7 @@ MANIFEST: dict[str, Any] = {
     "type": "retrieval",
     "contractVersion": CONTRACT_VERSION,
     "description": "Downloads albums and songs from Qobuz with your own subscription, in FLAC up to 24-bit/192 kHz.",
-    "homepage": "https://github.com/joeatethebeans/Melodex/tree/main/plugins/retriever-qobuz",
+    "homepage": "https://github.com/dextrd/Melodex/tree/main/plugins/retriever-qobuz",
     "capabilities": ["fetch-track", "fetch-album", "cancel"],
     "settingsSchema": SETTINGS_SCHEMA,
     "access": {"network": ["www.qobuz.com", "*.qobuz.com"], "files": ["staging (write)"]},

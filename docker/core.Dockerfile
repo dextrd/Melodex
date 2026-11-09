@@ -27,7 +27,7 @@ RUN dotnet publish src/Melodex.Core/Melodex.Core.csproj -c Release -o /app --no-
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 LABEL org.opencontainers.image.title="Melodex" \
       org.opencontainers.image.description="Find what's missing from your music library, fetch it, and listen now." \
-      org.opencontainers.image.source="https://github.com/joeatethebeans/Melodex" \
+      org.opencontainers.image.source="https://github.com/dextrd/Melodex" \
       org.opencontainers.image.licenses="MIT"
 WORKDIR /app
 # Staging is shared with the beets worker and the plugins, which run as other users. Whichever image first mounts a

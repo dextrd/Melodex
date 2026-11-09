@@ -6,7 +6,7 @@ have.
 
 ## With Docker Compose
 
-Everything is in one file, [`docker-compose.yml`](https://github.com/joeatethebeans/Melodex/blob/main/docker-compose.yml),
+Everything is in one file, [`docker-compose.yml`](https://github.com/dextrd/Melodex/blob/main/docker-compose.yml),
 which pulls the released images. Save it into a folder of its own, beside a `.env` file with your settings:
 
 ```bash
@@ -78,7 +78,7 @@ beets to the core and Navidrome. Give every Melodex container, and Navidrome, th
 With the .NET 10 SDK:
 
 ```bash
-git clone https://github.com/joeatethebeans/Melodex.git
+git clone https://github.com/dextrd/Melodex.git
 cd Melodex
 dotnet run --project src/Melodex.Core
 ```
