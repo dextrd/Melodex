@@ -8,6 +8,12 @@ public static class Format
     public static string Duration(double? seconds) =>
         seconds is { } s ? TimeSpan.FromSeconds(s).ToString(s >= 3600 ? @"h\:mm\:ss" : @"m\:ss") : "";
 
+    /// <summary>A list's items with their places in it, for a <c>Virtualize</c>, which draws only some of them.</summary>
+    public static List<(T Item, int Index)> Indexed<T>(IReadOnlyList<T> items) => items.Select((item, i) => (item, i)).ToList();
+
+    /// <summary>Widens a list's # column to fit its longest number.</summary>
+    public static string NumberColumn(int count) => $"--digits: {Math.Max(2, count.ToString().Length)}";
+
     public static string Year(string? date) => date is { Length: >= 4 } ? date[..4] : "";
 
     public static string TypeName(AlbumType type) => type switch

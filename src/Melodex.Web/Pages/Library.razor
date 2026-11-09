@@ -107,7 +107,7 @@
             var tracks = VisibleTracks.ToList();
             <div class="card">
                 @* Laid out as a playlist's songs are: the album in a column of its own. *@
-                <table class="table track-list">
+                <table class="table track-list slots">
                     @* Fixed widths, so the columns stay put as more rows are drawn. *@
                     <colgroup><col class="cover-col" /><col /><col class="album-col hide-narrow" /><col class="length-col hide-narrow" /><col class="icons-3-col" /></colgroup>
                     <thead>
@@ -119,9 +119,9 @@
                             <th></th>
                         </tr>
                     </thead>
+                    @* Only the rows near the screen are drawn; the rest are slots, which shimmer if they're scrolled to before they are. *@
                     <tbody>
-                        @foreach (var track in tracks.Take(_limit))
-                        {
+                        <Virtualize Items="tracks" Context="track" ItemSize="56" OverscanCount="15" SpacerElement="tr">
                             <tr @key="track.FileId" class="@(Player.IsNow(track.TrackId) ? "playing" : "")">
                                 <td class="cover-col">
                                     @if (Format.AlbumHref(track) is { } albumHref) { <a href="@albumHref" tabindex="-1"><Cover Url="@track.CoverUrl" /></a> }
@@ -144,10 +144,9 @@
                                                 OnClick="() => RemoveTrack(track)" />
                                 </td>
                             </tr>
-                        }
+                        </Virtualize>
                     </tbody>
                 </table>
-                @if (tracks.Count > _limit) { <MoreOnScroll OnMore="More" Remaining="tracks.Count - _limit" /> }
             </div>
         }
         break;
@@ -252,7 +251,7 @@
 
     private static double Ratio(int? part, int? whole) => whole is > 0 ? (double)(part ?? 0) / whole.Value : 0;
 
-    // Tiles and tracks are drawn a page at a time as the page is scrolled: drawing hundreds at once makes every change slow.
+    // Tiles are drawn a page at a time as the page is scrolled: drawing hundreds at once makes every change slow.
     // How many of a list are drawn at a time, as the user chose.
     private int Page => Auth.Status?.Appearance?.ListPage ?? Appearance.DefaultListPage;
 

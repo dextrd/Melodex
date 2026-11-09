@@ -104,8 +104,10 @@ if (!CSS.supports('selector(::-webkit-scrollbar)')) {
 
 // Lists that can be reordered by dragging (marked data-reorder): Firefox only starts a drag that carries something,
 // and a dragged link or picture would otherwise be dropped as a link to open.
+let reordering = null;
 addEventListener('dragstart', e => {
-    if (!(e.target instanceof Element) || !e.target.closest('[data-reorder]'))
+    reordering = e.target instanceof Element ? e.target.closest('[data-reorder]') : null;
+    if (!reordering)
         return;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', '');
@@ -116,3 +118,31 @@ addEventListener('dragstart', e => {
         e.dataTransfer.setDragImage(row, e.clientX - box.left, e.clientY - box.top);
     }
 });
+
+// A row dragged near the top or bottom of what the list scrolls in scrolls it, faster the nearer the edge, so a song
+// can be taken further than one screen. A long list draws only the rows near the screen, so the row picked up may be
+// gone by the time it's dropped, and with it the end of its drag: a drop anywhere ends it as well.
+addEventListener('dragover', e => {
+    if (!reordering)
+        return;
+    const box = scrollBox(reordering);
+    const rect = box === document.scrollingElement ? { top: 0, bottom: innerHeight } : box.getBoundingClientRect();
+    // On a phone the top bar and the player cover the screen's edges, so the edge is wider there.
+    const edge = Math.min(box === document.scrollingElement ? 110 : 60, (rect.bottom - rect.top) / 4);
+    const near = e.clientY < rect.top + edge ? e.clientY - rect.top - edge
+        : e.clientY > rect.bottom - edge ? e.clientY - rect.bottom + edge : 0;
+    if (near)
+        box.scrollBy({ top: near / edge * 40, behavior: 'instant' });
+});
+for (const name of ['drop', 'dragend'])
+    addEventListener(name, () => reordering = null);
+
+// The nearest box that scrolls the list, or the page.
+function scrollBox(element) {
+    for (let box = element.parentElement; box && box !== document.body; box = box.parentElement) {
+        const overflow = getComputedStyle(box).overflowY;
+        if ((overflow === 'auto' || overflow === 'scroll') && box.scrollHeight > box.clientHeight)
+            return box;
+    }
+    return window.melodexScroll.scroller();
+}
