@@ -2,35 +2,43 @@
 
 What changed in each release of Melodex. Versions follow [semantic versioning](https://semver.org).
 
+## [Unreleased]
+
+### Changed
+
+- **Melodex's home is now [dextrd/Melodex](https://github.com/dextrd/Melodex)**, and its images are published as
+  `ghcr.io/dextrd/melodex…`. An install from 1.0.2 or earlier names the old images, which get no new releases: change
+  `joeatethebeans` to `dextrd` in its compose file's `image:` lines, as [upgrading](docs/guide/upgrading.md) says.
+
 ## [1.0.2] - 2026-11-09
 
 ### Fixed
 
-- **Songs on no album** ([#26](https://github.com/joeatethebeans/Melodex/issues/26)): an album whose files name it
+- **Songs on no album** ([#26](https://github.com/dextrd/Melodex/issues/26)): an album whose files name it
   otherwise than the catalogue does (アニップス, tagged Anipps) is found by its songs' recordings, so they're on it rather
   than on no album and missing from their artist's page. Songs matched like that before are matched again at the next
   scan, except those matched by hand. An artist's songs that really are on no album the catalogue lists show on their
   page, under **Other songs**, and an artist with no albums to count shows how many songs they have, with an empty bar
   rather than a full one.
-- **Playlist folders' arrows** ([#27](https://github.com/joeatethebeans/Melodex/issues/27)) no longer have a line down
+- **Playlist folders' arrows** ([#27](https://github.com/dextrd/Melodex/issues/27)) no longer have a line down
   their side and along their bottom.
-- **The Sign in button's spinner** ([#28](https://github.com/joeatethebeans/Melodex/issues/28)) turns while signing in
+- **The Sign in button's spinner** ([#28](https://github.com/dextrd/Melodex/issues/28)) turns while signing in
   is checked, rather than showing as a thin bar.
 
 ## [1.0.1] - 2026-11-09
 
 ### Fixed
 
-- **Long lists of songs** ([#9](https://github.com/joeatethebeans/Melodex/issues/9)): a playlist's page, the Library's
+- **Long lists of songs** ([#9](https://github.com/dextrd/Melodex/issues/9)): a playlist's page, the Library's
   tracks, the queue page and the queue pop-up draw only the songs near the screen, so a playlist of thousands scrolls
   smoothly, to the bottom by its scrollbar included, rather than slowing down and then crashing. A song not drawn yet
   is a shimmering slot shaped like its row until it is. The # column fits four-digit numbers and more, and a song
   dragged near the top or bottom of the list scrolls it, so it can be moved further than one screen.
-- **Long grids of artists and albums** ([#13](https://github.com/joeatethebeans/Melodex/issues/13)): the Library's
+- **Long grids of artists and albums** ([#13](https://github.com/dextrd/Melodex/issues/13)): the Library's
   artists and albums draw only the rows near the screen, so dragging the scrollbar to the bottom of thousands no longer
   hangs. A row not drawn yet is a row of shimmering slots shaped like its tiles until it is, and rows regroup as the
   window is resized. The Appearance setting **Long lists**, how many to show at a time, is gone: there's no need for it.
-- **Formatting leaves no empty folders** ([#11](https://github.com/joeatethebeans/Melodex/issues/11)): moving files
+- **Formatting leaves no empty folders** ([#11](https://github.com/dextrd/Melodex/issues/11)): moving files
   removes every folder they leave with no music in it, not only those holding loose artwork: one with empty folders,
   artwork in a folder of its own (`Scans/`), or the clutter computers leave (`.DS_Store`, `Thumbs.db`, a Synology's
   `@eaDir`) goes too, as does a two-disc album's own folder once both discs have moved. Artwork and the like move along

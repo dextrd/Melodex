@@ -11,7 +11,18 @@ docker compose up -d
 
 The database is migrated when the core starts. Back up the `config` volume first if you want a way back: an older
 version can't open a database a newer one has migrated. What changed in each release is in the
-[changelog](https://github.com/joeatethebeans/Melodex/blob/main/CHANGELOG.md).
+[changelog](https://github.com/dextrd/Melodex/blob/main/CHANGELOG.md).
+
+## From 1.0.2 or earlier: the images' new home
+
+Melodex moved to the [dextrd](https://github.com/dextrd) organisation after 1.0.2. Releases since are published as
+`ghcr.io/dextrd/melodex…`, where they were `ghcr.io/joeatethebeans/melodex…`. The old images stay where they are, but
+get no new releases, so an install still naming them stays on 1.0.2.
+
+To move over, change `joeatethebeans` to `dextrd` in each `image:` line of your compose file (in a dashboard such as
+OpenMediaVault's, edit the stack's compose there), or take the new
+[`docker-compose.yml`](https://github.com/dextrd/Melodex/blob/main/docker-compose.yml) and keep your `.env`. Then pull
+and start it as above. Nothing else changes: your settings, library and data carry on.
 
 ## From a source build
 

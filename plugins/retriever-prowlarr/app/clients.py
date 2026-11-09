@@ -7,7 +7,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import httpx
 
-USER_AGENT = "Melodex-retriever-prowlarr/0.1 (+https://github.com/joeatethebeans/Melodex)"
+USER_AGENT = "Melodex-retriever-prowlarr/0.1 (+https://github.com/dextrd/Melodex)"
 AUDIO_CATEGORY = 3000
 
 

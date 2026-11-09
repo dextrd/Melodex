@@ -20,7 +20,7 @@ from .contract import Candidate, Job, Kind, Target, probe
 from .matching import duration_score, similarity, track_score
 
 API = "https://archive.org"
-USER_AGENT = "Melodex-retriever-archive/0.1 (+https://github.com/joeatethebeans/Melodex)"
+USER_AGENT = "Melodex-retriever-archive/0.1 (+https://github.com/dextrd/Melodex)"
 
 FORMATS = ["flac", "best", "mp3", "ogg"]
 DEFAULT_COLLECTIONS = "etree, netlabels"

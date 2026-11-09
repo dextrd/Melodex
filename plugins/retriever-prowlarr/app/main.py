@@ -61,7 +61,7 @@ MANIFEST: dict[str, Any] = {
     "contractVersion": CONTRACT_VERSION,
     "description": "Searches the torrent indexers you've set up in Prowlarr and downloads with your qBittorrent, "
                    "taking only the files of the album or song asked for.",
-    "homepage": "https://github.com/joeatethebeans/Melodex/tree/main/plugins/retriever-prowlarr",
+    "homepage": "https://github.com/dextrd/Melodex/tree/main/plugins/retriever-prowlarr",
     "capabilities": ["fetch-track", "fetch-album", "cancel"],
     "settingsSchema": SETTINGS_SCHEMA,
     "access": {"network": ["your Prowlarr", "your qBittorrent"], "files": ["staging (write)", "qBittorrent's downloads (read)"]},

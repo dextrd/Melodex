@@ -34,7 +34,7 @@ public static class PluginHttp
     public static readonly ProductInfoHeaderValue[] UserAgent =
     [
         new("Melodex", typeof(PluginHttp).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0"),
-        new("(https://github.com/joeatethebeans/Melodex)"),
+        new("(https://github.com/dextrd/Melodex)"),
     ];
 
     /// <summary>

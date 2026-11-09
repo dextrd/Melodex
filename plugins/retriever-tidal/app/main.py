@@ -42,7 +42,7 @@ MANIFEST: dict[str, Any] = {
     "contractVersion": CONTRACT_VERSION,
     "description": "Downloads albums and songs from Tidal with your own subscription, in FLAC up to 24-bit/192 kHz. "
                    "Tracks Tidal sends encrypted are left alone.",
-    "homepage": "https://github.com/joeatethebeans/Melodex/tree/main/plugins/retriever-tidal",
+    "homepage": "https://github.com/dextrd/Melodex/tree/main/plugins/retriever-tidal",
     "capabilities": ["fetch-track", "fetch-album", "cancel"],
     "settingsSchema": SETTINGS_SCHEMA,
     "access": {"network": ["api.tidal.com", "auth.tidal.com", "*.tidal.com"], "files": ["staging (write)", "data (sign-in)"]},

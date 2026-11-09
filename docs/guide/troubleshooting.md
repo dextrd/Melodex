@@ -27,4 +27,4 @@ Now files go; the music folder and anything plugins keep of their own stay. Melo
 it back) and asks for a new admin account, as on its first run.
 
 **Something else.** **Settings → Log** shows what Melodex has been doing, including errors. Open an
-[issue](https://github.com/joeatethebeans/Melodex/issues) with what you saw.
+[issue](https://github.com/dextrd/Melodex/issues) with what you saw.

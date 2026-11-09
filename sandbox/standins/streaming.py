@@ -59,7 +59,7 @@ def _musicbrainz(path: str, **params: Any) -> dict[str, Any]:
             time.sleep(max(0.0, _last_call + 1.1 + attempt * 2 - time.monotonic()))
             _last_call = time.monotonic()
             response = httpx.get(f"{MUSICBRAINZ}{path}", params={**params, "fmt": "json"}, timeout=30,
-                                 headers={"User-Agent": "Melodex-sandbox-standin/0.1 (https://github.com/joeatethebeans/Melodex)"})
+                                 headers={"User-Agent": "Melodex-sandbox-standin/0.1 (https://github.com/dextrd/Melodex)"})
         if response.status_code != 503:
             break
     response.raise_for_status()
