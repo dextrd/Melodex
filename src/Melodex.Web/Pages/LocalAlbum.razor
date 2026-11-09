@@ -29,6 +29,8 @@ else
                 <a href="@(album.ArtistLocal ? "local/artists" : "artists")/@album.ArtistId">@album.ArtistName</a>
                 @if (Format.Year(album.Date) is { Length: > 0 } year) { <span>@year</span> }
                 <span>@Format.Count(album.Tracks.Count, "song", "songs")</span>
+                <QualityBadge Quality="FileQuality.Lowest(album.Tracks.Select(t => t.Quality).OfType<FileQuality>())"
+                              Mixed="FileQuality.Mixed(album.Tracks.Select(t => t.Quality).OfType<FileQuality>())" />
                 <span class="badge neutral" title="No catalogue knows it: it's shown as its files' tags say">Your own files</span>
             </div>
             <div class="row album-actions" style="margin-top: .5rem;">
@@ -60,7 +62,7 @@ else
                         <td>
                             @track.Title
                             @if (track.Artist != album.ArtistName) { <span class="muted small"> · @track.Artist</span> }
-                            <div class="muted small">@track.Path</div>
+                            <div class="muted small"><QualityBadge Quality="track.Quality" />@track.Path</div>
                         </td>
                         <td class="num hide-narrow muted">@Format.Duration(track.DurationSeconds)</td>
                         <td class="num actions">

@@ -11,6 +11,17 @@ An album, artist or song opened from a list shows what that list already knew wh
 in order, with the ones you have filled in and the others shimmering, or an artist's albums that you have. Buttons that
 need the whole page stay greyed until it's there, and while MusicBrainz is still being asked about it.
 
+## Quality
+
+Each song shows its file's quality as it's usually written: **FLAC 16/44.1** (lossless, 16 bits at 44.1 kHz, as a CD
+is), **FLAC 24/96** (hi-res), **MP3 320** or **Opus 160** (lossy, at that many kbps). It's coloured by how good it is:
+hi-res, lossless, good (about MP3 V0 and up), or low. Lossy codecs are counted by what their bitrates sound like, so Opus
+at 160 kbps is about as good as MP3 at 256. An album shows its worst song's quality, with "and up" when they differ.
+
+In the Library's **Albums** and **Tracks** views, the quality button beside the sort filters to hi-res, lossless, lossy or
+below good, and both can be sorted by quality. Files in the library before quality was kept are read for it at the next
+scan.
+
 ## Scanning
 
 **Scan**, at the top right, reads new and changed files and matches them. Its menu has more:

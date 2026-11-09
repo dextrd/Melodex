@@ -15,7 +15,7 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
 {
     private sealed record Listing(Guid EditionId, int Disc, int Position, string Number, string Title, Guid TrackId, string ArtistCredit, TimeSpan? Duration);
 
-    private sealed record OwnedFile(Guid Id, string Path, Guid TrackId, Guid? EditionId);
+    private sealed record OwnedFile(Guid Id, string Path, Guid TrackId, Guid? EditionId, FileQuality Quality);
 
     /// <summary>What's in the library, loaded once for a set of artists.</summary>
     private sealed class Snapshot
@@ -96,9 +96,9 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
         // A page about an artist or a few albums needs only their songs' files and those filed under their editions.
         var files = scoped
             ? await db.LibraryFiles.Where(f => f.TrackId != null && (listingTracks.Contains(f.TrackId.Value) || f.EditionId != null && editionIds.Contains(f.EditionId.Value)))
-                .Select(f => new OwnedFile(f.Id, f.Path, f.TrackId!.Value, f.EditionId)).ToListAsync(ct)
+                .Select(f => new OwnedFile(f.Id, f.Path, f.TrackId!.Value, f.EditionId, LibraryFile.QualityOf(f.Codec, f.BitrateKbps, f.BitDepth, f.SampleRate))).ToListAsync(ct)
             : await db.LibraryFiles.Where(f => f.TrackId != null)
-                .Select(f => new OwnedFile(f.Id, f.Path, f.TrackId!.Value, f.EditionId)).ToListAsync(ct);
+                .Select(f => new OwnedFile(f.Id, f.Path, f.TrackId!.Value, f.EditionId, LibraryFile.QualityOf(f.Codec, f.BitrateKbps, f.BitDepth, f.SampleRate))).ToListAsync(ct);
         var owned = files.Select(f => f.TrackId).ToHashSet();
 
         // Different recordings sharing an ISRC are the same song as far as owning it goes: a song here is owned when
@@ -262,10 +262,13 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
         return Elsewhere(s, album, listing) ? TrackStatus.Elsewhere : TrackStatus.Missing;
     }
 
-    private static AlbumSummary Summarise(Snapshot s, Evaluation e) => new(
-        e.Album.Id, e.Album.ArtistId, e.Album.Title, e.Album.ArtistCredit, e.Album.Type, e.Album.SecondaryTypes, e.Album.FirstReleaseDate,
-        e.Status, HiddenByDefault(s, e), e.Album.Ignored || e.AllIgnored, e.OwnedTracks, e.TotalTracks, s.AlbumIds[e.Album.Id].ToList(),
-        AlbumCover(s, e));
+    private static AlbumSummary Summarise(Snapshot s, Evaluation e)
+    {
+        var qualities = e.OwnedEdition is { } owned ? s.FilesByEdition[owned.Id].Select(f => f.Quality).ToList() : [];
+        return new(e.Album.Id, e.Album.ArtistId, e.Album.Title, e.Album.ArtistCredit, e.Album.Type, e.Album.SecondaryTypes, e.Album.FirstReleaseDate,
+            e.Status, HiddenByDefault(s, e), e.Album.Ignored || e.AllIgnored, e.OwnedTracks, e.TotalTracks, s.AlbumIds[e.Album.Id].ToList(),
+            AlbumCover(s, e), Quality: FileQuality.Lowest(qualities), MixedQuality: FileQuality.Mixed(qualities));
+    }
 
     // The owned files' own cover when the settings prefer it (falling back to the catalogue's), else the catalogue's.
     private static string AlbumCover(Snapshot s, Evaluation e) =>
@@ -349,6 +352,7 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
             .Select(f => new
             {
                 f.Id, f.Path, f.Format, f.Duration, f.EditionId, TrackId = f.TrackId!.Value, f.TagsJson,
+                f.Codec, f.BitrateKbps, f.BitDepth, f.SampleRate,
                 f.Track!.Title, f.Track.ArtistCredit, f.Track.ArtistId, TrackDuration = f.Track.Duration,
                 AlbumId = (Guid?)f.Edition!.AlbumId, AlbumTitle = f.Edition.Album.Title,
             })
@@ -375,11 +379,12 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
                 var listing = r.EditionId is { } edition ? listings.GetValueOrDefault((edition, r.TrackId)) : null;
                 return new LibraryTrack(r.Id, r.TrackId, tags?.Title ?? r.Title, tags?.Artist ?? r.ArtistCredit, r.ArtistId, albumId, tags?.Album ?? r.AlbumTitle ?? place?.AlbumTitle ?? FileTags.Parse(r.TagsJson).Album,
                     listing?.Disc, listing?.Number, (r.Duration ?? r.TrackDuration)?.TotalSeconds, r.Path, r.Format,
-                    settings.PreferFileCovers ? LocalMusic.CoverUrl(r.Id) : albumId is { } album ? CoverUrl(album, r.EditionId ?? place?.EditionId) : null);
+                    settings.PreferFileCovers ? LocalMusic.CoverUrl(r.Id) : albumId is { } album ? CoverUrl(album, r.EditionId ?? place?.EditionId) : null,
+                    Quality: LibraryFile.QualityOf(r.Codec, r.BitrateKbps, r.BitDepth, r.SampleRate));
             })
             .Concat(own.Albums.SelectMany(a => a.Songs.Select(song => new LibraryTrack(song.File.Id, song.File.Id, song.Title, song.Artist,
                 a.ArtistLocal ? null : a.ArtistId, a.Id, a.Title, song.Tags.Disc, song.Tags.Track?.ToString(), song.File.Duration?.TotalSeconds,
-                song.File.Path, song.File.Format, a.CoverUrl, Local: true))))
+                song.File.Path, song.File.Format, a.CoverUrl, Local: true, Quality: song.File.Quality))))
             .OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(r => r.ArtistCredit, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(r => r.AlbumTitle, StringComparer.CurrentCultureIgnoreCase)
@@ -413,14 +418,15 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
     {
         var rows = await db.LibraryFiles.Where(f => f.TrackId != null && f.EditionId == null && f.ExcludedAt == null && f.HiddenAt == null
                                                     && (f.Track!.ArtistId == artistId || f.ArtistId == artistId))
-            .Select(f => new { f.Id, TrackId = f.TrackId!.Value, f.Path, f.Format, f.Duration, f.Track!.Title, f.Track.ArtistCredit, f.Track.ArtistId, TrackDuration = f.Track.Duration, f.TagsJson })
+            .Select(f => new { f.Id, TrackId = f.TrackId!.Value, f.Path, f.Format, f.Duration, f.Codec, f.BitrateKbps, f.BitDepth, f.SampleRate, f.Track!.Title, f.Track.ArtistCredit, f.Track.ArtistId, TrackDuration = f.Track.Duration, f.TagsJson })
             .ToListAsync(ct);
         if (rows.Count == 0)
             return [];
         var places = await LooseSongs.PlacesAsync(db, rows.GroupBy(r => r.TrackId).ToDictionary(g => g.Key, _ => (string?)null), ct);
         return rows.Where(r => !places.ContainsKey(r.TrackId))
             .Select(r => new LibraryTrack(r.Id, r.TrackId, r.Title, r.ArtistCredit, r.ArtistId, null, FileTags.Parse(r.TagsJson).Album, null, null,
-                (r.Duration ?? r.TrackDuration)?.TotalSeconds, r.Path, r.Format, LocalMusic.CoverUrl(r.Id)))
+                (r.Duration ?? r.TrackDuration)?.TotalSeconds, r.Path, r.Format, LocalMusic.CoverUrl(r.Id),
+                Quality: LibraryFile.QualityOf(r.Codec, r.BitrateKbps, r.BitDepth, r.SampleRate)))
             .OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
     }
@@ -458,7 +464,8 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
                 var file = s.FilesByTrack[listing.TrackId].FirstOrDefault(f => f.EditionId is { } e && editionIds.Contains(e));
                 var title = file is not null && tagged?.GetValueOrDefault(file.Id) is { Length: > 0 } own ? own : listing.Title;
                 tracks.Add(new TrackRow(listing.TrackId, listing.Disc, listing.Position, listing.Number, title, listing.ArtistCredit,
-                    listing.Duration?.TotalSeconds, status, file?.Path, trackProviderIds[listing.TrackId].ToList(), s.Ignored.Contains(listing.TrackId)));
+                    listing.Duration?.TotalSeconds, status, file?.Path, trackProviderIds[listing.TrackId].ToList(), s.Ignored.Contains(listing.TrackId),
+                    file?.Quality));
             }
         }
 
@@ -491,7 +498,7 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
         return new TrackDetail(track.Id, track.Title, track.ArtistCredit, track.ArtistId, track.Artist.Name, track.Duration?.TotalSeconds, track.Ignored,
             ids, cover, appearances,
             files.Select(f => new TrackFile(f.Id, f.Path, f.Format, f.Duration?.TotalSeconds, f.Size, f.Edition?.AlbumId, f.EditionId,
-                TagsOf(FileTags.Parse(f.TagsJson)), f.FormattedAt, f.Lyrics)).ToList());
+                TagsOf(FileTags.Parse(f.TagsJson)), f.FormattedAt, f.Lyrics, f.Quality)).ToList());
     }
 
     // The tags worth showing, in the order a tag editor would.

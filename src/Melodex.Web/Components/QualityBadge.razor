@@ -1,0 +1,29 @@
+@*
+    A file's quality as it's usually written ("FLAC 16/44.1", "MP3 320"), coloured by how good it is. For an album, its
+    worst song's, marked when its songs aren't all alike.
+*@
+@* Nothing, where nothing's known: a file not yet read for it, or that couldn't be. *@
+@if (Quality is { Codec: not null } quality)
+{
+    <span class="quality @Class(quality.Level)" title="@Title(quality)">@(Mixed ? $"{quality.Label} and up" : quality.Label)</span>
+}
+
+@code {
+    [Parameter] public FileQuality? Quality { get; set; }
+
+    /// <summary>Several files' worst quality, of files not all alike.</summary>
+    [Parameter] public bool Mixed { get; set; }
+
+    private string Title(FileQuality quality) =>
+        (Mixed ? $"Mixed quality, at worst {FileQuality.Describe(quality.Level).ToLowerInvariant()}" : FileQuality.Describe(quality.Level))
+        + (quality.SampleRateHz is { } rate && !quality.Lossless ? $" · {rate / 1000.0:0.##} kHz" : "");
+
+    private static string Class(QualityLevel level) => level switch
+    {
+        QualityLevel.HiRes => "hires",
+        QualityLevel.Lossless => "lossless",
+        QualityLevel.High or QualityLevel.Good => "good",
+        QualityLevel.Fair or QualityLevel.Low => "low",
+        _ => "unknown",
+    };
+}

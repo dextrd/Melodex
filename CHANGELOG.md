@@ -4,6 +4,15 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ## [Unreleased]
 
+### Added
+
+- **The library knows each file's quality** (#17): its codec, bitrate, and for lossless files its bit depth and sample
+  rate, read as files are scanned (files already in the library are read for it once, at the next scan, without being
+  matched again). Songs show it as "FLAC 16/44.1" or "MP3 320", on the track, album and Tracks pages; an album shows its
+  worst song's, marked "and up" when they differ. The Library's Albums and Tracks views can be sorted by quality, and
+  filtered to hi-res, lossless, lossy, or below good (under about MP3 V0, with Opus, AAC and Vorbis counted by what
+  their bitrates sound like).
+
 ### Changed
 
 - **Melodex's home is now [dextrd/Melodex](https://github.com/dextrd/Melodex)**, and its images are published as

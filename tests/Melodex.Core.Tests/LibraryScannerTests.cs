@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Melodex.Client;
 using Melodex.Core.Data;
 using Melodex.Core.Library;
 using System.Runtime.Versioning;
@@ -104,6 +105,67 @@ public sealed class LibraryScannerTests : IDisposable
         Assert.Equal(1, result.SkippedFolders);
         Assert.Equal(0, result.Removed);
         Assert.Equal(2, await _db.LibraryFiles.CountAsync());
+    }
+
+    [TestLibraryFact]
+    public async Task Each_file_s_quality_is_read_as_it_s_scanned()
+    {
+        foreach (var (from, to) in new[]
+                 {
+                     ("daft punk - homework [FLAC]/01. Daftendirekt.flac", "a.flac"),
+                     ("Portishead/Roseland NYC Live (1998)/01 Humming.m4a", "b.m4a"),
+                     ("Unknown/Track 01.mp3", "c.mp3"),
+                 })
+            File.Copy(Path.Combine(TestLibrary.Music, from), Path.Combine(_music, to));
+
+        await _scanner.ScanAsync(null, default);
+
+        var files = await _db.LibraryFiles.ToDictionaryAsync(f => f.Path);
+        // The test library's files are small: 16 bits at 22.05 kHz, and lossy ones at a few kbps.
+        var flac = files["a.flac"].Quality;
+        Assert.Equal(("flac", 16, 22050), (flac.Codec, flac.BitDepth, flac.SampleRateHz));
+        Assert.Equal("FLAC 16/22.05", flac.Label);
+        Assert.Equal(QualityLevel.Lossless, flac.Level);
+        foreach (var (path, codec) in new[] { ("b.m4a", "aac"), ("c.mp3", "mp3") })
+        {
+            var lossy = files[path].Quality;
+            Assert.Equal(codec, lossy.Codec);
+            Assert.Null(lossy.BitDepth);
+            Assert.Equal(22050, lossy.SampleRateHz);
+        }
+        // The MP4's too short a file to say its bitrate, or even its length.
+        Assert.Equal(QualityLevel.Low, files["c.mp3"].Quality.Level);
+    }
+
+    [TestLibraryFact]
+    public async Task Files_scanned_before_quality_was_kept_are_read_for_it_once_without_matching_them_again()
+    {
+        File.Copy(Directory.EnumerateFiles(TestLibrary.Music, "*.flac", SearchOption.AllDirectories).First(), Path.Combine(_music, "a.flac"));
+        await _scanner.ScanAsync(null, default);
+        var file = await _db.LibraryFiles.SingleAsync();
+        // As an upgrade leaves it: matched, with no quality.
+        var matched = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        file.MatchedAt = matched;
+        file.Codec = null;
+        file.BitDepth = file.SampleRate = file.BitrateKbps = null;
+        await _db.SaveChangesAsync();
+
+        var result = await _scanner.ScanAsync(null, default);
+
+        Assert.Equal(0, result.Changed);
+        Assert.Equal("flac", file.Codec);
+        Assert.Equal(16, file.BitDepth);
+        Assert.Equal(matched, file.MatchedAt);
+    }
+
+    [Fact]
+    public void A_file_that_can_t_be_read_for_its_quality_is_marked_so_it_isn_t_read_every_scan()
+    {
+        var file = new LibraryFile { Path = "a.flac" };
+        file.SetQuality(new FileQuality(null, null, null, null));
+        Assert.Equal(LibraryFile.UnknownCodec, file.Codec);
+        Assert.Equal(QualityLevel.Unknown, file.Quality.Level);
+        Assert.Null(file.Quality.Codec);
     }
 }
 

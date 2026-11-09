@@ -156,7 +156,8 @@ else
             <div class="card track-file">
                 <code>@file.Path</code>
                 <div class="row muted small">
-                    @if (file.Format is not null) { <span>@file.Format.ToUpperInvariant()</span> }
+                    @if (file.Quality is { Codec: not null }) { <QualityBadge Quality="file.Quality" /> }
+                    else if (file.Format is not null) { <span>@file.Format.ToUpperInvariant()</span> }
                     @if (file.DurationSeconds is not null) { <span>@Format.Duration(file.DurationSeconds)</span> }
                     <span>@Format.Size(file.Size)</span>
                     @if (file.FormattedAt is { } formatted) { <span>Formatted @Format.Ago(formatted)</span> }

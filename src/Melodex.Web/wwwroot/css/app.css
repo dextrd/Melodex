@@ -261,6 +261,16 @@ label { display: inline-flex; align-items: center; gap: .4rem; }
 .badge.missing { color: var(--missing); background: var(--missing-bg); }
 .badge.neutral, .badge.ignored, .badge.elsewhere { color: var(--muted); background: var(--bg); border: 1px solid var(--border); }
 
+/* A file's quality, "FLAC 16/44.1": a small tag, coloured by how good it is. */
+.quality { display: inline-block; font-size: .72rem; font-weight: 600; line-height: 1.5; padding: 0 .35rem; border-radius: 4px; margin-right: .4rem;
+    white-space: nowrap; vertical-align: 1px; color: var(--muted); background: var(--bg); border: 1px solid var(--border); }
+.quality.hires { color: var(--accent); border-color: var(--accent); }
+.quality.lossless { color: var(--owned); background: var(--owned-bg); border-color: transparent; }
+.quality.good { color: var(--covered); background: var(--covered-bg); border-color: transparent; }
+.quality.low { color: var(--partial); background: var(--partial-bg); border-color: transparent; }
+.tile-quality .quality, .track-main .quality { margin: 0 0 0 .4rem; }
+.page-head .row .quality { margin: 0; }
+
 .meter { height: 6px; background: var(--missing-fill); border-radius: 999px; overflow: hidden; min-width: 80px; }
 .meter > span { display: block; height: 100%; background: var(--owned-fill); }
 

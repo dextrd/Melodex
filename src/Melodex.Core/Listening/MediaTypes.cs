@@ -1,3 +1,5 @@
+using Melodex.Client;
+
 namespace Melodex.Core.Listening;
 
 /// <summary>Media types for audio files, so players can check they can play a file before trying.</summary>
@@ -14,6 +16,11 @@ public static class MediaTypes
         ".webm" => "opus",
         ".wav" => "pcm",
         ".wma" => "wma",
+        ".aif" or ".aiff" => "aiff",
+        ".ape" => "ape",
+        ".wv" => "wavpack",
+        ".mpc" => "mpc",
+        ".dsf" => "dsd",
         _ => null,
     };
 
@@ -64,19 +71,41 @@ public static class MediaTypes
         try
         {
             using var file = TagLib.File.Create(fullPath);
-            var description = file.Properties?.Codecs.OfType<TagLib.IAudioCodec>().FirstOrDefault()?.Description ?? "";
-            string? codec = description.Contains("ALAC", StringComparison.OrdinalIgnoreCase) ? "alac"
-                : description.Contains("Opus", StringComparison.OrdinalIgnoreCase) ? "opus"
-                : description.Contains("Vorbis", StringComparison.OrdinalIgnoreCase) ? "vorbis"
-                : description.Contains("FLAC", StringComparison.OrdinalIgnoreCase) ? "flac"
-                : description.Contains("Layer 3", StringComparison.OrdinalIgnoreCase) ? "mp3"
-                : description.Contains("AAC", StringComparison.OrdinalIgnoreCase) ? "aac"
-                : null;
-            return (codec, file.Properties?.AudioBitrate is > 0 and var bitrate ? bitrate : null);
+            var quality = QualityOf(file, fullPath);
+            return (quality.Codec, quality.BitrateKbps);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
             return (null, null);
         }
+    }
+
+    /// <summary>
+    /// A file's encoding as it says: the codec, from TagLib's description of it or else the extension; the bitrate; and
+    /// for lossless files, the bit depth and sample rate.
+    /// </summary>
+    public static FileQuality QualityOf(TagLib.File file, string path)
+    {
+        var properties = file.Properties;
+        var description = properties?.Codecs.OfType<TagLib.IAudioCodec>().FirstOrDefault()?.Description ?? "";
+        bool Says(string name) => description.Contains(name, StringComparison.OrdinalIgnoreCase);
+        var codec = Says("ALAC") ? "alac"
+            : Says("Opus") ? "opus"
+            : Says("Vorbis") ? "vorbis"
+            : Says("FLAC") ? "flac"
+            : Says("Layer 3") ? "mp3"
+            : Says("AAC") ? "aac"
+            : Says("WavPack") ? "wavpack"
+            : Says("Monkey") ? "ape"
+            : Says("Musepack") ? "mpc"
+            : CodecFor(path);
+        // Some files don't say (Opus, a VBR MP3 without its header): their average, from their size and length.
+        int? kbps = properties?.AudioBitrate is > 0 and var said ? said
+            : properties?.Duration.TotalSeconds is > 0 and var seconds && new FileInfo(path) is { Exists: true } info
+            && (int)Math.Round(info.Length * 8 / seconds / 1000) is > 0 and var average ? average
+            : null;
+        var quality = new FileQuality(codec, kbps, null, properties?.AudioSampleRate is > 0 and var rate ? rate : null);
+        // Lossy files have no depth of their own, whatever their decoder works at.
+        return quality.Lossless && properties?.BitsPerSample is > 0 and var bits ? quality with { BitDepth = bits } : quality;
     }
 }

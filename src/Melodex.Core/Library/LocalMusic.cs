@@ -31,7 +31,8 @@ public sealed class LocalMusic(MelodexDbContext db)
         public string CoverUrl => LocalMusic.CoverUrl(Songs[0].File.Id);
 
         public AlbumSummary Summary() => new(Id, ArtistId, Title, ArtistName, Title == NoAlbum ? AlbumType.Other : AlbumType.Album, [], Date,
-            AlbumStatus.Complete, false, false, Songs.Count, Songs.Count, [], CoverUrl, Local: true);
+            AlbumStatus.Complete, false, false, Songs.Count, Songs.Count, [], CoverUrl, Local: true,
+            Quality: FileQuality.Lowest(Songs.Select(s => s.File.Quality)), MixedQuality: FileQuality.Mixed(Songs.Select(s => s.File.Quality)));
     }
 
     public sealed record Artist(Guid Id, string Name, IReadOnlyList<Album> Albums);
@@ -86,7 +87,7 @@ public sealed class LocalMusic(MelodexDbContext db)
         (await LoadAsync(ct)).Albums.FirstOrDefault(a => a.Id == id) is { } album
             ? new LocalAlbumDetail(album.Id, album.Title, album.ArtistId, album.ArtistName, album.ArtistLocal, album.Date, album.CoverUrl,
                 album.Songs.Select(s => new LocalTrack(s.File.Id, s.Tags.Disc, s.Tags.Track, s.Title, s.Artist, s.File.Duration?.TotalSeconds, s.File.Path,
-                    s.File.Format)).ToList())
+                    s.File.Format, s.File.Quality)).ToList())
             : null;
 
     // A name-based ID, so the same artist or album keeps its ID however often the library is read.

@@ -29,6 +29,36 @@ public class LibraryFile
     public string? Format { get; set; }
     public TimeSpan? Duration { get; set; }
 
+    /// <summary>
+    /// The codec, lower case (flac, mp3, opus…), as the file says; <see cref="UnknownCodec"/> when it couldn't be told,
+    /// and null until the file's been read for it, which a scan does once for files from before it was kept.
+    /// </summary>
+    public string? Codec { get; set; }
+
+    public int? BitrateKbps { get; set; }
+
+    /// <summary>Bits a sample, for lossless files.</summary>
+    public int? BitDepth { get; set; }
+
+    public int? SampleRate { get; set; }
+
+    public const string UnknownCodec = "unknown";
+
+    /// <summary>The file's quality, as the web app shows it.</summary>
+    public static FileQuality QualityOf(string? codec, int? bitrateKbps, int? bitDepth, int? sampleRate) =>
+        new(codec is UnknownCodec ? null : codec, bitrateKbps, bitDepth, sampleRate);
+
+    public FileQuality Quality => QualityOf(Codec, BitrateKbps, BitDepth, SampleRate);
+
+    /// <summary>Sets the quality read from the file.</summary>
+    public void SetQuality(FileQuality quality)
+    {
+        Codec = quality.Codec ?? UnknownCodec;
+        BitrateKbps = quality.BitrateKbps;
+        BitDepth = quality.BitDepth;
+        SampleRate = quality.SampleRateHz;
+    }
+
     /// <summary>Tags as read from the file, as a JSON object of tag name to value.</summary>
     public string TagsJson { get; set; } = "{}";
 

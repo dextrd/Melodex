@@ -356,6 +356,15 @@ namespace Melodex.Core.Data.Migrations
                     b.Property<Guid?>("ArtistId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("BitDepth")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("BitrateKbps")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Codec")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("DeferredAt")
                         .HasColumnType("TEXT");
 
@@ -412,6 +421,9 @@ namespace Melodex.Core.Data.Migrations
 
                     b.Property<string>("ReviewReason")
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("SampleRate")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("ScannedAt")
                         .HasColumnType("TEXT");
