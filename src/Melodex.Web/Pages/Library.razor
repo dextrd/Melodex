@@ -85,7 +85,7 @@
                             @if (album.TotalTracks is { } total and > 0)
                             {
                                 <div class="meter" title="@album.OwnedTracks of @total tracks"><span style="width:@(100 * (album.OwnedTracks ?? 0) / total)%"></span></div>
-                                <div class="muted small tile-quality">@(album.OwnedTracks == total ? $"All {total} tracks" : $"{album.OwnedTracks} of {total} tracks")<QualityBadge Quality="album.Quality" Mixed="album.MixedQuality" /></div>
+                                <div class="muted small tile-quality">@(album.OwnedTracks == total ? $"All {total} tracks" : $"{album.OwnedTracks} of {total} tracks")<QualityBadge Quality="album.Quality" Mixed="album.MixedQuality" Dot="true" /></div>
                             }
                         </a>
                         @if (!album.Local)
@@ -131,7 +131,7 @@
                                     <div class="ellipsis"><a href="@(track.Local ? Format.AlbumHref(track) : $"tracks/{track.TrackId}")" class="plain">@track.Title</a></div>
                                     <div class="muted small ellipsis">
                                         @if (track.ArtistId is { } artistId) { <a class="muted" href="artists/@artistId">@track.ArtistCredit</a> } else { @track.ArtistCredit }
-                                        <QualityBadge Quality="track.Quality" />
+                                        <QualityBadge Quality="track.Quality" Dot="true" />
                                     </div>
                                 </td>
                                 <td class="hide-narrow muted small ellipsis">

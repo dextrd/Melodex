@@ -8,8 +8,9 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 - **The library knows each file's quality** (#17): its codec, bitrate, and for lossless files its bit depth and sample
   rate, read as files are scanned (files already in the library are read for it once, at the next scan, without being
-  matched again). Songs show it as "FLAC 16/44.1" or "MP3 320", on the track, album and Tracks pages; an album shows its
-  worst song's, marked "and up" when they differ. The Library's Albums and Tracks views can be sorted by quality, and
+  matched again). Song and album pages show it as a chip ("FLAC 16/44.1", "MP3 320"), coloured red, amber or green
+  by how good it is, and lists as a dot of the same colour; an album shows its worst song's, marked "and up" when they
+  differ. A song's file details are now plain rows of its list: format, length, size and when it was last formatted. The Library's Albums and Tracks views can be sorted by quality, and
   filtered to hi-res, lossless, lossy, or below good (under about MP3 V0, with Opus, AAC and Vorbis counted by what
   their bitrates sound like).
 

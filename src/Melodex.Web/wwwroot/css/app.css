@@ -261,21 +261,18 @@ label { display: inline-flex; align-items: center; gap: .4rem; }
 .badge.missing { color: var(--missing); background: var(--missing-bg); }
 .badge.neutral, .badge.ignored, .badge.elsewhere { color: var(--muted); background: var(--bg); border: 1px solid var(--border); }
 
-/* A file's quality, "FLAC 16/44.1": a small tag, coloured by how good it is. */
-.quality { display: inline-block; font-size: .72rem; font-weight: 600; line-height: 1.5; padding: 0 .35rem; border-radius: 4px; margin-right: .4rem;
-    white-space: nowrap; vertical-align: 1px; color: var(--muted); background: var(--bg); border: 1px solid var(--border); }
-.quality.hires { color: var(--accent); border-color: var(--accent); }
-.quality.lossless { color: var(--owned); background: var(--owned-bg); border-color: transparent; }
-.quality.good { color: var(--covered); background: var(--covered-bg); border-color: transparent; }
-.quality.low { color: var(--partial); background: var(--partial-bg); border-color: transparent; }
-.tile-quality .quality, .track-main .quality { margin: 0 0 0 .4rem; }
-.page-head .row .quality { margin: 0; }
-/* In a heading, a chip like the others there. */
-.badge.quality-chip.hires { color: var(--accent); background: var(--bg); border: 1px solid var(--accent); }
+/* A file's quality: red below good, amber for good lossy, green for lossless, ringed in green for hi-res. A chip in a
+   page's heading, a dot in lists that says it when pointed at. */
+.badge.quality-chip.low { color: var(--missing); background: var(--missing-bg); }
+.badge.quality-chip.good { color: var(--partial); background: var(--partial-bg); }
 .badge.quality-chip.lossless { color: var(--owned); background: var(--owned-bg); }
-.badge.quality-chip.good { color: var(--covered); background: var(--covered-bg); }
-.badge.quality-chip.low { color: var(--partial); background: var(--partial-bg); }
-.badge.quality-chip.unknown { color: var(--muted); background: var(--bg); border: 1px solid var(--border); }
+.badge.quality-chip.hires { color: var(--owned); background: var(--owned-bg); box-shadow: inset 0 0 0 1.5px var(--owned); }
+.quality-dot { display: inline-block; width: .5rem; height: .5rem; border-radius: 50%; margin: 0 0 0 .4rem; vertical-align: middle;
+    flex: none; cursor: help; background: var(--muted); }
+.quality-dot.low { background: var(--missing); }
+.quality-dot.good { background: var(--partial-fill); }
+.quality-dot.lossless { background: var(--owned-fill); }
+.quality-dot.hires { background: var(--owned-fill); box-shadow: 0 0 0 1.5px var(--surface), 0 0 0 2.75px var(--owned-fill); margin-left: .55rem; }
 
 .meter { height: 6px; background: var(--missing-fill); border-radius: 999px; overflow: hidden; min-width: 80px; }
 .meter > span { display: block; height: 100%; background: var(--owned-fill); }

@@ -60,9 +60,9 @@ else
                     <tr class="@(Player.IsNow(track.FileId) ? "playing" : "")">
                         <td class="num muted nowrap">@(MultiDisc && track.Disc is { } disc ? $"{disc}-" : "")@track.Number</td>
                         <td>
-                            @track.Title
+                            @track.Title <QualityBadge Quality="track.Quality" Dot="true" />
                             @if (track.Artist != album.ArtistName) { <span class="muted small"> · @track.Artist</span> }
-                            <div class="muted small"><QualityBadge Quality="track.Quality" />@track.Path</div>
+                            <div class="muted small">@track.Path</div>
                         </td>
                         <td class="num hide-narrow muted">@Format.Duration(track.DurationSeconds)</td>
                         <td class="num actions">

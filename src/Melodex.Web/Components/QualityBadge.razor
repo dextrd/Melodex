@@ -1,25 +1,31 @@
 @*
-    A file's quality as it's usually written ("FLAC 16/44.1", "MP3 320"), coloured by how good it is. For an album, its
-    worst song's, marked when its songs aren't all alike.
+    A file's quality, coloured by how good it is: red below good, amber for good lossy, green for lossless, and green
+    ringed for hi-res. As a chip in a page's heading, written as it usually is ("FLAC 16/44.1", "MP3 320"); or in lists,
+    as a dot that says it when pointed at. For an album, its worst song's, marked when its songs aren't all alike.
 *@
 @* Nothing, where nothing's known: a file not yet read for it, or that couldn't be. *@
 @if (Quality is { Codec: not null } quality)
 {
-    <span class="@(Chip ? "badge quality-chip" : "quality") @Class(quality.Level)" title="@Title(quality)">@(Mixed ? $"{quality.Label} and up" : quality.Label)</span>
+    var label = Mixed ? $"{quality.Label} and up" : quality.Label;
+    var details = Mixed ? $"Mixed quality, at worst {quality.Details.ToLowerInvariant()}" : quality.Details;
+    if (Dot)
+    {
+        <span class="quality-dot @Class(quality.Level)" title="@label · @details" role="img" aria-label="@label, @details"></span>
+    }
+    else
+    {
+        <span class="badge quality-chip @Class(quality.Level)" title="@details">@label</span>
+    }
 }
 
 @code {
     [Parameter] public FileQuality? Quality { get; set; }
 
-    /// <summary>As the chips beside it in a page's heading are, rather than a small tag.</summary>
-    [Parameter] public bool Chip { get; set; }
+    /// <summary>A small dot, for lists, rather than a chip.</summary>
+    [Parameter] public bool Dot { get; set; }
 
     /// <summary>Several files' worst quality, of files not all alike.</summary>
     [Parameter] public bool Mixed { get; set; }
-
-    private string Title(FileQuality quality) =>
-        (Mixed ? $"Mixed quality, at worst {FileQuality.Describe(quality.Level).ToLowerInvariant()}" : FileQuality.Describe(quality.Level))
-        + (quality.SampleRateHz is { } rate && !quality.Lossless ? $" · {rate / 1000.0:0.##} kHz" : "");
 
     private static string Class(QualityLevel level) => level switch
     {

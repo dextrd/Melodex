@@ -72,6 +72,9 @@ public sealed record FileQuality(string? Codec, int? BitrateKbps, int? BitDepth,
         }
     }
 
+    /// <summary>What the label doesn't say: how good it is, and a lossy file's sample rate. "Good · 48 kHz".</summary>
+    public string Details => Describe(Level) + (SampleRateHz is { } rate && !Lossless ? $" · {Kilohertz(rate)} kHz" : "");
+
     public static string Name(string? codec) => codec switch
     {
         null => "Unknown",

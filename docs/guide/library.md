@@ -13,10 +13,14 @@ need the whole page stay greyed until it's there, and while MusicBrainz is still
 
 ## Quality
 
-Each song shows its file's quality as it's usually written: **FLAC 16/44.1** (lossless, 16 bits at 44.1 kHz, as a CD
+Melodex knows each file's quality, written as it usually is: **FLAC 16/44.1** (lossless, 16 bits at 44.1 kHz, as a CD
 is), **FLAC 24/96** (hi-res), **MP3 320** or **Opus 160** (lossy, at that many kbps). It's coloured by how good it is:
-hi-res, lossless, good (about MP3 V0 and up), or low. Lossy codecs are counted by what their bitrates sound like, so Opus
-at 160 kbps is about as good as MP3 at 256. An album shows its worst song's quality, with "and up" when they differ.
+red below good, amber for good lossy files (about MP3 V0 and up), green for lossless, and green with a ring for hi-res.
+Lossy codecs are counted by what their bitrates sound like, so Opus at 160 kbps is about as good as MP3 at 256.
+
+A song's and an album's pages show it as a chip in their heading, and a song's page lists it under its file's
+**Format**. Lists show a small coloured dot beside each album or song, which says the quality when pointed at. An album
+is as good as its worst song, with "and up" when they differ.
 
 In the Library's **Albums** and **Tracks** views, the quality button beside the sort filters to hi-res, lossless, lossy or
 below good, and both can be sorted by quality. Files in the library before quality was kept are read for it at the next

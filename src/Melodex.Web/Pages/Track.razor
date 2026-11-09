@@ -80,7 +80,7 @@ else
                 {
                     <span class="badge @(Lyrics(track) is LyricsKind.Synced or LyricsKind.Plain ? "owned" : "neutral")" title="@LyricsHint(Lyrics(track))">@LyricsLabel(Lyrics(track))</span>
                     var qualities = track.Files.Select(f => f.Quality).OfType<FileQuality>().ToList();
-                    <QualityBadge Quality="FileQuality.Lowest(qualities)" Mixed="FileQuality.Mixed(qualities)" Chip="true" />
+                    <QualityBadge Quality="FileQuality.Lowest(qualities)" Mixed="FileQuality.Mixed(qualities)" />
                 }
                 <ProviderIds Ids="track.Ids" Entity="recording" />
             </div>
@@ -162,7 +162,7 @@ else
                     @if (file.Quality is { Codec: not null } quality)
                     {
                         <dt>Format</dt>
-                        <dd title="@FileQuality.Describe(quality.Level)">@quality.Label</dd>
+                        <dd>@quality.Label (@quality.Details)</dd>
                     }
                     else if (file.Format is not null)
                     {

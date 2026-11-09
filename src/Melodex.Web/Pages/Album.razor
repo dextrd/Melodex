@@ -167,11 +167,12 @@ else
                             <td>
                                 <div class="ellipsis" title="@track.Title">
                                     <a href="tracks/@track.TrackId" class="plain">@track.Title</a>
+                                    <QualityBadge Quality="track.Quality" Dot="true" />
                                     @if (track.ArtistCredit != album.ArtistCredit) { <span class="muted small"> · @track.ArtistCredit</span> }
                                 </div>
                                 @if (track.FilePath is not null)
                                 {
-                                    <div class="muted small ellipsis hide-narrow" title="@track.FilePath"><QualityBadge Quality="track.Quality" />@track.FilePath</div>
+                                    <div class="muted small ellipsis hide-narrow" title="@track.FilePath">@track.FilePath</div>
                                 }
                                 <div class="show-narrow"><StatusBadge Track="track.Status" /></div>
                             </td>
