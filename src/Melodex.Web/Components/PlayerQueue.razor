@@ -12,11 +12,10 @@
     <button class="link small" @onclick="Player.ClearAsync">Clear</button>
     <IconButton Icon="open" Class="small" Title="Open the queue as a page" OnClick="OpenPage" />
 </div>
+@* Only the songs near the top or bottom of what it shows are drawn: playing a long playlist puts all of it here. *@
 <ol class="queue-list" data-reorder>
-    @for (var i = 0; i < Player.Queue.Count; i++)
-    {
-        var index = i;
-        var entry = Player.Queue[i];
+    <Virtualize Items="Format.Indexed(Player.Queue)" Context="row" ItemSize="46" OverscanCount="10" SpacerElement="li">
+        @{ var (entry, index) = row; }
         <li class="@(index == Player.Current ? "now" : "") @(entry.Unplayable ? "dim" : "") @Drag.Class(index)"
             @ondragover="() => Drag.Over(index)" @ondragover:preventDefault="true" @ondrop="() => Drag.Drop(index, Player.Move)" @ondrop:preventDefault="true">
             <DragHandle OnStart="() => Drag.Start(index)" OnEnd="Drag.End" />
@@ -28,7 +27,7 @@
             <span class="small muted nowrap">@EntryState(entry)</span>
             <button class="link small" title="Remove from the queue" @onclick="() => Player.RemoveAsync(index)">✕</button>
         </li>
-    }
+    </Virtualize>
 </ol>
 
 @code {

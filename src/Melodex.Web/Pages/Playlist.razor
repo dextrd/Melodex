@@ -66,8 +66,8 @@ else
     }
     else
     {
-        <div class="card">
-            <table class="table track-list playlist-songs" data-reorder>
+        <div class="card" style="@Format.NumberColumn(_playlist.Songs.Count)">
+            <table class="table track-list playlist-songs slots" data-reorder>
                 @* Fixed widths, so the columns stay put as more rows are drawn. *@
                 <colgroup><col class="num-col" /><col class="cover-col" /><col /><col class="album-col hide-narrow" /><col class="length-col hide-narrow" /><col class="icons-4-col" /></colgroup>
                 <thead>
@@ -80,17 +80,18 @@ else
                         <th></th>
                     </tr>
                 </thead>
+                @* Only the rows near the screen are drawn; the rest are slots, which shimmer if they're scrolled to before they are. *@
                 <tbody>
-                    @for (var i = 0; i < Math.Min(_limit, _playlist.Songs.Count); i++)
-                    {
-                        var index = i;
-                        var song = _playlist.Songs[i];
-                        var canPlay = song.State is PlaylistSongState.Library or PlaylistSongState.Local;
-                        var albumHref = song.AlbumId is { } album ? $"{(song.State == PlaylistSongState.Local ? "local/albums" : "albums")}/{album}" : null;
+                    <Virtualize Items="Format.Indexed(_playlist.Songs)" Context="row" ItemSize="56" OverscanCount="15" SpacerElement="tr">
+                        @{
+                            var (song, index) = row;
+                            var canPlay = song.State is PlaylistSongState.Library or PlaylistSongState.Local;
+                            var albumHref = song.AlbumId is { } album ? $"{(song.State == PlaylistSongState.Local ? "local/albums" : "albums")}/{album}" : null;
+                        }
                         <tr @key="song.EntryId" class="@(canPlay ? "" : "dim") @(canPlay && Player.Now is { } now && now.TrackId == (song.TrackId ?? song.FileId) ? "playing" : "") @Drag.Class(index)"
                             @ondragover="() => Drag.Over(index)" @ondragover:preventDefault="true"
                             @ondrop="() => Drag.DropAsync(index, MoveToAsync)" @ondrop:preventDefault="true">
-                            <td class="num muted"><div class="drag-num"><DragHandle Disabled="_busy" OnStart="() => Drag.Start(index)" OnEnd="Drag.End" />@(i + 1)</div></td>
+                            <td class="num muted"><div class="drag-num"><DragHandle Disabled="_busy" OnStart="() => Drag.Start(index)" OnEnd="Drag.End" />@(index + 1)</div></td>
                             <td class="cover-col">
                                 @if (albumHref is not null) { <a href="@albumHref" tabindex="-1"><Cover Url="@song.CoverUrl" /></a> } else { <Cover Url="@song.CoverUrl" /> }
                             </td>
@@ -131,10 +132,9 @@ else
                                 </div>
                             </td>
                         </tr>
-                    }
+                    </Virtualize>
                 </tbody>
             </table>
-            @if (_playlist.Songs.Count > _limit) { <MoreOnScroll OnMore="() => _limit += Page" Remaining="_playlist.Songs.Count - _limit" /> }
         </div>
     }
 }
@@ -196,10 +196,6 @@ else
     private PlaylistDetail? _playlist;
     private bool _notFound, _busy, _renaming, _deleting;
 
-    // A long playlist is drawn a page at a time, as many as the user chose, and more as they scroll.
-    private int Page => Auth.Status?.Appearance?.ListPage ?? Appearance.DefaultListPage;
-    private int _limit = Appearance.DefaultListPage;
-    private Guid _shown;
     private string _name = "";
     private string? _comment, _error, _renameError;
     private bool _addToTop;
@@ -216,11 +212,6 @@ else
         Player.Changed += Redraw;
         ScanStatus.LibraryChanged -= Reload;
         ScanStatus.LibraryChanged += Reload;
-        if (_shown != Id)
-        {
-            _shown = Id;
-            _limit = Page;
-        }
         await LoadAsync();
     }
 
