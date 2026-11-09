@@ -2,7 +2,7 @@
 
 What changed in each release of Melodex. Versions follow [semantic versioning](https://semver.org).
 
-## [1.0.0]
+## [1.0.0] - 2026-11-09
 
 The first release. Melodex finds what's missing from your music library, fetches it through the plugins you choose,
 files it beside the rest, and lets you listen before you keep it, alongside the Navidrome you already have. It installs
