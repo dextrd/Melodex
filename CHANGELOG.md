@@ -12,6 +12,10 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   scan, except those matched by hand. An artist's songs that really are on no album the catalogue lists show on their
   page, under **Other songs**, and an artist with no albums to count shows how many songs they have, with an empty bar
   rather than a full one.
+- **Playlist folders' arrows** ([#27](https://github.com/joeatethebeans/Melodex/issues/27)) no longer have a line down
+  their side and along their bottom.
+- **The Sign in button's spinner** ([#28](https://github.com/joeatethebeans/Melodex/issues/28)) turns while signing in
+  is checked, rather than showing as a thin bar.
 
 ## [1.0.1] - 2026-11-09
 
