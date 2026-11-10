@@ -20,6 +20,11 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   `ghcr.io/dextrd/melodex…`. An install from 1.0.2 or earlier names the old images, which get no new releases: change
   `joeatethebeans` to `dextrd` in its compose file's `image:` lines, as [upgrading](docs/guide/upgrading.md) says.
 
+### Fixed
+
+- An album that fits two editions equally well (Discovery's 2005 digital and Australian CD releases, say) is put on the
+  same one at every scan, rather than either.
+
 ## [1.0.2] - 2026-11-09
 
 ### Fixed
