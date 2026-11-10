@@ -345,3 +345,14 @@ def test_the_manifest_offers_the_reflink_check():
     manifest = TestClient(main.app).get("/v1/manifest").json()
     assert manifest["checks"][0]["id"] == "reflinks"
     assert manifest["settingsSchema"]["properties"]["reflinks"]["default"] is True
+
+
+def test_a_release_name_says_its_quality_until_the_files_are_known():
+    named = retrieve.quality_of_name
+    assert named("Portishead - Dummy (1994) [FLAC 24bit-96kHz]") == {"format": "flac", "bit_depth": 24, "sample_rate_hz": 96000}
+    assert named("Portishead - Dummy 1994 FLAC 24-96 WEB") == {"format": "flac", "bit_depth": 24, "sample_rate_hz": 96000}
+    assert named("Portishead - Dummy [Hi-Res]") == {"format": "flac", "bit_depth": 24}
+    assert named("Portishead - Dummy (1994) [FLAC] {CD}") == {"format": "flac"}
+    assert named("Portishead - Dummy 1994 MP3 320kbps") == {"format": "mp3", "bitrate_kbps": 320}
+    assert named("Portishead - Dummy [V0]") == {"format": "mp3", "bitrate_kbps": 245}
+    assert named("Portishead - Dummy") == {}

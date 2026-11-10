@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 
 from .contract import Target, env
-from .streaming import Album, Stream, Track
+from .streaming import Album, Offer, Stream, Track
 
 API = env("QOBUZ_API", "https://www.qobuz.com/api.json/0.2")
 QUALITIES = ["hires", "cd", "mp3"]
@@ -123,7 +123,7 @@ class Qobuz:
             artist=(album.get("artist") or {}).get("name", ""),
             upc=album.get("upc"),
             track_count=album.get("tracks_count"),
-            quality=self._quality(album),
+            offers=self._offers(album),
             url=f"https://open.qobuz.com/album/{album['id']}",
             tracks=None if tracks is None else [self._track(t, album) for t in tracks if t.get("streamable", True)],
         )
@@ -141,23 +141,25 @@ class Qobuz:
             isrc=track.get("isrc"),
             album=_titled(album) if album.get("title") else None,
             album_id=str(album["id"]) if album.get("id") else None,
-            quality=self._quality(track if track.get("maximum_bit_depth") else album),
+            offers=self._offers(track if track.get("maximum_bit_depth") else album),
         )
 
-    def _quality(self, item: dict[str, Any]) -> str | None:
-        if self.quality == "mp3":
-            return "MP3 320"
+    def _offers(self, item: dict[str, Any]) -> list[Offer]:
+        """Every quality it streams in, up to the best the settings allow, so the core chooses by its profile."""
+        best = QUALITIES.index(self.quality)
         bits, rate = item.get("maximum_bit_depth"), item.get("maximum_sampling_rate")
-        if not bits or not rate:
-            return None
-        if self.quality == "cd":
-            bits, rate = min(bits, 16), min(rate, 44.1)
-        return f"{bits}-bit/{rate:g} kHz"
+        offers = []
+        if best == 0 and bits and rate and (bits > 16 or rate > 48):
+            offers.append(Offer("hires", "flac", f"{bits}-bit/{rate:g} kHz", bits, round(rate * 1000)))
+        if best <= 1:
+            offers.append(Offer("cd", "flac", "16-bit/44.1 kHz", 16, 44100))
+        offers.append(Offer("mp3", "mp3", "MP3 320", bitrate=320))
+        return offers
 
     # ---- Fetching ----
 
-    def stream(self, track_id: str) -> Stream:
-        format_id = _FORMAT_IDS[self.quality]
+    def stream(self, track_id: str, quality: str | None = None) -> Stream:
+        format_id = _FORMAT_IDS[quality if quality in _FORMAT_IDS else self.quality]
         stamp = str(int(time.time()))
         secret = str(self.settings.get("appSecret") or "")
         signature = hashlib.md5(

@@ -70,6 +70,8 @@ class Candidate(Model):
     format: str | None = None
     bitrate_kbps: int | None = None
     score: float | None = None
+    bit_depth: int | None = None
+    sample_rate_hz: int | None = None
 
 
 class HealthRequest(Model):

@@ -20,7 +20,7 @@ import httpx
 
 from .contract import Job, Target, env, probe
 from .matching import similarity
-from .streaming import Album, Track
+from .streaming import Album, Offer, Track
 
 BASE = env("BANDCAMP_URL", "https://bandcamp.com")
 # Bandcamp's names for its download formats, best first.
@@ -117,12 +117,12 @@ class Bandcamp:
     # ---- Searching, in streaming.py's terms ----
 
     def albums(self, target: Target) -> list[Album]:
-        return [Album(id=p.id, title=p.title, artist=p.artist, quality=self._quality(), url=p.url)
+        return [Album(id=p.id, title=p.title, artist=p.artist, offers=self._offers(), url=p.url)
                 for p in self._named(target.title, target.artist, albums=True)]
 
     def album(self, album_id: str) -> Album:
         purchase = next(p for p in self.collection() if p.id == album_id)
-        return Album(id=purchase.id, title=purchase.title, artist=purchase.artist, quality=self._quality(),
+        return Album(id=purchase.id, title=purchase.title, artist=purchase.artist, offers=self._offers(),
                      url=purchase.url, tracks=self._tracklist(purchase))
 
     def tracks(self, target: Target) -> list[Track]:
@@ -164,13 +164,17 @@ class Bandcamp:
                 position=position,
                 album=album or purchase.album,
                 album_id=purchase.id if purchase.is_album else None,
-                quality=self._quality(),
+                offers=self._offers(),
             ))
         return tracks
 
-    def _quality(self) -> str:
-        return {"flac": "FLAC", "alac": "ALAC", "wav": "WAV", "aiff-lossless": "AIFF", "mp3-320": "MP3 320",
-                "mp3-v0": "MP3 V0", "aac-hi": "AAC", "vorbis": "Ogg Vorbis"}[self.choice]
+    def _offers(self) -> list[Offer]:
+        """The one format the settings choose; Bandcamp makes any of them from the artist's upload."""
+        label = {"flac": "FLAC", "alac": "ALAC", "wav": "WAV", "aiff-lossless": "AIFF", "mp3-320": "MP3 320",
+                 "mp3-v0": "MP3 V0", "aac-hi": "AAC", "vorbis": "Ogg Vorbis"}[self.choice]
+        # V0 is variable; about 245 kbps on most music.
+        bitrate = {"mp3-320": 320, "mp3-v0": 245, "aac-hi": 256}.get(self.choice)
+        return [Offer(self.choice, self.format, label, bitrate=bitrate)]
 
     # ---- Fetching ----
 

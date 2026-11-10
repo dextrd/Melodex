@@ -54,6 +54,37 @@ def format_of(files: list[torrents.TorrentFile]) -> str | None:
     return suffixes.pop() if len(suffixes) == 1 else None
 
 
+_CODECS = [("flac", "flac"), ("alac", "alac"), ("wav", "wav"), ("aiff", "aiff"), ("mp3", "mp3"), ("aac", "aac"),
+           ("m4a", "aac"), ("opus", "opus"), ("ogg", "vorbis"), ("vorbis", "vorbis")]
+_DEPTH = re.compile(r"\b(16|24|32)[ -]?bits?\b|\b(16|24)\s*[/-]\s*(44(?:[.,]1)?|48|88(?:[.,]2)?|96|176(?:[.,]4)?|192)\b",
+                    re.IGNORECASE)
+_RATE = re.compile(r"\b(44[.,]1|48|88[.,]2|96|176[.,]4|192)\s*khz\b", re.IGNORECASE)
+_KBPS = re.compile(r"\b(?:(v0)|(v2)|(320|256|192|160|128)(?:\s*k(?:bps)?|\b))", re.IGNORECASE)
+
+
+def quality_of_name(name: str) -> dict[str, Any]:
+    """The quality a release's name says it is, for when its files aren't known yet: "FLAC 24bit-96kHz" is 24-bit/96
+    kHz FLAC, "MP3 V0" about 245 kbps. Only what the name says; the core reads the files once they're here."""
+    words = set(re.findall(r"[a-z0-9]+", name.lower()))
+    quality: dict[str, Any] = {}
+    if codec := next((c for word, c in _CODECS if word in words), None):
+        quality["format"] = codec
+    if depth := _DEPTH.search(name):
+        quality["bit_depth"] = int(depth.group(1) or depth.group(2))
+        if depth.group(3):
+            quality["sample_rate_hz"] = round(float(depth.group(3).replace(",", ".")) * 1000)
+    elif re.search(r"\bhi[ -]?res\b", name, re.IGNORECASE):
+        quality["bit_depth"] = 24
+    if rate := _RATE.search(name):
+        quality["sample_rate_hz"] = round(float(rate.group(1).replace(",", ".")) * 1000)
+    if quality.get("format") in (None, "mp3", "aac", "opus", "vorbis") and (kbps := _KBPS.search(name)):
+        quality["bitrate_kbps"] = 245 if kbps.group(1) else 190 if kbps.group(2) else int(kbps.group(3))
+        quality.setdefault("format", "mp3")
+    if "bit_depth" in quality and "format" not in quality:
+        quality["format"] = "flac"
+    return quality
+
+
 def describe(path: str, artist: str = "") -> tuple[int | None, int | None, str]:
     """The disc, number and title a file's name and folder suggest: "CD2/03 - Title.flac" is disc 2, track 3, and
     the Live Music Archive's "gd77-05-08d1t03.flac" is disc 1, track 3."""
@@ -206,7 +237,7 @@ def _candidate(target: Target, release: dict[str, Any], found: Any, format: str)
             candidate_id=json.dumps({"h": info_hash, "t": link, "f": [[d, p, f.index, f.path] for d, p, f in picked]}),
             kind=target.kind, title=name if target.kind == Kind.album else describe(picked[0][2].path, target.artist)[2],
             artist=target.artist, album=name if target.kind == Kind.track else None,
-            format=format_of([f for _, _, f in picked]), bitrate_kbps=_bitrate(size, target, picked),
+            **_quality(name, [f for _, _, f in picked], _bitrate(size, target, picked)),
             score=round(score * version_penalty(target.title, name), 3), **common)
 
     # A magnet link only: offered on the name alone, and checked once qBittorrent has the file list.
@@ -215,7 +246,19 @@ def _candidate(target: Target, release: dict[str, Any], found: Any, format: str)
     if not magnet or not info_hash:
         return None
     return Candidate(candidate_id=json.dumps({"h": info_hash.lower(), "m": magnet, "f": None}), kind=target.kind,
-                     title=name, artist=target.artist, score=round(0.8 * title_score(target, name), 3), **common)
+                     title=name, artist=target.artist, score=round(0.8 * title_score(target, name), 3),
+                     **quality_of_name(name), **common)
+
+
+def _quality(name: str, files: list[torrents.TorrentFile], bitrate: int | None) -> dict[str, Any]:
+    """What the files are, by their extension and size, and what the name adds: a FLAC's bit depth and sample rate."""
+    said = quality_of_name(name)
+    format = format_of(files)
+    format = {"m4a": "aac", "ogg": "vorbis"}.get(format, format) if format else said.get("format")
+    quality: dict[str, Any] = {"format": format, "bitrate_kbps": bitrate}
+    if format == said.get("format"):
+        quality |= {k: v for k, v in said.items() if k in ("bit_depth", "sample_rate_hz")}
+    return quality
 
 
 def _bitrate(size: int, target: Target, picked: list[tuple[Any, Any, torrents.TorrentFile]]) -> int | None:
