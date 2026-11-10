@@ -308,6 +308,8 @@ public sealed record ArtistShowing(IReadOnlyDictionary<ReleaseKind, ReleaseShowi
 /// <param name="Ignored">The album is ignored, or every track you don't have on it is.</param>
 /// <param name="CoverUrl">The cover from the artwork plugins, served by the core: the owned edition's, or the album's. A 404 when there's none.</param>
 /// <param name="Local">Music of your own that no catalogue knows, as its files' tags say; see <c>GET /library/local/albums/{id}</c>.</param>
+/// <param name="Quality">The quality of its worst song you have: an album's as good as that.</param>
+/// <param name="MixedQuality">Its songs aren't all of one quality.</param>
 public sealed record AlbumSummary(
     Guid Id,
     Guid ArtistId,
@@ -323,7 +325,9 @@ public sealed record AlbumSummary(
     int? TotalTracks,
     IReadOnlyList<ProviderId> Ids,
     string? CoverUrl = null,
-    bool Local = false);
+    bool Local = false,
+    FileQuality? Quality = null,
+    bool MixedQuality = false);
 
 /// <param name="OwnedEditionId">The edition the library has, if any.</param>
 /// <param name="ShownEditionId">The edition whose tracks are listed: the owned one, the requested one, or the best fit.</param>
@@ -364,7 +368,8 @@ public sealed record TrackRow(
     TrackStatus Status,
     string? FilePath,
     IReadOnlyList<ProviderId> Ids,
-    bool Ignored = false);
+    bool Ignored = false,
+    FileQuality? Quality = null);
 
 public sealed record MissingAlbum(string ArtistName, AlbumSummary Album);
 
@@ -389,7 +394,8 @@ public sealed record LibraryTrack(
     string Path,
     string? Format,
     string? CoverUrl,
-    bool Local = false);
+    bool Local = false,
+    FileQuality? Quality = null);
 
 /// <summary>A file that couldn't be matched confidently.</summary>
 public sealed record ReviewItem(
@@ -682,7 +688,8 @@ public sealed record TrackFile(
     Guid? EditionId,
     IReadOnlyList<FileTag> Tags,
     DateTime? FormattedAt,
-    LyricsKind Lyrics = LyricsKind.None);
+    LyricsKind Lyrics = LyricsKind.None,
+    FileQuality? Quality = null);
 
 /// <summary>What lyrics a song has.</summary>
 public enum LyricsKind
@@ -747,4 +754,5 @@ public sealed record LocalArtistDetail(Guid Id, string Name, IReadOnlyList<Album
 public sealed record LocalAlbumDetail(Guid Id, string Title, Guid ArtistId, string ArtistName, bool ArtistLocal, string? Date, string? CoverUrl,
     IReadOnlyList<LocalTrack> Tracks);
 
-public sealed record LocalTrack(Guid FileId, int? Disc, int? Number, string Title, string Artist, double? DurationSeconds, string Path, string? Format);
+public sealed record LocalTrack(Guid FileId, int? Disc, int? Number, string Title, string Artist, double? DurationSeconds, string Path, string? Format,
+    FileQuality? Quality = null);

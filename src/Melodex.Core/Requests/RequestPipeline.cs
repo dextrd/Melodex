@@ -400,8 +400,9 @@ public sealed class RequestPipeline(
                 row.ModifiedAt = info.LastWriteTimeUtc;
                 try
                 {
-                    var (tags, duration, lyrics) = LibraryScanner.ReadTags(full);
+                    var (tags, duration, lyrics, quality) = LibraryScanner.ReadTags(full);
                     row.TagsJson = tags.ToJson();
+                    row.SetQuality(quality);
                     row.Duration = duration;
                     row.Lyrics = lyrics;
                 }

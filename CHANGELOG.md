@@ -4,11 +4,26 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ## [Unreleased]
 
+### Added
+
+- **The library knows each file's quality** (#17): its codec, bitrate, and for lossless files its bit depth and sample
+  rate, read as files are scanned (files already in the library are read for it once, at the next scan, without being
+  matched again). Song and album pages show it as a chip ("FLAC 16/44.1", "MP3 320"), coloured red, amber or green (gold
+  for hi-res) by how good it is, and lists as a dot of the same colour; an album shows its worst song's, marked "and up" when they
+  differ. A song's file details are now plain rows of its list: format, length, size and when it was last formatted. The Library's Albums and Tracks views can be sorted by quality, and
+  filtered to hi-res, lossless, lossy, or below good (under about MP3 V0, with Opus, AAC and Vorbis counted by what
+  their bitrates sound like).
+
 ### Changed
 
 - **Melodex's home is now [dextrd/Melodex](https://github.com/dextrd/Melodex)**, and its images are published as
   `ghcr.io/dextrd/melodex…`. An install from 1.0.2 or earlier names the old images, which get no new releases: change
   `joeatethebeans` to `dextrd` in its compose file's `image:` lines, as [upgrading](docs/guide/upgrading.md) says.
+
+### Fixed
+
+- An album that fits two editions equally well (Discovery's 2005 digital and Australian CD releases, say) is put on the
+  same one at every scan, rather than either.
 
 ## [1.0.2] - 2026-11-09
 

@@ -33,6 +33,7 @@ else
                 <StatusBadge Album="album.Status" />
                 @if (album.HiddenByDefault) { <span class="badge neutral">Hidden by default</span> }
                 @if (album.Ignored) { <span class="badge neutral">Ignored</span> }
+                <QualityBadge Quality="album.Quality" Mixed="album.MixedQuality" />
                 <ProviderIds Ids="album.Ids" Entity="release-group" />
             </div>
             @if (_album is null || _album.Editions.Count > 0 && _album.Tracks.Any(t => t.Status is not TrackStatus.Ignored))
@@ -166,9 +167,13 @@ else
                             <td>
                                 <div class="ellipsis" title="@track.Title">
                                     <a href="tracks/@track.TrackId" class="plain">@track.Title</a>
+                                    <QualityBadge Quality="track.Quality" Dot="true" />
                                     @if (track.ArtistCredit != album.ArtistCredit) { <span class="muted small"> · @track.ArtistCredit</span> }
                                 </div>
-                                @if (track.FilePath is not null) { <div class="muted small ellipsis hide-narrow" title="@track.FilePath">@track.FilePath</div> }
+                                @if (track.FilePath is not null)
+                                {
+                                    <div class="muted small ellipsis hide-narrow" title="@track.FilePath">@track.FilePath</div>
+                                }
                                 <div class="show-narrow"><StatusBadge Track="track.Status" /></div>
                             </td>
                             <td class="num hide-narrow muted">@Format.Duration(track.DurationSeconds)</td>

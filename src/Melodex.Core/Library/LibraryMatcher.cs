@@ -483,7 +483,9 @@ public sealed class LibraryMatcher(
 
         var artistId = files[0].File.ArtistId;
         (Edition Edition, List<Assignment> Assignments, double Score)? best = null;
-        foreach (var edition in editions)
+        // In a set order, the catalogue's, so of editions that fit the files equally well the same one wins every scan.
+        foreach (var edition in editions.OrderBy(e => editionMbids.GetValueOrDefault(e.Id) ?? "\uffff", StringComparer.Ordinal)
+                     .ThenBy(e => e.Id))
         {
             var album = albums.First(a => a.Id == edition.AlbumId);
             var live = album.SecondaryTypes.Contains(AlbumSecondaryType.Live) || TextMatch.Normalise(album.Title).Split(' ').Contains("live");

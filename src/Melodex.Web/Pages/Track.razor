@@ -79,6 +79,8 @@ else
                 @if (owned)
                 {
                     <span class="badge @(Lyrics(track) is LyricsKind.Synced or LyricsKind.Plain ? "owned" : "neutral")" title="@LyricsHint(Lyrics(track))">@LyricsLabel(Lyrics(track))</span>
+                    var qualities = track.Files.Select(f => f.Quality).OfType<FileQuality>().ToList();
+                    <QualityBadge Quality="FileQuality.Lowest(qualities)" Mixed="FileQuality.Mixed(qualities)" />
                 }
                 <ProviderIds Ids="track.Ids" Entity="recording" />
             </div>
@@ -155,22 +157,36 @@ else
         {
             <div class="card track-file">
                 <code>@file.Path</code>
-                <div class="row muted small">
-                    @if (file.Format is not null) { <span>@file.Format.ToUpperInvariant()</span> }
-                    @if (file.DurationSeconds is not null) { <span>@Format.Duration(file.DurationSeconds)</span> }
-                    <span>@Format.Size(file.Size)</span>
-                    @if (file.FormattedAt is { } formatted) { <span>Formatted @Format.Ago(formatted)</span> }
-                </div>
-                @if (file.Tags.Count > 0)
-                {
-                    <dl class="file-tags">
-                        @foreach (var tag in file.Tags)
-                        {
-                            <dt>@tag.Name</dt>
-                            <dd>@tag.Value</dd>
-                        }
-                    </dl>
-                }
+                @* What the file is, then what its tags say, all as one list. *@
+                <dl class="file-tags">
+                    @if (file.Quality is { Codec: not null } quality)
+                    {
+                        <dt>Format</dt>
+                        <dd>@quality.Label (@quality.Details)</dd>
+                    }
+                    else if (file.Format is not null)
+                    {
+                        <dt>Format</dt>
+                        <dd>@file.Format.ToUpperInvariant()</dd>
+                    }
+                    @if (file.DurationSeconds is not null)
+                    {
+                        <dt>Length</dt>
+                        <dd>@Format.Duration(file.DurationSeconds)</dd>
+                    }
+                    <dt>Size</dt>
+                    <dd>@Format.Size(file.Size)</dd>
+                    @if (file.FormattedAt is { } formatted)
+                    {
+                        <dt>Last formatted</dt>
+                        <dd title="@formatted.ToLocalTime().ToString("f")">@Format.Ago(formatted)</dd>
+                    }
+                    @foreach (var tag in file.Tags)
+                    {
+                        <dt>@tag.Name</dt>
+                        <dd>@tag.Value</dd>
+                    }
+                </dl>
             </div>
         }
     }

@@ -233,8 +233,9 @@ public sealed class FormatTask(
         file.Format = Path.GetExtension(full).TrimStart('.').ToLowerInvariant();
         try
         {
-            var (tags, duration, lyrics) = LibraryScanner.ReadTags(full);
+            var (tags, duration, lyrics, quality) = LibraryScanner.ReadTags(full);
             file.TagsJson = tags.ToJson();
+            file.SetQuality(quality);
             file.Duration = duration ?? file.Duration;
             // Kept when there are none to read: a source may have said it's instrumental.
             if (lyrics != LyricsKind.None || file.Lyrics != LyricsKind.Instrumental)

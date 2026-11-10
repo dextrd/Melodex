@@ -4,6 +4,8 @@ using Microsoft.Extensions.Options;
 using Melodex.Core.Data;
 using LyricsKind = Melodex.Client.LyricsKind;
 using ScanFileState = Melodex.Client.ScanFileState;
+using FileQuality = Melodex.Client.FileQuality;
+using Melodex.Core.Listening;
 
 namespace Melodex.Core.Library;
 
@@ -56,7 +58,7 @@ public sealed class LibraryScanner(MelodexDbContext db, IOptions<MelodexOptions>
 
         var known = await db.LibraryFiles.ToDictionaryAsync(f => f.Path, ct);
         var seen = new HashSet<string>();
-        int added = 0, changed = 0, unreadable = 0;
+        int added = 0, changed = 0, unreadable = 0, probed = 0;
 
         var walk = Walk(root);
         // In path order, so the Activity page lists them as they'd appear in a file browser.
@@ -82,7 +84,16 @@ public sealed class LibraryScanner(MelodexDbContext db, IOptions<MelodexOptions>
             var modified = info.LastWriteTimeUtc;
 
             if (known.TryGetValue(path, out var existing) && existing.Size == info.Length && existing.ModifiedAt == modified)
+            {
+                // Files from before their quality was kept are read for it once, and nothing else changes.
+                if (existing.Codec is null && ReadQuality(fullPath) is { } quality)
+                {
+                    existing.SetQuality(quality);
+                    if (++probed % 200 == 0)
+                        await db.SaveChangesAsync(ct);
+                }
                 continue;
+            }
 
             if (existing?.HiddenAt is not null)
             {
@@ -115,6 +126,7 @@ public sealed class LibraryScanner(MelodexDbContext db, IOptions<MelodexOptions>
             existing.ModifiedAt = modified;
             existing.Format = Path.GetExtension(fullPath).TrimStart('.').ToLowerInvariant();
             existing.Duration = read.Value.Duration;
+            existing.SetQuality(read.Value.Quality);
             existing.TagsJson = read.Value.Tags.ToJson();
             existing.Lyrics = read.Value.Lyrics;
             existing.LyricsCheckedAt = null;
@@ -187,7 +199,7 @@ public sealed class LibraryScanner(MelodexDbContext db, IOptions<MelodexOptions>
         return $"Found no audio files in {root} ({walk.Files.Count} other files). Check that MUSIC_PATH points at your music library.";
     }
 
-    private (FileTags Tags, TimeSpan? Duration, LyricsKind Lyrics)? Read(string path)
+    private (FileTags Tags, TimeSpan? Duration, LyricsKind Lyrics, FileQuality Quality)? Read(string path)
     {
         try
         {
@@ -204,8 +216,24 @@ public sealed class LibraryScanner(MelodexDbContext db, IOptions<MelodexOptions>
         }
     }
 
-    /// <summary>A file's tags, length and lyrics (from an .lrc beside it, else its tags). Throws if it can't be read as audio.</summary>
-    public static (FileTags Tags, TimeSpan? Duration, LyricsKind Lyrics) ReadTags(string path)
+    private static FileQuality? ReadQuality(string path)
+    {
+        try
+        {
+            using var file = TagLib.File.Create(path);
+            return MediaTypes.QualityOf(file, path);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return new FileQuality(null, null, null, null);
+        }
+    }
+
+    /// <summary>
+    /// A file's tags, length, lyrics (from an .lrc beside it, else its tags) and quality. Throws if it can't be read as
+    /// audio.
+    /// </summary>
+    public static (FileTags Tags, TimeSpan? Duration, LyricsKind Lyrics, FileQuality Quality) ReadTags(string path)
     {
         using var file = TagLib.File.Create(path);
         var tag = file.Tag;
@@ -226,7 +254,7 @@ public sealed class LibraryScanner(MelodexDbContext db, IOptions<MelodexOptions>
             MusicBrainzReleaseGroupId = Blank(tag.MusicBrainzReleaseGroupId),
             MusicBrainzArtistId = Blank(tag.MusicBrainzArtistId?.Split('/', ';')[0]),
             MusicBrainzAlbumArtistId = Blank(tag.MusicBrainzReleaseArtistId?.Split('/', ';')[0]),
-        }, file.Properties?.Duration is { Ticks: > 0 } d ? d : null, lyrics);
+        }, file.Properties?.Duration is { Ticks: > 0 } d ? d : null, lyrics, MediaTypes.QualityOf(file, path));
     }
 
     private string RelativePath(string path) =>

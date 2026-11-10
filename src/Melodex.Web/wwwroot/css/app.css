@@ -261,6 +261,29 @@ label { display: inline-flex; align-items: center; gap: .4rem; }
 .badge.missing { color: var(--missing); background: var(--missing-bg); }
 .badge.neutral, .badge.ignored, .badge.elsewhere { color: var(--muted); background: var(--bg); border: 1px solid var(--border); }
 
+/* A file's quality: red below good, amber for good lossy, green for lossless, and shiny gold for hi-res. A chip in a
+   page's heading, a dot in lists that says it when pointed at. The gold is metal: lit from the top left, with a glint
+   that passes over it now and then. */
+.badge.quality-chip.low { color: var(--missing); background: var(--missing-bg); }
+.badge.quality-chip.good { color: var(--partial); background: var(--partial-bg); }
+.badge.quality-chip.lossless { color: var(--owned); background: var(--owned-bg); }
+.badge.quality-chip.hires { position: relative; overflow: hidden; color: #4a3200;
+    background: linear-gradient(135deg, #fff1a8 0%, #f2c94c 28%, #c9961a 55%, #f7dc6f 78%, #b8860b 100%);
+    box-shadow: inset 0 0 0 1px rgba(122, 82, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .6); }
+.badge.quality-chip.hires::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, .75) 50%, transparent 65%);
+    transform: translateX(-120%); animation: gold-glint 4s ease-in-out 1s infinite; }
+@keyframes gold-glint { 0%, 70% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
+@media (prefers-reduced-motion: reduce) { .badge.quality-chip.hires::after { animation: none; } }
+.quality-dot { display: inline-block; width: .4rem; height: .4rem; border-radius: 50%; margin: 0 0 0 .35rem; vertical-align: middle;
+    flex: none; cursor: help; background: var(--muted); }
+.quality-dot.low { background: var(--missing); }
+.quality-dot.good { background: var(--partial-fill); }
+.quality-dot.lossless { background: var(--owned-fill); }
+.quality-dot.hires { width: .45rem; height: .45rem;
+    background: radial-gradient(circle at 32% 30%, #fffbe0 0%, #f7d65a 30%, #c9961a 70%, #8a6408 100%);
+    box-shadow: 0 0 0 .5px rgba(122, 82, 0, .6), 0 0 3px rgba(242, 201, 76, .7); }
+
 .meter { height: 6px; background: var(--missing-fill); border-radius: 999px; overflow: hidden; min-width: 80px; }
 .meter > span { display: block; height: 100%; background: var(--owned-fill); }
 

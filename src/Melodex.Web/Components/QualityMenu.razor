@@ -1,0 +1,40 @@
+@*
+    Which qualities a list shows, as a small button that opens the choices; lit while it leaves some out.
+*@
+<div class="sort-menu">
+    <button class="icon-button @(_open || Value != QualityFilter.Any ? "on" : "")" type="button" disabled="@Disabled" title="Quality: @Current"
+            aria-label="Quality: @Current" aria-haspopup="menu" aria-expanded="@(_open ? "true" : "false")" @onclick="() => _open = !_open">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2" /></svg>
+    </button>
+    @if (_open)
+    {
+        <div class="menu-backdrop" @onclick="() => _open = false"></div>
+        @* Opening leftwards: the button can be at the end of the bar. *@
+        <div class="menu right" role="menu">
+            @foreach (var (filter, label) in QualityFilters.Options)
+            {
+                <button type="button" role="menuitemradio" aria-checked="@(filter == Value ? "true" : "false")" class="@(filter == Value ? "selected" : "")"
+                        @onclick="() => ChooseAsync(filter)">@label</button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public QualityFilter Value { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    [Parameter] public EventCallback<QualityFilter> OnChange { get; set; }
+
+    private bool _open;
+
+    private string Current => QualityFilters.Options.FirstOrDefault(o => o.Filter == Value).Label ?? "";
+
+    private async Task ChooseAsync(QualityFilter filter)
+    {
+        _open = false;
+        if (filter != Value)
+            await OnChange.InvokeAsync(filter);
+    }
+}
