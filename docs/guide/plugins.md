@@ -23,8 +23,13 @@ Each retrieval plugin runs as a container of its own, from the same compose file
 others when named in `COMPOSE_PROFILES` (see [installing](installing.md#retrieval-plugins)). Add one under **Add**,
 where each is a template with its address filled in, and fill in its settings.
 
-Retrieval, artwork and lyrics plugins are tried in order; move them up and down to change it. A retrieval plugin is a separate service that
-speaks a small HTTP contract, so anyone can write one: see [the plugin contracts](../contracts/README.md).
+Retrieval plugins are all searched at once, and the [quality profile](requests-and-listening.md#quality) chooses
+between what they find. Artwork and lyrics plugins are tried in order; move them up and down to change it. A retrieval
+plugin is a separate service that speaks a small HTTP contract, so anyone can write one: see
+[the plugin contracts](../contracts/README.md).
+
+Qobuz and Tidal offer each quality they have up to their **Best quality** setting, and Prowlarr reads a release's name
+("FLAC 24bit", "MP3 V0") for what its files don't say yet, so the profile can choose.
 
 ## The inbox
 

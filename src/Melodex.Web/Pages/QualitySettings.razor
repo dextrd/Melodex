@@ -1,0 +1,159 @@
+@page "/settings/quality"
+@layout SettingsLayout
+@inject MelodexClient Api
+
+<PageTitle>Quality · Settings · Melodex</PageTitle>
+
+@if (_steps is null || _profile is null)
+{
+    <Loading />
+}
+else
+{
+    <h2>Quality profile</h2>
+    <p class="muted small">
+        Every source is searched at once, and of the candidates that are the right song, the one highest in this list is fetched: a likelier match
+        always comes before a better quality of what may be the wrong recording. Qualities turned off are never kept; a file's quality is read once
+        it's here, so one that was said to be better than it is gets refused.
+    </p>
+
+    <div class="card settings-card">
+        <div class="setting-line">
+            Good enough at
+            <select @bind="Cutoff" aria-label="Cutoff">
+                @foreach (var (step, allowed) in _steps.Where(s => s.Allowed))
+                {
+                    <option value="@step.Key">@step.Name</option>
+                }
+            </select>
+            and above
+        </div>
+        <div class="muted small">
+            Music at or above the cutoff isn't upgraded. Artists, albums and songs can have their own, or never be upgraded, from their pages.
+        </div>
+        <div class="setting-line">
+            Listen now aims for
+            <select @bind="ListenTarget" aria-label="Listen now target">
+                @foreach (var (step, _) in _steps)
+                {
+                    <option value="@step.Key">@step.Name</option>
+                }
+            </select>
+        </div>
+        <div class="muted small">
+            A song you listen to without adding is fetched at this quality or the best under it, so it starts soon; if nothing is, the smallest above it.
+            Added to the library, it's kept if the profile allows its quality, and fetched again if not.
+        </div>
+    </div>
+
+    <ol class="quality-steps card" aria-label="Qualities, best first">
+        @for (var i = 0; i < _steps.Count; i++)
+        {
+            var index = i;
+            var (step, allowed) = _steps[i];
+            @if (i == 0 || _steps[i - 1].Step.Level != step.Level)
+            {
+                <li class="quality-level muted small" aria-hidden="true">@LevelHeading(step.Level)</li>
+            }
+            <li class="quality-step @(allowed ? "" : "off") @(index > CutoffIndex ? "under" : "")">
+                <label>
+                    <input type="checkbox" checked="@allowed" @onchange="e => SetAllowed(index, (bool)e.Value!)" />
+                    <span>@step.Name</span>
+                </label>
+                @if (step.Key == _profile.Cutoff)
+                {
+                    <span class="badge owned small">Cutoff</span>
+                }
+                @if (step.Key == _profile.ListenTarget)
+                {
+                    <span class="badge neutral small">Listen now</span>
+                }
+                <span class="spacer"></span>
+                <IconButton Icon="up" Title="Prefer it" Disabled="@(index == 0)" OnClick="() => Move(index, -1)" />
+                <IconButton Icon="down" Title="Prefer it less" Disabled="@(index == _steps.Count - 1)" OnClick="() => Move(index, 1)" />
+            </li>
+        }
+    </ol>
+
+    <div class="toolbar">
+        <button class="primary" @onclick="SaveAsync">Save</button>
+        <button @onclick="Reset">Use the default</button>
+        @if (_saved) { <span class="muted small">Saved.</span> }
+        @if (_saveError is not null) { <span class="error small" title="@_saveError">@_saveError</span> }
+    </div>
+}
+
+@code {
+    private QualityProfile? _profile;
+    private List<(QualityStep Step, bool Allowed)>? _steps;
+    private bool _saved;
+    private string? _saveError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _profile = await Api.GetQualityProfileAsync();
+        _steps = _profile.Ordered().ToList();
+    }
+
+    private string Cutoff
+    {
+        get => _profile!.Cutoff;
+        set { _profile = _profile! with { Cutoff = value }; _saved = false; }
+    }
+
+    private string ListenTarget
+    {
+        get => _profile!.ListenTarget;
+        set { _profile = _profile! with { ListenTarget = value }; _saved = false; }
+    }
+
+    private int CutoffIndex => _steps!.FindIndex(s => s.Step.Key == _profile!.Cutoff);
+
+    private static string LevelHeading(QualityLevel level) => level switch
+    {
+        QualityLevel.HiRes => "Hi-res lossless: more than 16 bits or 48 kHz",
+        QualityLevel.Lossless => "Lossless at CD quality",
+        QualityLevel.High => "Lossy, high: about MP3 at 320 kbps",
+        QualityLevel.Good => "Lossy, good: about MP3 V0",
+        QualityLevel.Fair => "Lossy, fair: about MP3 at 160 to 220 kbps",
+        _ => "Lossy, low: under about MP3 at 160 kbps",
+    };
+
+    private void SetAllowed(int index, bool allowed)
+    {
+        _steps![index] = (_steps[index].Step, allowed);
+        // The cutoff has to be one that's wanted: turned off, it moves to the next one up that is.
+        if (!allowed && _steps[index].Step.Key == _profile!.Cutoff
+            && _steps.Take(index).LastOrDefault(s => s.Allowed) is { Step: var up } && up != default)
+            _profile = _profile with { Cutoff = up.Key };
+        _saved = false;
+    }
+
+    private void Move(int index, int by)
+    {
+        (_steps![index], _steps[index + by]) = (_steps[index + by], _steps[index]);
+        _saved = false;
+    }
+
+    private void Reset()
+    {
+        _profile = new QualityProfile();
+        _steps = _profile.Ordered().ToList();
+        _saved = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saved = false;
+        _saveError = null;
+        try
+        {
+            await Api.SaveQualityProfileAsync(_profile! with { Steps = _steps!.Select(s => new ProfileStep(s.Step.Key, s.Allowed)).ToList() });
+            _saved = true;
+        }
+        catch (MelodexApiException e)
+        {
+            _saveError = e.Message;
+        }
+    }
+}

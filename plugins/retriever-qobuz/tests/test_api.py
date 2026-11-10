@@ -46,6 +46,7 @@ class FakeQobuz:
         self.albums = {a["id"]: a for a in albums}
         self.flac, self.samples = flac, set(samples)
         self.lossless, self.hires = lossless, hires
+        self.format_ids: list[int] = []
         self.logins, self.token, self.queries, self.files = 0, None, [], []
 
     def tracks(self):
@@ -88,6 +89,7 @@ class FakeQobuz:
                                  f"{params['request_ts']}{SECRET}".encode()).hexdigest()
             if params["request_sig"] != wanted:
                 return httpx.Response(400, json={"message": "Invalid Request Signature parameter (request_sig)"})
+            self.format_ids.append(int(params["format_id"]))
             if params["track_id"] in self.samples:
                 return httpx.Response(200, json={"sample": True, "url": "https://streaming.qobuz.test/sample"})
             return httpx.Response(200, json={"url": f"https://streaming.qobuz.test/file/{params['track_id']}",
@@ -158,13 +160,26 @@ def test_health_warns_when_the_subscription_does_not_stream_flac(client, monkeyp
 def test_album_with_the_requested_barcode_comes_first_and_one_missing_a_track_is_not_offered(client, monkeypatch):
     fake = use(monkeypatch, FakeQobuz([DELUXE, SHORT, DUMMY]))
     body = client.post("/v1/search", json={"settings": SETTINGS, "target": album_target(upc="042282855321")}).json()
-    offered = [(c["title"], c["score"]) for c in body["candidates"]]
+    # Each album in each quality it streams in.
+    offered = list(dict.fromkeys((c["title"], c["score"]) for c in body["candidates"]))
     assert [t for t, _ in offered] == ["Dummy", "Dummy (Deluxe Edition)"]
     assert offered[0][1] >= 0.99 and offered[1][1] < offered[0][1]
     first = body["candidates"][0]
     assert first["source"] == "Qobuz (24-bit/96 kHz)" and first["format"] == "flac"
     assert first["url"] == "https://open.qobuz.com/album/dummy1"
     assert fake.queries[0] == "042282855321"
+
+
+def test_each_quality_up_to_the_settings_is_offered_and_fetched_as_chosen(client, monkeypatch, flac):
+    fake = use(monkeypatch, FakeQobuz([DUMMY], flac=flac))
+    found = client.post("/v1/search", json={"settings": SETTINGS, "target": album_target()}).json()["candidates"]
+    assert [(c["source"], c["format"], c.get("bitDepth"), c.get("sampleRateHz"), c.get("bitrateKbps")) for c in found] == [
+        ("Qobuz (24-bit/96 kHz)", "flac", 24, 96000, None), ("Qobuz (16-bit/44.1 kHz)", "flac", 16, 44100, None),
+        ("Qobuz (MP3 320)", "mp3", None, None, 320)]
+    client.post("/v1/fetch", json={"settings": SETTINGS, "jobId": "cd", "target": album_target(), "candidate": found[1],
+                                   "stagingDirectory": "cd"})
+    assert wait(client, "cd")["state"] == "completed"
+    assert set(fake.format_ids) == {6}
 
 
 def test_cd_quality_and_mp3_are_labelled_as_what_they_fetch(client, monkeypatch):

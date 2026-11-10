@@ -3,12 +3,12 @@
 ## Asking for music
 
 Press the download button beside a missing track or album, **Get album** or **Get missing tracks** on an album, or
-**Get everything missing** on an artist, to request it. Each request goes through
-your retrieval plugins in turn, highest priority first:
+**Get everything missing** on an artist, to request it. Each request searches all your retrieval plugins at once:
 
-1. The plugin searches its source and offers candidates.
-2. Melodex checks each one: the right length, a real audio file, the quality you asked for under **Settings →
-   General → Fetching**.
+1. Each plugin searches its source and offers candidates, saying what quality each is.
+2. Melodex tries the best first, whichever plugin it's from: the right song, in the quality your
+   [profile](#quality) likes best. It checks each one: the right length, a real audio file, and a quality the
+   profile allows, read from the file itself.
 3. The beets worker tags it from the MusicBrainz release Melodex chose and files it in your music folder.
 4. Navidrome is told to scan.
 
@@ -18,6 +18,25 @@ retry it later, add another plugin, or pick one of the candidates found.
 Requests run one at a time, in order. Move them up and down the queue, pause them or cancel them from Activity.
 
 **Ignore** an album or song to stop counting it as missing.
+
+## Quality
+
+**Settings → Quality** is the quality profile: every codec at every level, best first, such as FLAC hi-res, FLAC CD,
+ALAC CD, Opus high, MP3 high, down to MP3 low. Move them up and down to say which you'd rather have, and turn off any
+you never want. By default lossless comes first, then good lossy, and fair and low lossy are off.
+
+- **Of the candidates that are the right song, the highest in the list is fetched.** A likelier match always comes
+  first: a better quality never beats a better chance of the right recording.
+- **A quality turned off is never kept.** A file's quality is read from it once it's fetched, so a "FLAC" that's
+  really an MP3 is treated as an MP3. Activity says what it was said to be and what it is.
+- **The cutoff** is the quality that's good enough (FLAC CD by default). Music below it can be upgraded.
+- **Listen now has its own target**, small by default (Opus fair), so a song starts soon: the best quality at or
+  under it, or the smallest above if there's none. A listened song you add is kept if the profile allows its quality,
+  and fetched again if not.
+
+An artist, album or song can have its own setting, from **Quality** on its page: its own cutoff, or never upgrade it.
+The narrowest wins (a song's, then its album's, then its artist's, then the profile's), and the dialog says where what
+applies comes from.
 
 ## Listen now
 

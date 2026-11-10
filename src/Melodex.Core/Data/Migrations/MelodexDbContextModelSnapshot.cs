@@ -42,6 +42,9 @@ namespace Melodex.Core.Data.Migrations
                     b.Property<bool>("Ignored")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("QualityOverride")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("RefreshedAt")
                         .HasColumnType("TEXT");
 
@@ -127,6 +130,9 @@ namespace Melodex.Core.Data.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("QualityOverride")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("RefreshedAt")
@@ -858,6 +864,9 @@ namespace Melodex.Core.Data.Migrations
 
                     b.Property<bool>("Ignored")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("QualityOverride")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Title")
                         .IsRequired()

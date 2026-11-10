@@ -68,15 +68,21 @@ public static class MediaTypes
     /// <summary>The codec and bitrate as the file says, for when the plugin didn't.</summary>
     public static (string? Codec, int? BitrateKbps) Probe(string fullPath)
     {
+        var quality = ReadQuality(fullPath);
+        return (quality.Codec, quality.BitrateKbps);
+    }
+
+    /// <summary>A file's encoding as it says (see <see cref="QualityOf"/>); nothing known of it if it can't be read.</summary>
+    public static FileQuality ReadQuality(string fullPath)
+    {
         try
         {
             using var file = TagLib.File.Create(fullPath);
-            var quality = QualityOf(file, fullPath);
-            return (quality.Codec, quality.BitrateKbps);
+            return QualityOf(file, fullPath);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            return (null, null);
+            return new FileQuality(null, null, null, null);
         }
     }
 

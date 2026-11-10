@@ -23,6 +23,17 @@ from .matching import duration_score, similarity, track_score
 _CHECKED = 5
 
 
+@dataclass(frozen=True)
+class Offer:
+    """One quality a service has something in: what the core ranks it by, and the key fetching asks for it with."""
+    key: str
+    format: str
+    label: str
+    bit_depth: int | None = None
+    sample_rate: int | None = None
+    bitrate: int | None = None
+
+
 @dataclass
 class Track:
     id: str
@@ -34,7 +45,7 @@ class Track:
     isrc: str | None = None
     album: str | None = None
     album_id: str | None = None
-    quality: str | None = None
+    offers: list[Offer] = field(default_factory=list)
 
 
 @dataclass
@@ -44,7 +55,7 @@ class Album:
     artist: str
     upc: str | None = None
     track_count: int | None = None
-    quality: str | None = None
+    offers: list[Offer] = field(default_factory=list)
     url: str | None = None
     tracks: list[Track] | None = None
 
@@ -70,7 +81,7 @@ class Service(Protocol):
 
     def tracks(self, target: Target) -> list[Track]: ...
 
-    def stream(self, track_id: str) -> Stream: ...
+    def stream(self, track_id: str, quality: str | None) -> Stream: ...
 
 
 # ---- Search ----
@@ -103,8 +114,7 @@ def _albums(service: Service, target: Target) -> list[Candidate]:
             continue
         seen.add(listed.id)
         album = listed if listed.tracks is not None else service.album(listed.id)
-        if (candidate := _album(service, target, album)) is not None:
-            candidates.append(candidate)
+        candidates += _album(service, target, album)
     return candidates
 
 
@@ -133,15 +143,15 @@ def match_album(target: Target, tracks: list[Track]) -> tuple[list[tuple[int, in
     return chosen, sum(scores) / len(scores)
 
 
-def _album(service: Service, target: Target, album: Album) -> Candidate | None:
+def _album(service: Service, target: Target, album: Album) -> list[Candidate]:
     tracks = album.tracks or []
     if not target.tracks:
         # With no tracklist to check, only the title says it's the album.
         if similarity(target.title, album.title) < 0.85 or not tracks:
-            return None
+            return []
         chosen, track_match = [(t.disc, t.position, t) for t in tracks], 0.7
     elif (matched := match_album(target, tracks)) is None:
-        return None
+        return []
     else:
         chosen, track_match = matched
     score = 0.3 * similarity(target.title, album.title) + 0.2 * similarity(target.artist, album.artist) + 0.5 * track_match
@@ -150,7 +160,7 @@ def _album(service: Service, target: Target, album: Album) -> Candidate | None:
     elif target.tracks and len(tracks) != len(target.tracks):
         # Another edition with every requested track, but not the same one.
         score *= 0.97
-    return _candidate(service, Kind.album, album.title, album.artist, None, album.quality, album.url, chosen, score)
+    return _candidates(service, Kind.album, album.title, album.artist, None, album.offers, album.url, chosen, score)
 
 
 def _tracks(service: Service, target: Target) -> list[Candidate]:
@@ -171,35 +181,41 @@ def _tracks(service: Service, target: Target) -> list[Candidate]:
                 score = 0.9 * score + 0.1 * similarity(target.album, track.album)
         scored.append((score, track))
     scored.sort(key=lambda x: x[0], reverse=True)
-    return [_candidate(service, Kind.track, t.title, ", ".join(t.artists), t.album, t.quality, None,
-                       [(t.disc, t.position, t)], score) for score, t in scored[:3]]
+    return [c for score, t in scored[:3] for c in _candidates(service, Kind.track, t.title, ", ".join(t.artists), t.album,
+                                                              t.offers, None, [(t.disc, t.position, t)], score)]
 
 
-def _candidate(service: Service, kind: Kind, title: str, artist: str | None, album: str | None, quality: str | None,
-               url: str | None, chosen: list[tuple[int, int, Track]], score: float) -> Candidate:
+def _candidates(service: Service, kind: Kind, title: str, artist: str | None, album: str | None, offers: list[Offer],
+                url: str | None, chosen: list[tuple[int, int, Track]], score: float) -> list[Candidate]:
+    """A candidate for each quality it's offered in, so the core can choose by the user's quality profile."""
     lengths = [t.duration for _, _, t in chosen]
-    return Candidate(
-        candidate_id=json.dumps({"t": [[d, p, t.id, t.title] for d, p, t in chosen]}),
+    tracks = [[d, p, t.id, t.title] for d, p, t in chosen]
+    return [Candidate(
+        candidate_id=json.dumps({"t": tracks, "q": offer.key} if offer else {"t": tracks}),
         kind=kind,
         title=title,
         artist=artist or None,
         album=album,
         duration_seconds=round(sum(lengths), 1) if all(lengths) else None,
-        source=f"{service.name} ({quality})" if quality else service.name,
+        source=f"{service.name} ({offer.label})" if offer else service.name,
         url=url,
-        format=service.format,
+        format=offer.format if offer else service.format,
+        bitrate_kbps=offer.bitrate if offer else None,
+        bit_depth=offer.bit_depth if offer else None,
+        sample_rate_hz=offer.sample_rate if offer else None,
         score=round(score, 3),
-    )
+    ) for offer in offers or [None]]
 
 
 # ---- Fetch ----
 
 def fetch(job: Job, service: Service, candidate_id: str, directory: Path, download: httpx.Client) -> list[dict[str, Any]]:
-    chosen = json.loads(candidate_id)["t"]
+    parsed = json.loads(candidate_id)
+    chosen, quality = parsed["t"], parsed.get("q")
     written = []
     for index, (disc, position, track_id, title) in enumerate(chosen):
         job.check()
-        stream = service.stream(track_id)
+        stream = service.stream(track_id, quality)
         name = f"{disc}-{position:02} {_safe(title)}"
         path = directory / f"{name}{stream.suffix}"
 

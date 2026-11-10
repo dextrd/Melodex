@@ -216,18 +216,7 @@ public sealed class LibraryScanner(MelodexDbContext db, IOptions<MelodexOptions>
         }
     }
 
-    private static FileQuality? ReadQuality(string path)
-    {
-        try
-        {
-            using var file = TagLib.File.Create(path);
-            return MediaTypes.QualityOf(file, path);
-        }
-        catch (Exception e) when (e is not OperationCanceledException)
-        {
-            return new FileQuality(null, null, null, null);
-        }
-    }
+    private static FileQuality? ReadQuality(string path) => MediaTypes.ReadQuality(path);
 
     /// <summary>
     /// A file's tags, length, lyrics (from an .lrc beside it, else its tags) and quality. Throws if it can't be read as

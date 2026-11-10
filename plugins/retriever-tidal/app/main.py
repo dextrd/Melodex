@@ -26,9 +26,10 @@ SETTINGS_SCHEMA: dict[str, Any] = {
         "refreshToken": {"type": "string", "default": "", "title": "Refresh token", "writeOnly": True,
                          "description": "Leave empty to sign in with a code: the plugin's status gives the link. Or a "
                                         "refresh token from a Tidal app you're signed in to."},
-        "quality": {"type": "string", "enum": tidal.QUALITIES, "default": "hires", "title": "Quality",
-                    "description": "hires fetches the best Tidal has, up to 24-bit/192 kHz FLAC. lossless fetches "
-                                   "16-bit/44.1 kHz FLAC. aac fetches 320 kbps AAC."},
+        "quality": {"type": "string", "enum": tidal.QUALITIES, "default": "hires", "title": "Best quality",
+                    "description": "The best quality to offer: hires (up to 24-bit/192 kHz FLAC), lossless (16-bit/44.1 "
+                                   "kHz FLAC) or aac (320 kbps). Each one up to it is offered, and Melodex chooses by its "
+                                   "quality profile."},
         "minScore": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.6, "title": "Lowest match score",
                      "description": "Albums and songs that match the request less well than this aren't offered."},
     },

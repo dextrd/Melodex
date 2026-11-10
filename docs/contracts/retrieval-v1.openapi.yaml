@@ -249,8 +249,15 @@ components:
         durationSeconds: { type: number }
         source: { type: string, description: Human-readable origin, shown on the Activity page. }
         url: { type: string, format: uri }
-        format: { type: string, description: Output format the fetched file will have. }
+        format:
+          type: string
+          description: >-
+            Codec the fetched file will have (flac, alac, mp3, aac, opus, vorbis…). With the bitrate, bit depth and
+            sample rate, it places the candidate in the user's quality profile; a source with several qualities offers
+            a candidate for each.
         bitrateKbps: { type: integer }
+        bitDepth: { type: integer, description: For lossless, the bits per sample the file will have (16 or 24). }
+        sampleRateHz: { type: integer, description: The sample rate the file will have, such as 44100 or 96000. }
         score: { type: number, minimum: 0, maximum: 1 }
     FetchRequest:
       type: object

@@ -46,6 +46,7 @@ class FakeTidal:
         self.albums = {a["id"]: a for a in albums}
         self.audio, self.kind, self.encrypted, self.preview = audio or {}, stream, encrypted, preview
         self.approved, self.access, self.refreshes, self.segments = False, None, 0, []
+        self.qualities: list[str | None] = []
 
     def _token(self, number):
         self.access = f"access{number}"
@@ -95,6 +96,7 @@ class FakeTidal:
             return httpx.Response(200, json={k: v for k, v in album.items() if k != "items"})
         if path.endswith("/playbackinfopostpaywall"):
             track = path.split("/")[2]
+            self.qualities.append(request.url.params.get("audioquality"))
             if self.kind == "bts":
                 manifest = {"mimeType": "audio/flac", "codecs": "flac", "urls": [f"https://streams.tidal.test/{track}.flac"],
                             "encryptionType": "OLD_AES" if self.encrypted else "NONE"}
@@ -196,6 +198,17 @@ def test_album_offered_with_its_quality_and_an_expired_token_refreshed(client, m
     best = body["candidates"][0]
     assert (best["title"], best["score"], best["source"]) == ("Dummy", 1.0, "Tidal (hi-res FLAC)")
     assert fake.refreshes == 1 and tidal.saved("client1")["access"] == fake.access
+
+
+def test_each_quality_up_to_the_settings_is_offered_and_asked_for_when_fetched(client, monkeypatch, audio):
+    fake = use(monkeypatch, FakeTidal([DUMMY], audio))
+    signed_in(client, fake)
+    found = client.post("/v1/search", json={"settings": SETTINGS, "target": album_target()}).json()["candidates"]
+    assert [(c["source"], c["format"], c.get("bitDepth"), c.get("bitrateKbps")) for c in found] == [
+        ("Tidal (hi-res FLAC)", "flac", 24, None), ("Tidal (16-bit/44.1 kHz FLAC)", "flac", 16, None),
+        ("Tidal (AAC 320)", "aac", None, 320)]
+    assert fetched(client, "cd", found[1])["state"] == "completed"
+    assert set(fake.qualities) == {"LOSSLESS"}
 
 
 def test_a_refresh_token_in_the_settings_needs_no_sign_in(client, monkeypatch):

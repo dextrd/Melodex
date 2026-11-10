@@ -17,6 +17,7 @@ public sealed class SettingsService(MelodexDbContext db)
     private const string FetchKey = "fetch";
     private const string LogKey = "log";
     private const string ArtistShowingKey = "artistShowing";
+    private const string QualityKey = "quality";
 
     /// <summary>The library's settings, with the artists that have their own choices for the missing view.</summary>
     public async Task<LibrarySettings> GetLibraryAsync(CancellationToken ct)
@@ -44,6 +45,12 @@ public sealed class SettingsService(MelodexDbContext db)
     public Task<FetchSettings> GetFetchAsync(CancellationToken ct) => GetAsync<FetchSettings>(FetchKey, ct);
 
     public Task SaveFetchAsync(FetchSettings value, CancellationToken ct) => SaveAsync(FetchKey, value, ct);
+
+    public Task<QualityProfile> GetQualityAsync(CancellationToken ct) => GetAsync<QualityProfile>(QualityKey, ct);
+
+    /// <summary>Saves the profile with every step in it, in order.</summary>
+    public Task SaveQualityAsync(QualityProfile value, CancellationToken ct) =>
+        SaveAsync(QualityKey, value with { Steps = value.Ordered().Select(s => new ProfileStep(s.Step.Key, s.Allowed)).ToList() }, ct);
 
     public Task<LogSettings> GetLogAsync(CancellationToken ct) => GetAsync<LogSettings>(LogKey, ct);
 

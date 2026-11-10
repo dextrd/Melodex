@@ -72,6 +72,10 @@ else
                     }
                     <IconButton Icon="image" Requires="@UserPermissions.Format" Large="true" Label="Cover" Title="Choose the album's cover, from any of its editions or a picture of your own"
                                 OnClick="() => _choosingCover = true" />
+                    @if (album.Status is not AlbumStatus.Missing)
+                    {
+                        <QualityButton Kind="albums" Id="album.Id" Name="@album.Title" Large="true" />
+                    }
                 </fieldset>
             }
         </div>

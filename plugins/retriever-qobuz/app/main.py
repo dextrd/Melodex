@@ -28,9 +28,10 @@ SETTINGS_SCHEMA: dict[str, Any] = {
         "userAuthToken": {"type": "string", "default": "", "title": "Sign-in token", "writeOnly": True,
                           "description": "Instead of an email and password: a user_auth_token from a Qobuz app "
                                          "you're signed in to."},
-        "quality": {"type": "string", "enum": qobuz.QUALITIES, "default": "hires", "title": "Quality",
-                    "description": "hires fetches the best Qobuz has, up to 24-bit/192 kHz FLAC. cd fetches 16-bit/44.1 "
-                                   "kHz FLAC. mp3 fetches 320 kbps MP3s."},
+        "quality": {"type": "string", "enum": qobuz.QUALITIES, "default": "hires", "title": "Best quality",
+                    "description": "The best quality to offer: hires (up to 24-bit/192 kHz FLAC), cd (16-bit/44.1 kHz "
+                                   "FLAC) or mp3 (320 kbps). Each one up to it is offered, and Melodex chooses by its "
+                                   "quality profile."},
         "minScore": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.6, "title": "Lowest match score",
                      "description": "Albums and songs that match the request less well than this aren't offered."},
     },

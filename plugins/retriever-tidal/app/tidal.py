@@ -13,7 +13,7 @@ from typing import Any
 import httpx
 
 from .contract import Target, env
-from .streaming import Album, Stream, Track
+from .streaming import Album, Offer, Stream, Track
 
 API = env("TIDAL_API", "https://api.tidal.com/v1")
 AUTH = env("TIDAL_AUTH", "https://auth.tidal.com/v1/oauth2")
@@ -233,7 +233,7 @@ class Tidal:
             artist=_artists(album)[0] if _artists(album) else "",
             upc=album.get("upc"),
             track_count=album.get("numberOfTracks"),
-            quality=self._quality(album),
+            offers=self._offers(album),
             url=f"https://tidal.com/browse/album/{album['id']}",
         )
 
@@ -249,21 +249,25 @@ class Tidal:
             isrc=track.get("isrc"),
             album=album.get("title"),
             album_id=str(album["id"]) if album.get("id") else None,
-            quality=self._quality(track),
+            offers=self._offers(track),
         )
 
-    def _quality(self, item: dict[str, Any]) -> str | None:
-        if self.quality == "aac":
-            return _LABELS["HIGH"]
+    def _offers(self, item: dict[str, Any]) -> list[Offer]:
+        """Every quality it streams in, up to the best the settings allow, so the core chooses by its profile."""
+        best = QUALITIES.index(self.quality)
         tags = (item.get("mediaMetadata") or {}).get("tags") or []
-        if self.quality == "hires" and "HIRES_LOSSLESS" in tags:
-            return _LABELS["HI_RES_LOSSLESS"]
-        return _LABELS["LOSSLESS"] if "LOSSLESS" in tags or item.get("audioQuality") in ("LOSSLESS", "HI_RES", "HI_RES_LOSSLESS") else None
+        offers = []
+        if best == 0 and "HIRES_LOSSLESS" in tags:
+            offers.append(Offer("hires", "flac", _LABELS["HI_RES_LOSSLESS"], bit_depth=24))
+        if best <= 1 and ("LOSSLESS" in tags or item.get("audioQuality") in ("LOSSLESS", "HI_RES", "HI_RES_LOSSLESS")):
+            offers.append(Offer("lossless", "flac", _LABELS["LOSSLESS"], 16, 44100))
+        offers.append(Offer("aac", "aac", _LABELS["HIGH"], bitrate=320))
+        return offers
 
     # ---- Fetching ----
 
-    def stream(self, track_id: str) -> Stream:
-        body = self._get(f"/tracks/{track_id}/playbackinfopostpaywall", audioquality=_AUDIO[self.quality],
+    def stream(self, track_id: str, quality: str | None = None) -> Stream:
+        body = self._get(f"/tracks/{track_id}/playbackinfopostpaywall", audioquality=_AUDIO[quality if quality in _AUDIO else self.quality],
                          playbackmode="STREAM", assetpresentation="FULL")
         if body.get("assetPresentation") == "PREVIEW":
             raise PermissionError("Tidal only gives a 30-second preview of this track; your subscription doesn't stream "

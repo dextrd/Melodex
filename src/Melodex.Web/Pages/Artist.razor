@@ -51,6 +51,10 @@ else
             }
             <IconButton Icon="hide" Requires="@UserPermissions.Settings" On="_artist.OwnShowing" Label="@(_artist.OwnShowing ? "Releases shown: their own" : "Releases shown")"
                         Title="Which kinds of release are listed for this artist: the choices in Settings, or their own" OnClick="() => _showingDialog = true" />
+            @if (_artist.InLibrary)
+            {
+                <QualityButton Kind="artists" Id="_artist.Id" Name="@_artist.Name" />
+            }
         </fieldset>
         <OwnershipFilter OnChange="StateHasChanged" OwnedHint="Only albums you have" MissingHint="Only missing albums, and albums with tracks missing" />
     </div>
