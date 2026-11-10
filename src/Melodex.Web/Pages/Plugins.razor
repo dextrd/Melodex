@@ -21,7 +21,7 @@ else
 
     <div class="plugin-sections">
         @Section(PluginType.Retrieval, "Sources",
-            "Retrieval plugins run in their own containers. A request tries them in this order, moving to the next when one finds nothing that passes the checks.",
+            "Retrieval plugins run in their own containers. A request searches them all at once, and fetches the best quality your quality profile allows of the right song, whichever has it.",
             "No sources yet, so nothing can be fetched. Add one to get started.")
         @Section(PluginType.Connector, "Media server",
             "Told to scan when music is filed, so it shows up there. The first one that's on is used.",
@@ -221,7 +221,8 @@ else
         _ => "Artwork",
     };
 
-    private static bool Ordered(PluginType type) => type is PluginType.Retrieval or PluginType.Artwork or PluginType.Lyrics or PluginType.Index;
+    // Sources aren't: every one is searched, and the quality profile chooses between them.
+    private static bool Ordered(PluginType type) => type is PluginType.Artwork or PluginType.Lyrics or PluginType.Index;
 
     private RenderFragment Section(PluginType type, string title, string about, string empty) => __builder =>
     {

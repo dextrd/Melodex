@@ -112,20 +112,20 @@ public sealed record QualityProfile
     public static IReadOnlyList<ProfileStep> Default { get; } =
         QualityStep.All.Select(s => new ProfileStep(s.Key, s.Level >= QualityLevel.Good)).ToList();
 
-    /// <summary>The steps in order, every one of them: unknown keys dropped, missing ones put in after their default neighbour.</summary>
+    /// <summary>
+    /// The steps in order, every one of them: unknown keys dropped, and any not saved (a newer Melodex's) put in after
+    /// the saved step that comes before them by default, or first if none does.
+    /// </summary>
     public IReadOnlyList<(QualityStep Step, bool Allowed)> Ordered()
     {
-        var steps = Steps.Select(s => (Step: QualityStep.Parse(s.Key), s.Allowed))
+        var saved = Steps.Select(s => (Step: QualityStep.Parse(s.Key), s.Allowed))
             .Where(s => s.Step is not null).Select(s => (Step: s.Step!.Value, s.Allowed))
             .DistinctBy(s => s.Step).ToList();
-        foreach (var (step, i) in QualityStep.All.Select((s, i) => (s, i)))
-        {
-            if (steps.Any(s => s.Step == step))
-                continue;
-            var after = QualityStep.All.Take(i).Reverse().Select(p => steps.FindIndex(s => s.Step == p)).FirstOrDefault(x => x >= 0, -1);
-            steps.Insert(after + 1, (step, step.Level >= QualityLevel.Good));
-        }
-        return steps;
+        var known = saved.Select(s => s.Step).ToHashSet();
+        var missing = QualityStep.All.Select((step, i) => (step, Anchor: QualityStep.All.Take(i).Reverse().Where(known.Contains).Cast<QualityStep?>().FirstOrDefault()))
+            .Where(m => !known.Contains(m.step))
+            .ToLookup(m => m.Anchor, m => (Step: m.step, Allowed: m.step.Level >= QualityLevel.Good));
+        return [.. missing[null], .. saved.SelectMany(s => missing[s.Step].Prepend(s))];
     }
 
     /// <summary>Where a quality stands, best 0; null when it's unknown, so it goes after every known one.</summary>
@@ -154,13 +154,18 @@ public enum QualityOverrideKind
     NeverUpgrade,
 }
 
-/// <summary>A quality setting as it applies to something, and where it comes from.</summary>
+/// <summary>A quality setting that applies: a cutoff, or never upgrade, and where it's set.</summary>
+/// <param name="Kind"><see cref="QualityOverrideKind.Cutoff"/> or <see cref="QualityOverrideKind.NeverUpgrade"/>.</param>
+/// <param name="Cutoff">The cutoff's step key, unless it's never upgraded.</param>
+/// <param name="From">Where it's set: "this song", "the album Mezzanine", "Massive Attack", "the main profile".</param>
+public sealed record QualityApplied(QualityOverrideKind Kind, string? Cutoff, string From);
+
+/// <summary>An artist's, album's or song's quality setting: its own, what applies, and what would without its own.</summary>
 /// <param name="Kind">Its own setting: inherit, a cutoff, or never upgrade.</param>
 /// <param name="Cutoff">Its own cutoff's step key, when it has one.</param>
-/// <param name="Effective">What applies: <see cref="QualityOverrideKind.Cutoff"/> or <see cref="QualityOverrideKind.NeverUpgrade"/>.</param>
-/// <param name="EffectiveCutoff">The cutoff that applies, unless it's never upgraded.</param>
-/// <param name="From">Where what applies is set: "this track", "the album Mezzanine", "Massive Attack", "the main profile".</param>
-public sealed record QualitySetting(QualityOverrideKind Kind, string? Cutoff, QualityOverrideKind Effective, string? EffectiveCutoff, string From);
+/// <param name="Applies">What applies to it: its own, or else what's above it.</param>
+/// <param name="Inherited">What's above it: its album's, its artist's or the main profile's.</param>
+public sealed record QualitySetting(QualityOverrideKind Kind, string? Cutoff, QualityApplied Applies, QualityApplied Inherited);
 
 /// <summary>Body of saving something's own quality setting.</summary>
 public sealed record QualityOverride(QualityOverrideKind Kind, string? Cutoff = null);

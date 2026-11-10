@@ -62,18 +62,16 @@ public sealed class QualitySettings(MelodexDbContext db, SettingsService setting
         return rows > 0;
     }
 
-    // The first of the settings, narrowest first, that isn't inherited; else the main profile's.
+    // Its own (the first of the chain), and the first of the rest that isn't inherited, else the main profile's.
     private async Task<QualitySetting> ResolveAsync(IReadOnlyList<(string From, string? Override)> chain, CancellationToken ct)
     {
-        var (ownKind, ownCutoff) = chain.Count > 0 ? Read(chain[0].Override) : (QualityOverrideKind.Inherit, null);
-        foreach (var (from, value) in chain)
-        {
-            var (kind, cutoff) = Read(value);
-            if (kind != QualityOverrideKind.Inherit)
-                return new QualitySetting(ownKind, ownCutoff, kind, cutoff, from);
-        }
         var profile = await settings.GetQualityAsync(ct);
-        return new QualitySetting(ownKind, ownCutoff, QualityOverrideKind.Cutoff, profile.Cutoff, "the main profile");
+        var inherited = chain.Skip(1).Select(c => (c.From, Read: Read(c.Override))).Where(c => c.Read.Kind != QualityOverrideKind.Inherit)
+            .Select(c => new QualityApplied(c.Read.Kind, c.Read.Cutoff, c.From))
+            .FirstOrDefault() ?? new QualityApplied(QualityOverrideKind.Cutoff, profile.Cutoff, "the main profile");
+        var (kind, cutoff) = chain.Count > 0 ? Read(chain[0].Override) : (QualityOverrideKind.Inherit, null);
+        var applies = kind == QualityOverrideKind.Inherit ? inherited : new QualityApplied(kind, cutoff, chain[0].From);
+        return new QualitySetting(kind, cutoff, applies, inherited);
     }
 
     private static (QualityOverrideKind Kind, string? Cutoff) Read(string? value) => value switch

@@ -1,0 +1,136 @@
+@inject MelodexClient Api
+
+@*
+    An artist's, album's or song's own quality setting: a button, lit when it has one, that opens a dialog to follow
+    what's above it (the album, the artist, the main profile), set its own cutoff, or never upgrade it.
+*@
+<IconButton Icon="quality" Requires="@UserPermissions.Settings" Large="Large" On="@(_setting is { Kind: not QualityOverrideKind.Inherit })"
+            Label="@Label" Title="@Hint" OnClick="OpenAsync" />
+
+@if (_open && _setting is not null && _steps is not null)
+{
+    <Dialog Title="@($"Quality for {Name}")" Class="quality-dialog" OnClose="() => _open = false">
+        <p class="muted small">
+            @if (_setting.Kind == QualityOverrideKind.Inherit)
+            {
+                <span>Now @Describe(_setting.Inherited), as @_setting.Inherited.From has it.</span>
+            }
+            else
+            {
+                <span>Its own, in place of @Describe(_setting.Inherited) from @_setting.Inherited.From.</span>
+            }
+            The narrowest setting wins: a song's own, then its album's, then its artist's, then the <a href="settings/quality">main profile</a>.
+        </p>
+        <label class="dialog-choice">
+            <input type="radio" name="quality-kind" checked="@(_kind == QualityOverrideKind.Inherit)" @onchange="() => _kind = QualityOverrideKind.Inherit" />
+            <span><strong>As @_setting.Inherited.From has it</strong><span class="muted small">@Capital(Describe(_setting.Inherited))</span></span>
+        </label>
+        <label class="dialog-choice">
+            <input type="radio" name="quality-kind" checked="@(_kind == QualityOverrideKind.Cutoff)" @onchange="() => _kind = QualityOverrideKind.Cutoff" />
+            <span>
+                <strong>Its own cutoff</strong>
+                <span class="muted small">
+                    Upgraded until it's
+                    <select @bind="_cutoff" @onfocus="() => _kind = QualityOverrideKind.Cutoff" aria-label="Cutoff">
+                        @foreach (var (step, _) in _steps.Where(s => s.Allowed))
+                        {
+                            <option value="@step.Key">@step.Name</option>
+                        }
+                    </select>
+                    or better
+                </span>
+            </span>
+        </label>
+        <label class="dialog-choice">
+            <input type="radio" name="quality-kind" checked="@(_kind == QualityOverrideKind.NeverUpgrade)" @onchange="() => _kind = QualityOverrideKind.NeverUpgrade" />
+            <span><strong>Never upgrade</strong><span class="muted small">Keep it as it is, whatever its quality.</span></span>
+        </label>
+        @if (_error is not null) { <div class="error small">@_error</div> }
+        <div class="toolbar dialog-buttons">
+            <button @onclick="() => _open = false">Cancel</button>
+            <button class="primary" disabled="@_saving" @onclick="SaveAsync">Save</button>
+        </div>
+    </Dialog>
+}
+
+@code {
+    /// <summary>"artists", "albums" or "tracks".</summary>
+    [Parameter, EditorRequired] public string Kind { get; set; } = "";
+
+    [Parameter, EditorRequired] public Guid Id { get; set; }
+
+    /// <summary>The artist's, album's or song's name, for the dialog's title.</summary>
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+
+    /// <summary>For a song, the album it's seen on, whose setting it follows.</summary>
+    [Parameter] public Guid? AlbumId { get; set; }
+
+    [Parameter] public bool Large { get; set; }
+
+    private QualitySetting? _setting;
+    private List<(QualityStep Step, bool Allowed)>? _steps;
+    private bool _open;
+    private bool _saving;
+    private string? _error;
+    private QualityOverrideKind _kind;
+    private string? _cutoff;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            _setting = await Api.GetQualitySettingAsync(Kind, Id, AlbumId);
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            _setting = null;
+        }
+    }
+
+    private string Label => _setting switch
+    {
+        { Kind: QualityOverrideKind.NeverUpgrade } => "Never upgraded",
+        { Kind: QualityOverrideKind.Cutoff, Cutoff: var c } => $"Upgrade to {QualityStep.Parse(c)?.Name}",
+        _ => "Quality",
+    };
+
+    private string Hint => _setting is null ? "Quality" : $"Quality: {Describe(_setting.Applies)}, as {_setting.Applies.From} has it";
+
+    private static string Describe(QualityApplied applied) => applied.Kind == QualityOverrideKind.NeverUpgrade
+        ? "never upgraded"
+        : $"upgraded until it's {QualityStep.Parse(applied.Cutoff)?.Name ?? applied.Cutoff} or better";
+
+    private static string Capital(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
+
+    private async Task OpenAsync()
+    {
+        _error = null;
+        _steps ??= (await Api.GetQualityProfileAsync()).Ordered().ToList();
+        _setting = await Api.GetQualitySettingAsync(Kind, Id, AlbumId);
+        if (_setting is null)
+            return;
+        _kind = _setting.Kind;
+        _cutoff = _setting.Cutoff ?? _setting.Applies.Cutoff ?? _steps.First(s => s.Allowed).Step.Key;
+        _open = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _error = null;
+        try
+        {
+            await Api.SaveQualityOverrideAsync(Kind, Id, new QualityOverride(_kind, _kind == QualityOverrideKind.Cutoff ? _cutoff : null));
+            _setting = await Api.GetQualitySettingAsync(Kind, Id, AlbumId);
+            _open = false;
+        }
+        catch (MelodexApiException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

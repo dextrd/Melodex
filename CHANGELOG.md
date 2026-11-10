@@ -13,8 +13,19 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   differ. A song's file details are now plain rows of its list: format, length, size and when it was last formatted. The Library's Albums and Tracks views can be sorted by quality, and
   filtered to hi-res, lossless, lossy, or below good (under about MP3 V0, with Opus, AAC and Vorbis counted by what
   their bitrates sound like).
+- **Quality profiles** (#18), under **Settings → Quality**: every codec at every level (FLAC hi-res, FLAC CD, Opus
+  high, MP3 high and so on) in the order you'd rather have them, any turned off, and a cutoff that's good enough.
+  Of the candidates that are the right song, the best the profile allows is fetched, a likelier match always first; a
+  quality turned off is never kept, and a fetched file's quality is read from it, so one labelled better than it is is
+  treated as what it is. Listen now has its own, smaller target. Artists, albums and songs can have their own cutoff
+  or never be upgraded, from **Quality** on their pages; the narrowest wins.
+- Qobuz and Tidal offer each quality they have up to their **Best quality** setting, and Prowlarr reads a release's
+  name for its quality until its files are known. Retrieval candidates can say their bit depth and sample rate.
 
 ### Changed
+
+- **Every source is searched at once**, rather than one after another in an order you set: the quality profile
+  chooses between what they find, so sources have no order any more.
 
 - **Melodex's home is now [dextrd/Melodex](https://github.com/dextrd/Melodex)**, and its images are published as
   `ghcr.io/dextrd/melodex…`. An install from 1.0.2 or earlier names the old images, which get no new releases: change
