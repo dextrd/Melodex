@@ -94,6 +94,9 @@ public enum Verification
     Passed,
     DurationMismatch,
     FingerprintMismatch,
+
+    /// <summary>The files are a quality the profile turns off.</summary>
+    QualityRefused,
 }
 
 /// <summary>One attempt to fetch a request through one retrieval plugin.</summary>

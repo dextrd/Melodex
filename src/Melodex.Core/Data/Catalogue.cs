@@ -29,6 +29,9 @@ public class Artist
     /// <summary>Whether any library file is credited to this artist, so it appears on the Library page.</summary>
     public bool InLibrary { get; set; }
 
+    /// <summary>Its own quality setting over the profile's: null to inherit, "never" never to upgrade, or a cutoff's step key.</summary>
+    public string? QualityOverride { get; set; }
+
     public List<Album> Albums { get; set; } = [];
 }
 
@@ -51,6 +54,9 @@ public class Album
 
     /// <summary>The user never wants this album listed as missing.</summary>
     public bool Ignored { get; set; }
+
+    /// <summary>Its own quality setting over the profile's: null to inherit, "never" never to upgrade, or a cutoff's step key.</summary>
+    public string? QualityOverride { get; set; }
 
     public DateTime RefreshedAt { get; set; } = DateTime.UtcNow;
 
@@ -94,6 +100,9 @@ public class Track
     /// The user doesn't want this song: it stops counting towards every album it's on, as do recordings sharing its ISRC.
     /// </summary>
     public bool Ignored { get; set; }
+
+    /// <summary>Its own quality setting over the profile's: null to inherit, "never" never to upgrade, or a cutoff's step key.</summary>
+    public string? QualityOverride { get; set; }
 
     public List<EditionTrack> Appearances { get; set; } = [];
 }

@@ -297,7 +297,7 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
     }
 
     [TestLibraryFact]
-    public async Task When_the_first_plugin_fails_the_next_in_the_order_gets_the_request()
+    public async Task Every_plugin_is_searched_and_when_a_candidate_fails_the_next_best_of_any_plugin_is_tried()
     {
         var broken = new FakeSource("broken") { OffBySeconds = _ => 90 };
         var good = new FakeSource("good");
@@ -309,7 +309,55 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
         Dump(done);
 
         Assert.Equal(RequestState.InLibrary, done.State);
-        Assert.Equal(["broken", "broken", "good"], done.Jobs!.Select(j => j.Plugin));
+        // Both are as sure and as good, so their best candidates come before either's second.
+        Assert.Equal(["broken", "good"], done.Jobs!.Select(j => j.Plugin));
+        Assert.Equal(1, good.Searches);
+    }
+
+    [TestLibraryFact]
+    public async Task The_best_quality_the_profile_allows_is_fetched_whichever_plugin_has_it()
+    {
+        var lossy = new FakeSource("lossy") { Format = "mp3", BitrateKbps = 320 };
+        var lossless = new FakeSource("lossless") { Format = "flac", BitrateKbps = null };
+        await fixture.AddSourceAsync(lossy);
+        await fixture.AddSourceAsync(lossless);
+        var track = await MissingTrackAsync("Daft Punk", "Random Access Memories");
+
+        var done = await fixture.WaitAsync((await Api.CreateRequestAsync(new CreateRequest(RequestKind.Track, track))).Id);
+        Dump(done);
+
+        Assert.Equal(RequestState.InLibrary, done.State);
+        Assert.Equal(["lossless"], done.Jobs!.Select(j => j.Plugin));
+        // It said FLAC; the file is raw PCM, which is read and noted.
+        Assert.Contains("Said to be FLAC, but it's PCM", done.Jobs![0].Log);
+    }
+
+    [TestLibraryFact]
+    public async Task A_file_in_a_quality_the_profile_turns_off_is_refused_whatever_it_was_said_to_be()
+    {
+        var profile = await Api.GetQualityProfileAsync();
+        await Api.SaveQualityProfileAsync(profile with
+        {
+            Steps = profile.Ordered().Select(s => new ProfileStep(s.Step.Key, s.Allowed && s.Step.Codec != CodecFamily.Uncompressed)).ToList(),
+        });
+        try
+        {
+            var source = new FakeSource("saysflac") { Format = "flac", BitrateKbps = null, Candidates = 1 };
+            await fixture.AddSourceAsync(source);
+            var track = await MissingTrackAsync("Daft Punk", "Human After All");
+
+            var done = await fixture.WaitAsync((await Api.CreateRequestAsync(new CreateRequest(RequestKind.Track, track))).Id);
+            Dump(done);
+            await Api.CancelRequestAsync(done.Id);
+
+            Assert.Equal(RequestState.NeedsReview, done.State);
+            Assert.Equal(Verification.QualityRefused, done.Jobs!.Single().Verification);
+            Assert.Contains("which the quality profile turns off", done.Jobs![0].VerificationDetail);
+        }
+        finally
+        {
+            await Api.SaveQualityProfileAsync(profile);
+        }
     }
 
     [TestLibraryFact]

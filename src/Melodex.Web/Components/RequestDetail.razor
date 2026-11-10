@@ -119,6 +119,7 @@
     {
         Verification.DurationMismatch => "Wrong length",
         Verification.FingerprintMismatch => "Wrong recording",
+        Verification.QualityRefused => "Quality turned off",
         _ => job.State switch
         {
             JobState.Succeeded => "Filed",

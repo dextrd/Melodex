@@ -40,9 +40,11 @@ public sealed class RequestPipeline(
     public async Task RunAsync(Request request, CancellationToken ct)
     {
         var fetch = await settings.GetFetchAsync(ct);
+        // A listened track that's added keeps its file, if it's a quality the profile allows; else a better one is found.
         if (request.Mode == RequestMode.Permanent
             && await db.ListenNowItems.FirstOrDefaultAsync(i => i.RequestId == request.Id && i.State == Data.ListenNowState.Importing, ct) is { } adding
-            && listen.FullPath(adding) is { } kept && File.Exists(kept))
+            && listen.FullPath(adding) is { } kept && File.Exists(kept)
+            && (await settings.GetQualityAsync(ct)).Allows(MediaTypes.ReadQuality(kept)))
         {
             await AddListenedAsync(request, adding, kept, fetch, ct);
             return;
@@ -100,41 +102,52 @@ public sealed class RequestPipeline(
             return;
         }
 
+        // Every plugin is searched at once, and their candidates tried in one order: the right song, then the quality
+        // the profile likes best, then each plugin's own confidence.
         var tried = new List<string>();
-        foreach (var plugin in chain)
+        await SetAsync(request, RequestStatus.Searching, chain.Count == 1 ? $"Searching {chain[0].Instance.Name}" : $"Searching {chain.Count} plugins", ct);
+        var searches = await Task.WhenAll(chain.Select(async plugin =>
         {
-            ct.ThrowIfCancellationRequested();
-            await SetAsync(request, RequestStatus.Searching, $"Searching {plugin.Instance.Name}", ct);
-            IReadOnlyList<Candidate> candidates;
             try
             {
-                candidates = await plugin.Plugin.SearchAsync(target.ToRetrieval(), 10, ct);
+                return (plugin, Candidates: await plugin.Plugin.SearchAsync(target.ToRetrieval(), 10, ct), Error: (string?)null);
             }
             catch (Exception e) when (e is RetrievalException or HttpRequestException or JsonException or TaskCanceledException && !ct.IsCancellationRequested)
             {
-                logger.LogWarning("[{Request}] {Plugin} couldn't search: {Reason}", request.Title, plugin.Instance.Name, e.Message);
-                tried.Add($"{plugin.Instance.Name} couldn't search ({e.Message})");
+                return (plugin, Candidates: (IReadOnlyList<Candidate>)[], Error: e.Message);
+            }
+        }));
+
+        var profile = await settings.GetQualityAsync(ct);
+        var listenNow = request.Mode == RequestMode.ListenNow;
+        var found = new List<(RetrievalPlugins.Entry Plugin, Candidate Candidate)>();
+        foreach (var (plugin, candidates, error) in searches)
+        {
+            if (error is not null)
+            {
+                logger.LogWarning("[{Request}] {Plugin} couldn't search: {Reason}", request.Title, plugin.Instance.Name, error);
+                tried.Add($"{plugin.Instance.Name} couldn't search ({error})");
                 continue;
             }
-
-            var ranked = Rank(candidates, target, fetch).Take(fetch.CandidatesPerPlugin).ToList();
-            if (ranked.Count == 0)
+            var fitting = Rank(candidates, target, fetch).Select(c => (plugin, c)).ToList();
+            var wanted = CandidateRanking.Order(fitting, profile, listenNow, c => LengthOff(c, target)).Take(fetch.CandidatesPerPlugin).ToList();
+            if (wanted.Count == 0)
             {
-                logger.LogInformation("[{Request}] {Plugin} found nothing that fits", request.Title, plugin.Instance.Name);
-                tried.Add($"{plugin.Instance.Name} found nothing that fits");
+                var why = fitting.Count > 0 ? "found nothing in a quality the profile allows" : "found nothing that fits";
+                logger.LogInformation("[{Request}] {Plugin} {Why}", request.Title, plugin.Instance.Name, why);
+                tried.Add($"{plugin.Instance.Name} {why}");
                 continue;
             }
+            found.AddRange(wanted);
+        }
 
-            foreach (var candidate in ranked)
-            {
-                var job = await StartJobAsync(plugin, candidate, candidates);
-                var outcome = await TryCandidateAsync(request, target, plugin, job, candidate, fetch, ct);
-                if (outcome == Outcome.Imported)
-                    return;
-                if (outcome == Outcome.Stop)
-                    return;
-                tried.Add($"{plugin.Instance.Name}: {job.VerificationDetail ?? LastLine(job.Log)}");
-            }
+        foreach (var (plugin, candidate) in CandidateRanking.Order(found, profile, listenNow, c => LengthOff(c, target)).ToList())
+        {
+            var job = await StartJobAsync(plugin, candidate, searches.First(s => s.plugin == plugin).Candidates);
+            var outcome = await TryCandidateAsync(request, target, plugin, job, candidate, fetch, ct);
+            if (outcome is Outcome.Imported or Outcome.Stop)
+                return;
+            tried.Add($"{plugin.Instance.Name}: {job.VerificationDetail ?? LastLine(job.Log)}");
         }
 
         if (whole)
@@ -266,6 +279,27 @@ public sealed class RequestPipeline(
         }
         Log(job, $"Checked: {verified.Detail}");
 
+        // The quality is what the files are, not what they were said to be: a FLAC that's really an MP3 is an MP3.
+        var qualities = verified.Files.Select(f => MediaTypes.ReadQuality(Path.Combine(directory, f.Path))).ToList();
+        var actual = FileQuality.Lowest(qualities.Where(q => q.Codec is not null));
+        if (actual is not null)
+        {
+            var labelled = job.CandidateJson is { } json ? CandidateRanking.QualityOf(JsonSerializer.Deserialize<Candidate>(json, RetrievalJson.Options)!) : null;
+            var profile = await settings.GetQualityAsync(ct);
+            if (labelled?.Codec is not null && profile.Position(labelled) is { } said && profile.Position(actual) is { } @is && @is > said)
+                Log(job, $"Said to be {labelled.Label}, but it's {actual.Label} ({actual.Details})");
+            else
+                Log(job, $"Quality: {actual.Label} ({actual.Details})");
+            if (request.Mode == RequestMode.Permanent && !profile.Allows(actual))
+            {
+                job.Verification = VerificationResult.QualityRefused;
+                job.VerificationDetail = $"It's {actual.Label} ({actual.Details}), which the quality profile turns off";
+                // Kept in staging, so the review list can still accept it.
+                await FinishJobAsync(job, JobStatus.Failed, $"Didn't pass: {job.VerificationDetail}", ct);
+                return Outcome.NextCandidate;
+            }
+        }
+
         if (request.Mode == RequestMode.ListenNow)
         {
             await StoreForListeningAsync(request, job, directory, verified.Files[0], reported, ct);
@@ -336,21 +370,24 @@ public sealed class RequestPipeline(
     }
 
     /// <summary>
-    /// Candidates worth fetching, best first: the plugin's own score, then closeness in length. Any whose length is far
-    /// outside what verification would accept are dropped, since fetching them would only fail.
+    /// Candidates worth fetching: the right kind, and not so far off in length that verification would refuse them, so
+    /// fetching them would only fail. <see cref="CandidateRanking"/> puts them in order.
     /// </summary>
     public static IEnumerable<Candidate> Rank(IReadOnlyList<Candidate> candidates, FetchTarget target, FetchSettings fetch)
     {
-        var expected = target.Whole
-            ? target.Tracks.All(t => t.Duration is not null) ? target.Tracks.Sum(t => t.Duration!.Value.TotalSeconds) : (double?)null
-            : target.Tracks[0].Duration?.TotalSeconds;
+        var expected = ExpectedSeconds(target);
         return candidates
             .Where(c => c.Kind == (target.Whole ? RetrievalKind.Album : RetrievalKind.Track))
             .Where(c => expected is null || c.DurationSeconds is null
-                        || Math.Abs(c.DurationSeconds.Value - expected.Value) <= 2 * Verifier.Tolerance(expected.Value, fetch) * (target.Whole ? target.Tracks.Count : 1))
-            .OrderByDescending(c => c.Score ?? 0.5)
-            .ThenBy(c => expected is null || c.DurationSeconds is null ? double.MaxValue : Math.Abs(c.DurationSeconds.Value - expected.Value));
+                        || Math.Abs(c.DurationSeconds.Value - expected.Value) <= 2 * Verifier.Tolerance(expected.Value, fetch) * (target.Whole ? target.Tracks.Count : 1));
     }
+
+    private static double? ExpectedSeconds(FetchTarget target) => target.Whole
+        ? target.Tracks.All(t => t.Duration is not null) ? target.Tracks.Sum(t => t.Duration!.Value.TotalSeconds) : null
+        : target.Tracks[0].Duration?.TotalSeconds;
+
+    private static double LengthOff(Candidate c, FetchTarget target) =>
+        ExpectedSeconds(target) is { } expected && c.DurationSeconds is { } seconds ? Math.Abs(seconds - expected) : double.MaxValue;
 
     private async Task<ImportResult> ImportAsync(FetchTarget target, Job job, IReadOnlyList<Verifier.Matched> files, CancellationToken ct)
     {

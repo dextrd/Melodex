@@ -82,6 +82,12 @@ public sealed record SearchResponse(IReadOnlyList<Candidate> Candidates);
 /// <param name="Format">Output format the fetched file will have, for example <c>opus</c> or <c>flac</c>.</param>
 /// <param name="BitrateKbps">Expected bitrate.</param>
 /// <param name="Score">The plugin's own confidence from 0 to 1 that this matches the target.</param>
+/// <param name="BitDepth">For lossless, the bits per sample the file will have (16, 24), if known.</param>
+/// <param name="SampleRateHz">The sample rate the file will have (44100, 96000), if known.</param>
+/// <remarks>
+/// The core ranks candidates by the user's quality profile from <see cref="Format"/>, <see cref="BitrateKbps"/>,
+/// <see cref="BitDepth"/> and <see cref="SampleRateHz"/>. A source with several qualities offers a candidate for each.
+/// </remarks>
 public sealed record Candidate(
     string CandidateId,
     RetrievalKind Kind,
@@ -93,7 +99,9 @@ public sealed record Candidate(
     string? Url,
     string? Format,
     int? BitrateKbps,
-    double? Score);
+    double? Score,
+    int? BitDepth = null,
+    int? SampleRateHz = null);
 
 /// <summary>Body of <c>POST /v1/fetch</c>.</summary>
 /// <param name="Settings">The plugin instance's settings.</param>

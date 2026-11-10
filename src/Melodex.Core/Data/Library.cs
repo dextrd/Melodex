@@ -230,6 +230,9 @@ public enum VerificationResult
     Passed,
     DurationMismatch,
     FingerprintMismatch,
+
+    /// <summary>The files are a quality the profile turns off.</summary>
+    QualityRefused,
 }
 
 /// <summary>One attempt to fulfil a request through one retrieval plugin.</summary>

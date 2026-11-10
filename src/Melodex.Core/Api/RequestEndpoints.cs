@@ -126,6 +126,26 @@ public static class RequestEndpoints
             })
             .WithName("SaveFetchSettings").WithSummary("Applies to requests from their next step.");
 
+        settings.MapGet("/quality", (SettingsService s, CancellationToken ct) => s.GetQualityAsync(ct)).WithName("GetQualityProfile");
+        settings.MapPut("/quality", async (QualityProfile value, SettingsService s, CancellationToken ct) =>
+            {
+                var errors = new Dictionary<string, string[]>();
+                var ordered = value.Ordered();
+                if (QualityStep.Parse(value.Cutoff) is not { } cutoff)
+                    errors["cutoff"] = ["Must be one of the steps."];
+                else if (!ordered.First(s => s.Step == cutoff).Allowed)
+                    errors["cutoff"] = ["Must be a step that's turned on."];
+                if (QualityStep.Parse(value.ListenTarget) is null)
+                    errors["listenTarget"] = ["Must be one of the steps."];
+                if (!ordered.Any(s => s.Allowed))
+                    errors["steps"] = ["At least one quality must be turned on."];
+                if (errors.Count > 0)
+                    return Results.ValidationProblem(errors);
+                await s.SaveQualityAsync(value, ct);
+                return Results.NoContent();
+            })
+            .WithName("SaveQualityProfile").WithSummary("The qualities wanted, in order, and the cutoff that's good enough. Applies to searches from their next step.");
+
         return api;
     }
 }

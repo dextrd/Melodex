@@ -351,6 +351,28 @@ public sealed class MelodexClient(HttpClient http)
         await EnsureAsync(response, ct);
     }
 
+    public async Task<QualityProfile> GetQualityProfileAsync(CancellationToken ct = default) =>
+        await http.GetFromJsonAsync<QualityProfile>($"{Api}/settings/quality", MelodexJson.Options, ct) ?? new QualityProfile();
+
+    public async Task SaveQualityProfileAsync(QualityProfile profile, CancellationToken ct = default)
+    {
+        using var response = await http.PutAsJsonAsync($"{Api}/settings/quality", profile, MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+    }
+
+    /// <summary>An artist's, album's or track's quality setting and where it comes from.</summary>
+    /// <param name="kind">"artists", "albums" or "tracks".</param>
+    /// <param name="albumId">For a track, the album it's seen on.</param>
+    public async Task<QualitySetting?> GetQualitySettingAsync(string kind, Guid id, Guid? albumId = null, CancellationToken ct = default) =>
+        await http.GetFromJsonAsync<QualitySetting>($"{Api}/{kind}/{id}/quality{(albumId is { } a ? $"?albumId={a}" : "")}", MelodexJson.Options, ct);
+
+    /// <param name="kind">"artists", "albums" or "tracks".</param>
+    public async Task SaveQualityOverrideAsync(string kind, Guid id, QualityOverride value, CancellationToken ct = default)
+    {
+        using var response = await http.PutAsJsonAsync($"{Api}/{kind}/{id}/quality", value, MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+    }
+
     // ---- Plugins ----
 
     public async Task<IReadOnlyList<PluginInfo>> ListPluginsAsync(CancellationToken ct = default) =>

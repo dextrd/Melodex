@@ -43,7 +43,7 @@ public sealed class FakeRetrieval(string stagingRoot) : HttpMessageHandler
             var target = search.Target;
             var candidates = Enumerable.Range(0, source.Candidates).Select(i => new Candidate(
                 $"{i}|{JsonSerializer.Serialize(target, RetrievalJson.Options)}", target.Kind, target.Title, target.Artist, target.Album,
-                target.DurationSeconds, source.Name, null, "wav", 64, 0.9 - i * 0.1)).ToList();
+                target.DurationSeconds, source.Name, null, source.Format, source.BitrateKbps, 0.9 - i * 0.1)).ToList();
             return Json(request, new SearchResponse(candidates));
         }
         if (path == "/v1/fetch" && request.Method == HttpMethod.Post)
@@ -107,6 +107,11 @@ public sealed class FakeSource(string name, bool albums = false)
 
     /// <summary>Whether search finds anything.</summary>
     public bool Finds { get; set; } = true;
+
+    /// <summary>The format its candidates say they are; the files are WAV whatever they say.</summary>
+    public string Format { get; set; } = "wav";
+
+    public int? BitrateKbps { get; set; } = 64;
 
     /// <summary>How many candidates search offers.</summary>
     public int Candidates { get; set; } = 3;

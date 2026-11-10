@@ -665,6 +665,26 @@ public static class LibraryEndpoints
         catalogue.MapDelete("/tracks/{id:guid}/ignore", (Guid id, MelodexDbContext db, CancellationToken ct) => SetTrackIgnored(db, id, false, ct))
             .RequireScope(Scopes.Request).WithName("UnignoreTrack");
 
+        catalogue.MapGet("/artists/{id:guid}/quality", (Guid id, QualitySettings q, CancellationToken ct) => q.ForArtistAsync(id, ct))
+            .WithName("GetArtistQuality").WithSummary("The artist's own quality setting, and what applies to it.");
+        catalogue.MapGet("/albums/{id:guid}/quality", (Guid id, QualitySettings q, CancellationToken ct) => q.ForAlbumAsync(id, ct))
+            .WithName("GetAlbumQuality").WithSummary("The album's own quality setting, and what applies: its own, else its artist's, else the main profile's.");
+        catalogue.MapGet("/tracks/{id:guid}/quality", (Guid id, Guid? albumId, QualitySettings q, CancellationToken ct) => q.ForTrackAsync(id, albumId, ct))
+            .WithName("GetTrackQuality").WithSummary("The song's own quality setting, and what applies: its own, else its album's (the one given, or its file's), else its artist's, else the main profile's.");
+        foreach (var (path, kind) in new[] { ("artists", EntityKind.Artist), ("albums", EntityKind.Album), ("tracks", EntityKind.Track) })
+            catalogue.MapPut($"/{path}/{{id:guid}}/quality", async (Guid id, QualityOverride value, QualitySettings q, CancellationToken ct) =>
+                {
+                    try
+                    {
+                        return await q.SaveAsync(kind, id, value, ct) ? Results.NoContent() : Results.NotFound();
+                    }
+                    catch (ArgumentException e)
+                    {
+                        return Results.ValidationProblem(new Dictionary<string, string[]> { ["cutoff"] = [e.Message] });
+                    }
+                })
+                .RequireScope(Scopes.Settings).WithName($"Save{kind}Quality").WithSummary("Inherit, a cutoff of its own, or never upgrade.");
+
         return api;
     }
 

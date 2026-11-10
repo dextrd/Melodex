@@ -68,6 +68,7 @@ builder.Services.AddScoped<CatalogueService>();
 builder.Services.AddSingleton<OnDemandCatalogue>();
 builder.Services.AddScoped<CatalogueRefresher>();
 builder.Services.AddScoped<SettingsService>();
+builder.Services.AddScoped<QualitySettings>();
 builder.Services.AddScoped<LibraryScanner>();
 builder.Services.AddScoped<LibraryMatcher>();
 builder.Services.AddScoped<LibraryView>();
