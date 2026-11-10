@@ -39,6 +39,18 @@ public sealed class FakeImporter(string stagingRoot, string libraryRoot) : IImpo
 
     public Task<HealthReport> CheckHealthAsync(CancellationToken ct) => Task.FromResult(HealthReport.Healthy());
 
+    /// <summary>Where files' highs stop, by file name; any not named aren't cut off.</summary>
+    public ConcurrentDictionary<string, int> Cutoffs { get; } = new();
+
+    public ConcurrentQueue<SpectrumRequest> Spectra { get; } = new();
+
+    public Task<SpectrumResult> SpectrumAsync(SpectrumRequest request, CancellationToken ct)
+    {
+        Spectra.Enqueue(request);
+        return Task.FromResult(new SpectrumResult(request.Files.Select(f =>
+            new SpectrumFound(f.Root, f.Path, Cutoffs.TryGetValue(Path.GetFileName(f.Path), out var hz) ? hz : null, null)).ToList()));
+    }
+
     /// <summary>What the reflink check answers.</summary>
     public ReflinkCheck Reflinks { get; set; } = new(true);
 

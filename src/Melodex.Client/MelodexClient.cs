@@ -351,6 +351,18 @@ public sealed class MelodexClient(HttpClient http)
         await EnsureAsync(response, ct);
     }
 
+    /// <summary>How the library's lossless files stand on being checked for lossy music passed off as lossless.</summary>
+    public async Task<SpectrumStatus> GetSpectrumStatusAsync(CancellationToken ct = default) =>
+        (await http.GetFromJsonAsync<SpectrumStatus>($"{Api}/library/spectrum", MelodexJson.Options, ct))!;
+
+    /// <summary>Queues checking the library's lossless files: those not yet checked, or with again, all of them.</summary>
+    public async Task<TaskInfo> CheckSpectraAsync(bool again = false, CancellationToken ct = default)
+    {
+        using var response = await http.PostAsJsonAsync($"{Api}/library/spectrum", new CheckSpectra(again), MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<TaskInfo>(MelodexJson.Options, ct))!;
+    }
+
     public async Task<QualityProfile> GetQualityProfileAsync(CancellationToken ct = default) =>
         await http.GetFromJsonAsync<QualityProfile>($"{Api}/settings/quality", MelodexJson.Options, ct) ?? new QualityProfile();
 

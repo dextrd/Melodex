@@ -185,6 +185,29 @@ Reflinks need btrfs, XFS made with reflink support, or ZFS 2.2 or later, and eve
 filesystem: qBittorrent's downloads, the staging volume and the library. A staging volume Docker manages lives
 wherever Docker keeps its volumes, so for reflinks, make it a folder on the same filesystem as the library.
 
+## `POST /v1/spectrum`
+
+Where each lossless file's highs are cut off sharply, if they are, so the core can tell lossy music passed off as
+lossless. Files are only read.
+
+```json
+{ "files": [{ "root": "staging", "path": "job-1/01 Angel.flac" }, { "root": "library", "path": "Massive Attack/Mezzanine/02 Risingson.flac" }] }
+```
+
+`root` is `staging` or `library`, and each path is relative to it. The answer has each file, as sent, with
+`cutoffHz` when its spectrum falls off a cliff (tens of dB within a few hundred Hz, and nothing above it coming
+back), or `error` when it couldn't be told: unreadable, too short or too quiet. Neither means its highs go on as
+real lossless audio's do, or tail off gradually.
+
+```json
+{ "files": [{ "root": "staging", "path": "job-1/01 Angel.flac", "cutoffHz": 16570 }, { "root": "library", "path": "Massive Attack/Mezzanine/02 Risingson.flac" }] }
+```
+
+It reads FLAC, WAV and AIFF (with libsndfile). Lossy encoders cut the highs at a frequency that gives them away,
+about 16.5 kHz for an MP3 at 128 kbps and 20 kHz at 320, and a hi-res file made from a CD stops at about 22 kHz;
+what a cutoff means is for the core to say. An encode that keeps the highs (LAME's V0, AAC at 256) can't be told
+this way, and a master cut off on purpose can look like one that wasn't, so it's a suspicion, not proof.
+
 ## `GET /v1/health`
 
 `{ "status": "healthy" | "unhealthy", "message": "..." }`. Unhealthy when the staging or library volume isn't

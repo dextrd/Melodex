@@ -42,21 +42,29 @@ public class LibraryFile
 
     public int? SampleRate { get; set; }
 
+    /// <summary>For a lossless file, where its highs are cut off sharply, if they are, as its spectrum was found (#19).</summary>
+    public int? CutoffHz { get; set; }
+
+    /// <summary>When a lossless file's spectrum was checked; null until it is, and again once the file changes.</summary>
+    public DateTime? SpectrumCheckedAt { get; set; }
+
     public const string UnknownCodec = "unknown";
 
     /// <summary>The file's quality, as the web app shows it.</summary>
-    public static FileQuality QualityOf(string? codec, int? bitrateKbps, int? bitDepth, int? sampleRate) =>
-        new(codec is UnknownCodec ? null : codec, bitrateKbps, bitDepth, sampleRate);
+    public static FileQuality QualityOf(string? codec, int? bitrateKbps, int? bitDepth, int? sampleRate, int? cutoffHz) =>
+        new(codec is UnknownCodec ? null : codec, bitrateKbps, bitDepth, sampleRate, cutoffHz);
 
-    public FileQuality Quality => QualityOf(Codec, BitrateKbps, BitDepth, SampleRate);
+    public FileQuality Quality => QualityOf(Codec, BitrateKbps, BitDepth, SampleRate, CutoffHz);
 
-    /// <summary>Sets the quality read from the file.</summary>
+    /// <summary>Sets the quality read from the file, which is new, so its spectrum is to be checked again.</summary>
     public void SetQuality(FileQuality quality)
     {
         Codec = quality.Codec ?? UnknownCodec;
         BitrateKbps = quality.BitrateKbps;
         BitDepth = quality.BitDepth;
         SampleRate = quality.SampleRateHz;
+        CutoffHz = quality.CutoffHz;
+        SpectrumCheckedAt = null;
     }
 
     /// <summary>Tags as read from the file, as a JSON object of tag name to value.</summary>
@@ -233,6 +241,9 @@ public enum VerificationResult
 
     /// <summary>The files are a quality the profile turns off.</summary>
     QualityRefused,
+
+    /// <summary>Its highs stop as a lossy file's do: it seems to be lossy music passed off as lossless.</summary>
+    SuspectLossless,
 }
 
 /// <summary>One attempt to fulfil a request through one retrieval plugin.</summary>

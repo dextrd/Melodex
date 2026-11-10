@@ -5,7 +5,8 @@ namespace Melodex.Core.Requests;
 
 /// <summary>
 /// Which candidates to try first, from every plugin at once: the right song before anything else, then the quality
-/// the profile likes best, then the plugin's own confidence, then closeness in length.
+/// the profile likes best, then one vouched for as really lossless, then the plugin's own confidence, then closeness
+/// in length.
 /// </summary>
 public static class CandidateRanking
 {
@@ -54,6 +55,8 @@ public static class CandidateRanking
             .OrderBy(x => (x.Candidate.Score ?? SureMatch) >= SureMatch ? 0 : 1)
             .ThenByDescending(x => (x.Candidate.Score ?? SureMatch) >= SureMatch ? 0 : x.Candidate.Score ?? 0)
             .ThenBy(x => Quality(x.Candidate))
+            // Lossless with reason to think it really is: straight from a store, or a rip with its log.
+            .ThenBy(x => x.Candidate.Vouched == true ? 0 : 1)
             .ThenByDescending(x => x.Candidate.Score ?? SureMatch)
             .ThenBy(x => lengthOff(x.Candidate));
     }

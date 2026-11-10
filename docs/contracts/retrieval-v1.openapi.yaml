@@ -258,6 +258,12 @@ components:
         bitrateKbps: { type: integer }
         bitDepth: { type: integer, description: For lossless, the bits per sample the file will have (16 or 24). }
         sampleRateHz: { type: integer, description: The sample rate the file will have, such as 44100 or 96000. }
+        vouched:
+          type: boolean
+          description: >-
+            For lossless, whether there's reason to think it's really lossless and not lossy music passed off as it:
+            straight from a store, with a rip's log and cue, or from a tracker known for checking. Ranks it above
+            otherwise alike candidates.
         score: { type: number, minimum: 0, maximum: 1 }
     FetchRequest:
       type: object

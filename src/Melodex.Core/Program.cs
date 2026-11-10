@@ -92,6 +92,7 @@ builder.Services.AddScoped<ITaskHandler, LibraryScanTask>();
 builder.Services.AddScoped<ITaskHandler, ArtistRefreshTask>();
 builder.Services.AddScoped<ITaskHandler, FormatTask>();
 builder.Services.AddScoped<ITaskHandler, LyricsTask>();
+builder.Services.AddScoped<ITaskHandler, SpectrumTask>();
 builder.Services.AddHostedService<TaskWorker>();
 
 // Requests: fetch, verify, import with beets, tell the media server

@@ -72,6 +72,7 @@ class Candidate(Model):
     score: float | None = None
     bit_depth: int | None = None
     sample_rate_hz: int | None = None
+    vouched: bool | None = None
 
 
 class HealthRequest(Model):

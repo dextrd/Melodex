@@ -38,6 +38,28 @@ An artist, album or song can have its own setting, from **Quality** on its page:
 The narrowest wins (a song's, then its album's, then its artist's, then the profile's), and the dialog says where what
 applies comes from.
 
+### Lossless that seems lossy
+
+Lossy music is sometimes passed off as lossless: an MP3 saved as FLAC is labelled FLAC and is the size of one, but it
+sounds no better than the MP3. Lossy encoders cut off the highest frequencies where they give themselves away, about
+16.5 kHz for an MP3 at 128 kbps and 20 kHz at 320, so every lossless download is checked for that before it's kept.
+One that's cut off is **suspect**, and counts as the quality it seems to be: a FLAC cut at 16.5 kHz is low-quality
+lossy. A hi-res file that stops where a CD does was made from one, and counts as CD quality.
+
+- **What happens to a suspect download** is a setting under **Settings → Quality**: refuse it and try the next
+  candidate (the default; Activity says **Seems lossy**, and where its highs stop), or keep it as what it seems, if
+  the profile allows that.
+- **Lossless with reason to think it's real is tried first**, of candidates otherwise alike: straight from a store
+  such as Qobuz or Tidal, a torrent with its rip's log and cue, or one from a tracker you've set as known for lossless
+  in the Prowlarr plugin's settings.
+- **The library's lossless files are checked too**, after each scan, for any new or changed. Suspect ones show their
+  quality with a ⚠ and a dashed edge, count as what they seem, below the cutoff, for upgrades, and are listed under
+  **Settings → Quality**, which can check them all again. Files are only read.
+
+It's a suspicion, not proof. A master can be cut off on purpose, an old recording may have little in the highs, and
+an encode that keeps them (MP3 V0, AAC at 256) can't be told this way. FLAC, WAV and AIFF can be checked; ALAC, APE
+and WavPack can't.
+
 ## Listen now
 
 Press **Listen** to hear something before deciding. It's fetched to a separate store, never your music folder, plays

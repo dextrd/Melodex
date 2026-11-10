@@ -235,7 +235,10 @@ public sealed class FormatTask(
         {
             var (tags, duration, lyrics, quality) = LibraryScanner.ReadTags(full);
             file.TagsJson = tags.ToJson();
+            // Only its tags were rewritten, so its music's spectrum is as it was checked.
+            var (cutoff, checkedAt) = (file.CutoffHz, file.SpectrumCheckedAt);
             file.SetQuality(quality);
+            (file.CutoffHz, file.SpectrumCheckedAt) = (cutoff, checkedAt);
             file.Duration = duration ?? file.Duration;
             // Kept when there are none to read: a source may have said it's instrumental.
             if (lyrics != LyricsKind.None || file.Lyrics != LyricsKind.Instrumental)

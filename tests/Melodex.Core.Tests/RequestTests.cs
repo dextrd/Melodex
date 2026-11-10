@@ -361,6 +361,88 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
     }
 
     [TestLibraryFact]
+    public async Task Lossless_whose_highs_stop_as_an_mp3s_do_is_refused_and_the_next_candidate_fetched()
+    {
+        // Said to be a rip with its log, which puts it first; its spectrum says otherwise.
+        var fake = new FakeSource("fakeflac") { Format = "flac", BitrateKbps = null, Candidates = 1, Vouched = true, FileName = "fake.wav" };
+        var real = new FakeSource("realflac") { Format = "flac", BitrateKbps = null, Candidates = 1, FileName = "real.wav" };
+        fixture.Importer.Cutoffs["fake.wav"] = 16570;
+        await fixture.AddSourceAsync(fake);
+        await fixture.AddSourceAsync(real);
+        var track = await MissingTrackAsync("Daft Punk", "Homework");
+
+        var done = await fixture.WaitAsync((await Api.CreateRequestAsync(new CreateRequest(RequestKind.Track, track))).Id);
+        Dump(done);
+
+        Assert.Equal(RequestState.InLibrary, done.State);
+        Assert.Equal(["fakeflac", "realflac"], done.Jobs!.Select(j => j.Plugin));
+        Assert.Equal(Verification.SuspectLossless, done.Jobs![0].Verification);
+        Assert.EndsWith("but its highs stop at 16.6 kHz: it seems to be lossy, low quality", done.Jobs[0].VerificationDetail);
+        // Both were checked, in staging.
+        Assert.Contains(fixture.Importer.Spectra, r => r.Files.Any(f => f.Root == SpectrumFile.Staging && f.Path.EndsWith("/real.wav")));
+        using var scope = fixture.Factory.Services.CreateScope();
+        var file = await scope.ServiceProvider.GetRequiredService<Melodex.Core.Data.MelodexDbContext>().LibraryFiles.SingleAsync(f => f.TrackId == track);
+        Assert.Null(file.CutoffHz);
+        Assert.NotNull(file.SpectrumCheckedAt);
+    }
+
+    [TestLibraryFact]
+    public async Task Lossless_that_seems_lossy_can_be_kept_as_what_it_seems()
+    {
+        var profile = await Api.GetQualityProfileAsync();
+        await Api.SaveQualityProfileAsync(profile with { Suspect = SuspectLossless.Keep });
+        try
+        {
+            var source = new FakeSource("seemslossy") { Format = "flac", BitrateKbps = null, Candidates = 1, FileName = "seems.wav" };
+            fixture.Importer.Cutoffs["seems.wav"] = 19500;
+            await fixture.AddSourceAsync(source);
+            var track = await MissingTrackAsync("Daft Punk", "Homework");
+
+            var done = await fixture.WaitAsync((await Api.CreateRequestAsync(new CreateRequest(RequestKind.Track, track))).Id);
+            Dump(done);
+
+            Assert.Equal(RequestState.InLibrary, done.State);
+            Assert.Contains("seems lossy: its highs stop at 19.5 kHz", done.Jobs!.Single().Log);
+            using var scope = fixture.Factory.Services.CreateScope();
+            var file = await scope.ServiceProvider.GetRequiredService<Melodex.Core.Data.MelodexDbContext>().LibraryFiles.SingleAsync(f => f.TrackId == track);
+            Assert.Equal(19500, file.CutoffHz);
+            Assert.Equal(QualityLevel.Good, file.Quality.Level);
+        }
+        finally
+        {
+            await Api.SaveQualityProfileAsync(profile);
+        }
+    }
+
+    [TestLibraryFact]
+    public async Task The_librarys_lossless_files_are_checked_and_those_that_seem_lossy_listed()
+    {
+        fixture.Importer.Cutoffs["04. Da Funk.flac"] = 16000;
+        try
+        {
+            var task = await Api.CheckSpectraAsync(again: true);
+            for (var deadline = DateTime.UtcNow.AddMinutes(1); task.Active && DateTime.UtcNow < deadline; task = (await Api.GetTaskAsync(task.Id))!)
+                await Task.Delay(50);
+            output.WriteLine(task.Progress);
+
+            var status = await Api.GetSpectrumStatusAsync();
+            output.WriteLine($"{status.Checked} of {status.Lossless}; spectra asked: {string.Join(", ", fixture.Importer.Spectra.SelectMany(r => r.Files).Select(f => f.Path).Take(5))}");
+            Assert.Equal(status.Lossless, status.Checked);
+            var suspect = Assert.Single(status.Suspects);
+            Assert.EndsWith("04. Da Funk.flac", suspect.Path);
+            Assert.Equal((QualityLevel.Low, true), (suspect.Quality.Level, suspect.Quality.Suspect));
+            Assert.Contains("seems lossy: its highs stop at 16.0 kHz", suspect.Quality.Details);
+            // Only the library was read, and only its lossless files.
+            Assert.All(fixture.Importer.Spectra.SelectMany(r => r.Files).Where(f => f.Root == SpectrumFile.Library),
+                f => Assert.True(f.Path.EndsWith(".flac") || f.Path.EndsWith(".wav"), f.Path));
+        }
+        finally
+        {
+            fixture.Importer.Cutoffs.TryRemove("04. Da Funk.flac", out _);
+        }
+    }
+
+    [TestLibraryFact]
     public async Task A_slow_fetch_runs_past_the_limit_while_it_moves_and_is_cancelled_once_it_stalls()
     {
         // 80 steps of 20 ms is longer than the fixture's one-second limit; then it stays at 80 %.

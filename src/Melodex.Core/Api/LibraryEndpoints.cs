@@ -142,6 +142,23 @@ public static class LibraryEndpoints
                          + "matched or under review again too. The body can be left out. Returns the queued task.")
             .Produces<TaskInfo>(StatusCodes.Status202Accepted);
 
+        library.MapGet("/spectrum", (MelodexDbContext db, CancellationToken ct) => SpectrumTask.StatusAsync(db, ct))
+            .WithName("GetSpectrumStatus")
+            .WithSummary("How many of the library's lossless files have been checked for lossy music passed off as lossless, and those that seem to be.");
+
+        library.MapPost("/spectrum", async ([FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] CheckSpectra? body, MelodexDbContext db, TaskQueue queue,
+                CancellationToken ct) =>
+            {
+                if (body?.Again == true)
+                    await SpectrumTask.Lossless(db).ExecuteUpdateAsync(u => u.SetProperty(f => f.SpectrumCheckedAt, (DateTime?)null), ct);
+                var task = await queue.EnqueueAsync(SpectrumTask.TaskKind, null, ct);
+                return Results.Accepted(null, TaskQueue.ToInfo(task) with { Title = SpectrumTask.Title });
+            })
+            .RequireScope(Scopes.Scan).WithName("CheckSpectra")
+            .WithSummary("Check the library's lossless files not yet checked, or with again, all of them, for lossy music passed off as "
+                         + "lossless. Files are only read. Returns the queued task.")
+            .Produces<TaskInfo>(StatusCodes.Status202Accepted);
+
         // Big lists, so each carries an ETag: send it back as If-None-Match and an unchanged list is a 304 with no body.
         library.MapGet("/artists", (LibraryCache cache, HttpContext http, CancellationToken ct) => cache.SendAsync(LibraryCache.Artists, http, ct))
             .WithName("GetLibraryArtists").Produces<List<LibraryArtist>>().Produces(StatusCodes.Status304NotModified)
@@ -705,6 +722,7 @@ public static class LibraryEndpoints
                 ArtistRefreshTask.TaskKind => "Catalogue update",
                 FormatTask.TaskKind => FormatTask.Title(t.PayloadJson),
                 LyricsTask.TaskKind => LyricsTask.Title,
+                SpectrumTask.TaskKind => SpectrumTask.Title,
                 _ => t.Kind,
             },
         }).ToList();

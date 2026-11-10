@@ -72,7 +72,8 @@ public sealed class LibraryViewTests : IDisposable
         Assert.Equal("Library scan", scan.Title);
         Assert.Equal(TaskState.Succeeded, scan.State);
         Assert.False(scan.Active);
-        Assert.Empty(await _api.ListTasksAsync(active: true));
+        // What it queues after it, such as checking lossless files, can still be going.
+        Assert.DoesNotContain(await _api.ListTasksAsync(active: true), t => t.Kind == "library-scan");
     }
 
     [TestLibraryFact]

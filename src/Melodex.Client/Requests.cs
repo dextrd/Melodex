@@ -97,6 +97,9 @@ public enum Verification
 
     /// <summary>The files are a quality the profile turns off.</summary>
     QualityRefused,
+
+    /// <summary>Lossless whose highs stop as a lossy file's do: it seems to be lossy music passed off as lossless.</summary>
+    SuspectLossless,
 }
 
 /// <summary>One attempt to fetch a request through one retrieval plugin.</summary>
@@ -119,8 +122,9 @@ public sealed record JobInfo(
     DateTime? FinishedAt);
 
 /// <summary>A retrieval candidate, as the Activity page shows it.</summary>
+/// <param name="Vouched">Lossless with reason to think it really is: from a store, or a rip with its log.</param>
 public sealed record JobCandidate(string CandidateId, string Title, string? Artist, string? Album, double? DurationSeconds,
-    string Source, string? Url, string? Format, int? BitrateKbps, double? Score);
+    string Source, string? Url, string? Format, int? BitrateKbps, double? Score, bool? Vouched = null);
 
 /// <summary>How requests are fetched, checked and filed.</summary>
 public sealed record FetchSettings

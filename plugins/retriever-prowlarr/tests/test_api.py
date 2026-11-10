@@ -356,3 +356,20 @@ def test_a_release_name_says_its_quality_until_the_files_are_known():
     assert named("Portishead - Dummy 1994 MP3 320kbps") == {"format": "mp3", "bitrate_kbps": 320}
     assert named("Portishead - Dummy [V0]") == {"format": "mp3", "bitrate_kbps": 245}
     assert named("Portishead - Dummy") == {}
+
+
+def test_a_lossless_release_with_a_rip_log_or_from_a_known_tracker_is_vouched_for(fakes):
+    client, prowlarr, _, settings = fakes
+    logged, logged_hash = make_torrent("Portishead - Dummy (1994) [FLAC]", DUMMY + [("Dummy.log", 4000), ("Dummy.cue", 2000)])
+    prowlarr.results = [release("Portishead - Dummy (1994) [FLAC]", "http://prowlarr:9696/1/download?file=logged"),
+                        release("Portishead - Dummy (1994) [FLAC]", "http://prowlarr:9696/1/download?file=dummy-flac", info_hash=DUMMY_HASH),
+                        release("Portishead - Dummy (1994) [MP3 320]", "http://prowlarr:9696/1/download?file=dummy-mp3")]
+    prowlarr.torrents.update(logged=logged)
+    vouched = lambda s: {json.loads(c["candidateId"])["h"]: c.get("vouched") for c in
+                         client.post("/v1/search", json={"settings": s, "target": ALBUM}).json()["candidates"]}
+    assert vouched(settings) == {logged_hash: True, DUMMY_HASH: None, DUMMY_MP3_HASH: None}
+    # Every lossless release from a tracker known for it; its lossy ones are lossy whoever has them.
+    assert vouched({**settings, "losslessTrackers": "Other, test TRACKER"}) == {logged_hash: True, DUMMY_HASH: True, DUMMY_MP3_HASH: None}
+
+    assert retrieve.vouched("Portishead - Dummy (1994) [FLAC] {EAC log cue 100%}", None, None, set())
+    assert not retrieve.vouched("Portishead - Dummy (1994) [FLAC] {Catalogue CD}", None, None, set())

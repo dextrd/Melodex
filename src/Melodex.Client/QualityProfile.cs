@@ -65,11 +65,16 @@ public readonly record struct QualityStep(CodecFamily Codec, QualityLevel Level)
 
     public static QualityStep? Parse(string? key) => All.Cast<QualityStep?>().FirstOrDefault(s => s!.Value.Key == key);
 
-    /// <summary>The step a file's quality is, or null when too little is known of it (no codec, or lossy with no bitrate).</summary>
+    /// <summary>
+    /// The step a file's quality is, or null when too little is known of it (no codec, or lossy with no bitrate). A
+    /// lossless file that seems to be lossy is the MP3 it seems to have been, as most such files are.
+    /// </summary>
     public static QualityStep? Of(FileQuality? quality)
     {
         if (quality?.Codec is not { } codec || quality.Level == QualityLevel.Unknown)
             return null;
+        if (quality.Seems is { } seems and < QualityLevel.Lossless)
+            return new QualityStep(CodecFamily.Mp3, seems);
         var family = codec switch
         {
             "flac" => CodecFamily.Flac,
@@ -108,6 +113,9 @@ public sealed record QualityProfile
     /// </summary>
     public string ListenTarget { get; init; } = new QualityStep(CodecFamily.Opus, QualityLevel.Fair).Key;
 
+    /// <summary>What's done with a lossless download whose highs stop as a lossy file's do (see <see cref="FileQuality.Suspect"/>).</summary>
+    public SuspectLossless Suspect { get; init; } = SuspectLossless.Refuse;
+
     /// <summary>The default: everything in its usual order, fair and low lossy turned off.</summary>
     public static IReadOnlyList<ProfileStep> Default { get; } =
         QualityStep.All.Select(s => new ProfileStep(s.Key, s.Level >= QualityLevel.Good)).ToList();
@@ -141,6 +149,16 @@ public sealed record QualityProfile
         Position(quality) is { } at && QualityStep.Parse(cutoff ?? Cutoff) is { } step && at <= Position(step);
 }
 
+/// <summary>What's done with a lossless download that seems to be lossy music passed off as lossless.</summary>
+public enum SuspectLossless
+{
+    /// <summary>It's refused, and the next candidate tried.</summary>
+    Refuse,
+
+    /// <summary>It's kept as the quality it seems to be, if the profile allows that.</summary>
+    Keep,
+}
+
 /// <summary>An artist's, album's or track's own quality setting, over the main profile's.</summary>
 public enum QualityOverrideKind
 {
@@ -169,3 +187,16 @@ public sealed record QualitySetting(QualityOverrideKind Kind, string? Cutoff, Qu
 
 /// <summary>Body of saving something's own quality setting.</summary>
 public sealed record QualityOverride(QualityOverrideKind Kind, string? Cutoff = null);
+
+/// <summary>How the library's lossless files stand on being checked for lossy music passed off as lossless.</summary>
+/// <param name="Lossless">Lossless files that can be checked: FLAC, WAV and AIFF.</param>
+/// <param name="Checked">Those checked since they last changed.</param>
+/// <param name="Suspects">Those whose highs stop as a lossy file's do.</param>
+public sealed record SpectrumStatus(int Lossless, int Checked, IReadOnlyList<SuspectFile> Suspects);
+
+/// <param name="Path">Relative to the music folder.</param>
+public sealed record SuspectFile(Guid Id, string Path, Guid? TrackId, FileQuality Quality);
+
+/// <summary>Body of checking the library's lossless files.</summary>
+/// <param name="Again">Check every one again, not only those not yet checked.</param>
+public sealed record CheckSpectra(bool Again = false);

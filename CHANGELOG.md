@@ -21,6 +21,14 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   or never be upgraded, from **Quality** on their pages; the narrowest wins.
 - Qobuz and Tidal offer each quality they have up to their **Best quality** setting, and Prowlarr reads a release's
   name for its quality until its files are known. Retrieval candidates can say their bit depth and sample rate.
+- **Lossless that seems lossy is caught** (#19): every lossless download is checked by its spectrum for highs cut off
+  where a lossy encoder cuts them (about 16.5 kHz for an MP3 at 128 kbps, 20 kHz at 320), as an MP3 saved as FLAC has.
+  One that is is suspect and counts as what it seems; by default it's refused and the next candidate tried (Activity
+  says **Seems lossy**), or it can be kept as that. The library's lossless files are checked after each scan, suspect
+  ones are marked on their quality and listed under **Settings → Quality**, and count as below the cutoff. Lossless
+  vouched for, straight from Qobuz, Tidal or Bandcamp, or a torrent with its rip's log and cue or from a tracker set
+  as known for lossless (a new Prowlarr setting), is tried before others alike. The beets worker does the checking,
+  with a new `POST /v1/spectrum`, so update its image with the core's.
 
 ### Changed
 

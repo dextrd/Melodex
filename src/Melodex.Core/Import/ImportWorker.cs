@@ -92,6 +92,24 @@ public sealed record MusiclessResult(IReadOnlyList<string> Folders, IReadOnlyLis
 /// <param name="Error">Why it couldn't be.</param>
 public sealed record FormattedFile(string Path, string? NewPath, long? Size, string? Error);
 
+/// <summary>Body of <c>POST /v1/spectrum</c>.</summary>
+public sealed record SpectrumRequest(IReadOnlyList<SpectrumFile> Files);
+
+/// <param name="Root"><see cref="Staging"/> or <see cref="Library"/>.</param>
+/// <param name="Path">Relative to the root.</param>
+public sealed record SpectrumFile(string Root, string Path)
+{
+    public const string Staging = "staging";
+    public const string Library = "library";
+}
+
+/// <summary>Answer to <c>POST /v1/spectrum</c>.</summary>
+public sealed record SpectrumResult(IReadOnlyList<SpectrumFound> Files);
+
+/// <param name="CutoffHz">Where the file's highs are cut off sharply, if they are.</param>
+/// <param name="Error">Why it couldn't be told: unreadable, too short or too quiet.</param>
+public sealed record SpectrumFound(string Root, string Path, int? CutoffHz, string? Error);
+
 /// <summary>Imports staged files into the library.</summary>
 public interface IImportWorker
 {
@@ -105,6 +123,9 @@ public interface IImportWorker
 
     /// <summary>The library's folders with no music in them, and with <see cref="MusiclessRequest.Remove"/>, removes them.</summary>
     Task<MusiclessResult> MusiclessAsync(MusiclessRequest request, CancellationToken ct);
+
+    /// <summary>Where lossless files' highs are cut off, as lossy encoders cut them, to catch lossy music passed off as lossless.</summary>
+    Task<SpectrumResult> SpectrumAsync(SpectrumRequest request, CancellationToken ct);
 
     Task<HealthReport> CheckHealthAsync(CancellationToken ct);
 
@@ -167,6 +188,14 @@ public sealed class HttpImportWorker(HttpClient http) : IImportWorker
         if (!response.IsSuccessStatusCode)
             throw new ImportException(await ErrorAsync(response, ct));
         return (await response.Content.ReadFromJsonAsync<MusiclessResult>(RetrievalJson.Options, ct))!;
+    }
+
+    public async Task<SpectrumResult> SpectrumAsync(SpectrumRequest request, CancellationToken ct)
+    {
+        using var response = await http.PostAsJsonAsync("v1/spectrum", request, RetrievalJson.Options, ct);
+        if (!response.IsSuccessStatusCode)
+            throw new ImportException(await ErrorAsync(response, ct));
+        return (await response.Content.ReadFromJsonAsync<SpectrumResult>(RetrievalJson.Options, ct))!;
     }
 
     public async Task<ReflinkCheck> CheckReflinksAsync(CancellationToken ct)

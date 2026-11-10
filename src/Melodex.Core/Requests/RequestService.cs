@@ -277,7 +277,7 @@ public sealed class RequestService(MelodexDbContext db, RequestSignal signal, Re
     }
 
     private static JobCandidate ToInfo(Candidate c) =>
-        new(c.CandidateId, c.Title, c.Artist, c.Album, c.DurationSeconds, c.Source, c.Url, c.Format, c.BitrateKbps, c.Score);
+        new(c.CandidateId, c.Title, c.Artist, c.Album, c.DurationSeconds, c.Source, c.Url, c.Format, c.BitrateKbps, c.Score, c.Vouched);
 
     private async Task<List<Guid>> SubtreeAsync(Guid id, CancellationToken ct)
     {

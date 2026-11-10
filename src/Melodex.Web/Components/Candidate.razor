@@ -7,6 +7,7 @@
     <span> · @(Value.Url is null ? Value.Source : "")</span>
     @if (Value.Url is not null) { <a href="@Value.Url" target="_blank" rel="noopener noreferrer">@Value.Source</a> }
     @if (Value.Format is not null) { <span> · @Value.Format@(Value.BitrateKbps is { } kbps ? $" {kbps} kbps" : "")</span> }
+    @if (Value.Vouched == true) { <span title="From a store, or a rip with its log and cue: it's likely really lossless"> · vouched for</span> }
     @if (Value.Score is { } score) { <span> · @score.ToString("P0") match</span> }
 </span>
 

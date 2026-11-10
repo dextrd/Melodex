@@ -26,6 +26,7 @@ from .matching import normalise, similarity, track_score, version_penalty
 FORMATS = ["best", "flac", "mp3"]
 AFTER = ["keep", "remove"]
 LOSSLESS = {".flac"}
+LOSSLESS_FORMATS = {"flac", "alac", "wav", "aiff"}
 LOSSY = {".mp3", ".m4a", ".ogg", ".opus", ".aac"}
 POLL_SECONDS = 2.0
 
@@ -59,6 +60,9 @@ _CODECS = [("flac", "flac"), ("alac", "alac"), ("wav", "wav"), ("aiff", "aiff"),
 _DEPTH = re.compile(r"\b(16|24|32)[ -]?bits?\b|\b(16|24)\s*[/-]\s*(44(?:[.,]1)?|48|88(?:[.,]2)?|96|176(?:[.,]4)?|192)\b",
                     re.IGNORECASE)
 _RATE = re.compile(r"\b(44[.,]1|48|88[.,]2|96|176[.,]4|192)\s*khz\b", re.IGNORECASE)
+# A rip's log and cue, or the tools that make them, in a release's name.
+_RIPPED = re.compile(r"\b(?:log|cue|eac|xld|cuetools|accuraterip|100\s?%)(?!\w)", re.IGNORECASE)
+RIP_FILES = {".log", ".cue"}
 _KBPS = re.compile(r"\b(?:(v0)|(v2)|(320|256|192|160|128)(?:\s*k(?:bps)?|\b))", re.IGNORECASE)
 
 
@@ -166,8 +170,22 @@ def query(artist: str, title: str) -> str:
     return " ".join(re.findall(r"\w+", f"{artist} {title}"))
 
 
+def trackers(settings: dict[str, Any]) -> set[str]:
+    """The indexers set as known for lossless, by name, lower case."""
+    return {t.strip().lower() for t in str(settings.get("losslessTrackers") or "").split(",") if t.strip()}
+
+
+def vouched(name: str, files: list[torrents.TorrentFile] | None, indexer: str | None, known: set[str]) -> bool:
+    """Whether a lossless release comes with reason to think it's really lossless: a rip's log and cue in it, or
+    said to in its name, or it's from a tracker known for checking."""
+    if files and any(PurePosixPath(f.path).suffix.lower() in RIP_FILES for f in files):
+        return True
+    return bool(_RIPPED.search(name)) or (indexer or "").strip().lower() in known
+
+
 def search(target: Target, limit: int, settings: dict[str, Any]) -> list[Candidate]:
     format = settings.get("format", "best")
+    known = trackers(settings)
     min_score = float(settings.get("minScore", 0.6))
     min_seeders = int(settings.get("minSeeders", 1))
     queries = [query(target.artist, target.title)]
@@ -186,7 +204,7 @@ def search(target: Target, limit: int, settings: dict[str, Any]) -> list[Candida
 
     candidates = []
     for release, found in checked:
-        if (candidate := _candidate(target, release, found, format)) and (candidate.score or 0) >= min_score:
+        if (candidate := _candidate(target, release, found, format, known)) and (candidate.score or 0) >= min_score:
             candidates.append(candidate)
     # Between equally good matches, lossless first, then the better-seeded.
     candidates.sort(key=lambda c: (c.score or 0, c.format == "flac", _seeders(c)), reverse=True)
@@ -209,13 +227,13 @@ def _files(prowlarr: Prowlarr, release: dict[str, Any]) -> tuple[str, list[torre
         return release.get("magnetUrl")
 
 
-def _candidate(target: Target, release: dict[str, Any], found: Any, format: str) -> Candidate | None:
+def _candidate(target: Target, release: dict[str, Any], found: Any, format: str, known: set[str] = frozenset()) -> Candidate | None:
     name = release["title"]
     common = {"source": f"{release.get('indexer') or 'Prowlarr'} ({release.get('seeders') or 0} seeders)",
               "url": release.get("infoUrl") or release.get("commentUrl")}
     if isinstance(found, tuple):
-        info_hash, files = found
-        files = audio(files, format)
+        info_hash, everything = found
+        files = audio(everything, format)
         if not files:
             return None
         link = without_key(release["downloadUrl"])
@@ -233,11 +251,14 @@ def _candidate(target: Target, release: dict[str, Any], found: Any, format: str)
             f, score = matched
             picked = [(None, None, f)]
         size = sum(f.size for _, _, f in picked)
+        quality = _quality(name, [f for _, _, f in picked], _bitrate(size, target, picked))
+        if quality.get("format") in LOSSLESS_FORMATS and vouched(name, everything, release.get("indexer"), known):
+            quality["vouched"] = True
         return Candidate(
             candidate_id=json.dumps({"h": info_hash, "t": link, "f": [[d, p, f.index, f.path] for d, p, f in picked]}),
             kind=target.kind, title=name if target.kind == Kind.album else describe(picked[0][2].path, target.artist)[2],
             artist=target.artist, album=name if target.kind == Kind.track else None,
-            **_quality(name, [f for _, _, f in picked], _bitrate(size, target, picked)),
+            **quality,
             score=round(score * version_penalty(target.title, name), 3), **common)
 
     # A magnet link only: offered on the name alone, and checked once qBittorrent has the file list.
@@ -245,9 +266,12 @@ def _candidate(target: Target, release: dict[str, Any], found: Any, format: str)
     info_hash = release.get("infoHash") or (torrents.magnet_hash(magnet) if magnet else None)
     if not magnet or not info_hash:
         return None
+    quality = quality_of_name(name)
+    if quality.get("format") in LOSSLESS_FORMATS and vouched(name, None, release.get("indexer"), known):
+        quality["vouched"] = True
     return Candidate(candidate_id=json.dumps({"h": info_hash.lower(), "m": magnet, "f": None}), kind=target.kind,
                      title=name, artist=target.artist, score=round(0.8 * title_score(target, name), 3),
-                     **quality_of_name(name), **common)
+                     **quality, **common)
 
 
 def _quality(name: str, files: list[torrents.TorrentFile], bitrate: int | None) -> dict[str, Any]:
