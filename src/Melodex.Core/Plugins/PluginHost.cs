@@ -147,16 +147,44 @@ public sealed class IndexPlugins(MelodexDbContext db, PluginHost host)
     }
 }
 
-/// <summary>The active media-server connector, if one is set up: the enabled instance with the lowest priority.</summary>
+/// <summary>
+/// The active media-server connector, if one is set up: the enabled instance with the lowest priority. Each file's ID
+/// on the media server is the active one's, so they're forgotten when another becomes active, to be found again there.
+/// </summary>
 public sealed class ConnectorPlugins(MelodexDbContext db, PluginHost host)
 {
+    public const string ActiveSetting = "mediaServer.active";
+
     public async Task<(PluginInstance Instance, IMediaServerConnector Connector)?> GetActiveAsync(CancellationToken cancellationToken)
     {
         var instance = await db.PluginInstances
             .Where(p => p.Type == PluginType.Connector && p.Enabled)
             .OrderBy(p => p.Priority)
             .FirstOrDefaultAsync(cancellationToken);
-        return instance is null ? null : (instance, host.Get<IMediaServerConnector>(instance));
+        if (instance is null)
+            return null;
+        await NoteActiveAsync(instance, cancellationToken);
+        return (instance, host.Get<IMediaServerConnector>(instance));
+    }
+
+    private async Task NoteActiveAsync(PluginInstance instance, CancellationToken ct)
+    {
+        var value = JsonSerializer.Serialize(instance.Id);
+        var setting = await db.Settings.FindAsync([ActiveSetting], ct);
+        if (setting?.ValueJson == value)
+            return;
+        // The first time, on an install from before this was noted, the IDs are taken to be this server's if it's the only one.
+        if (setting is not null || await db.PluginInstances.CountAsync(p => p.Type == PluginType.Connector, ct) > 1)
+        {
+            await db.LibraryFiles.Where(f => f.MediaServerTrackId != null).ExecuteUpdateAsync(f => f.SetProperty(x => x.MediaServerTrackId, (string?)null), ct);
+            await db.PlaylistEntries.Where(e => e.ServerTrackId != null && e.Playlist.ServerInstanceId != instance.Id)
+                .ExecuteUpdateAsync(e => e.SetProperty(x => x.ServerTrackId, (string?)null), ct);
+        }
+        if (setting is null)
+            db.Settings.Add(new Setting { Key = ActiveSetting, ValueJson = value });
+        else
+            setting.ValueJson = value;
+        await db.SaveChangesAsync(ct);
     }
 }
 

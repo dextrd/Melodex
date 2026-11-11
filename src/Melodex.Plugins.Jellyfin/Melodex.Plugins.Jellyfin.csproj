@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Melodex.Plugins.Jellyfin</RootNamespace>
+    <Description>Melodex media-server connector for Jellyfin.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Melodex.Contracts\Melodex.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

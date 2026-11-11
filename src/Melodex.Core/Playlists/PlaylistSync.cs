@@ -313,11 +313,16 @@ public sealed class PlaylistSync(MelodexDbContext db, ConnectorPlugins connector
         playlist.ServerInstanceId = null;
         playlist.ServerChangedAt = null;
         playlist.SyncedAt = null;
-        foreach (var entry in playlist.Entries.Where(e => e.TrackId is not null || e.FileId is not null))
+        // The other server's IDs mean nothing here, even for songs only it had: those are looked for by their names.
+        foreach (var entry in playlist.Entries)
             entry.ServerTrackId = null;
     }
 
-    /// <summary>Finds the server's ID for each song that hasn't one yet: by the IDs in its file's tags, then its tags and length.</summary>
+    /// <summary>
+    /// Finds the server's ID for each song that hasn't one yet: by the IDs in its file's tags, then its tags and length.
+    /// A song not in the library, such as one only another media server had, is looked for by its title, artist, album
+    /// and length.
+    /// </summary>
     private async Task FindOnServerAsync(IReadOnlyList<PlaylistEntry> entries, IMediaServerConnector connector, CancellationToken ct)
     {
         var wanted = entries.Where(e => e.ServerTrackId is null).ToList();
@@ -337,7 +342,12 @@ public sealed class PlaylistSync(MelodexDbContext db, ConnectorPlugins connector
         {
             var file = files.FirstOrDefault(f => f.Id == entry.FileId) ?? files.FirstOrDefault(f => f.TrackId is not null && f.TrackId == entry.TrackId);
             if (file is null)
+            {
+                if (entry.TrackId is null && entry.FileId is null)
+                    entry.ServerTrackId = await connector.ResolveTrackAsync(new TrackLookup(Title: entry.Title, Artist: entry.Artist is { Length: > 0 } artist ? artist : null,
+                        Album: entry.Album, Duration: entry.DurationSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : null), ct);
                 continue;
+            }
             if (file.MediaServerTrackId is { } known)
             {
                 entry.ServerTrackId = known;

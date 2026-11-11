@@ -15,7 +15,7 @@ track, and the server's track ID is recorded so apps can switch to it. Code: `Me
 
 `TrackLookup` carries everything the core knows about the file. Try the most specific fields first: the path, then
 the MusicBrainz recording ID or ISRC, then title, artist, album and duration.
-`TrackMatching.Pick` does this for you, as the Navidrome and Plex connectors do: list the server's songs as
+`TrackMatching.Pick` does this for you, as the Navidrome, Jellyfin and Plex connectors do: list the server's songs as
 `TrackMatching.Candidate`s and it picks the one the lookup asks for, comparing tags without case, accents or
 punctuation, and lengths within three seconds.
 
