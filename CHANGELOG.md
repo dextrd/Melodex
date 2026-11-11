@@ -4,6 +4,11 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ## [Unreleased]
 
+### Fixed
+
+- An album page no longer zooms out on iPhones when an edition's name is long: its Edition list shrinks to fit the
+  screen (#42).
+
 ## [1.1.0] - 2026-11-11
 
 Everything about quality: what each file is, what you want, catching lossless that isn't, and upgrading what's
