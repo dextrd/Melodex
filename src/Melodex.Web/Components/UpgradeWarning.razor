@@ -2,7 +2,7 @@
 @inject Preferences Prefs
 
 @*
-    Once each time the web app starts: while weekly upgrades are on and the media server may not keep a song's stars,
+    Once each time the web app starts: while scheduled upgrades are on and the media server may not keep a song's stars,
     plays and playlists across an upgrade, says so, unless told not to again for that warning.
 *@
 @if (_warning is not null)
@@ -10,7 +10,7 @@
     <Dialog Title="Upgrades may lose stars, plays and playlists" Alert="true" OnClose="() => _warning = null">
         <p>@_warning</p>
         <p class="muted small">
-            Upgrades replace songs below their cutoff with better copies, once a week. They can be turned off, and replaced files kept to put back, under
+            Upgrades replace songs below their cutoff with better copies, on a schedule. They can be turned off, and replaced files kept to put back, under
             <a href="settings/quality#upgrades" @onclick="() => _warning = null">Settings → Quality</a>.
         </p>
         <label class="setting-line small">
@@ -41,7 +41,7 @@
         {
             var upgrades = await Api.GetUpgradesAsync();
             // Hidden for this warning; a different one, such as after the server changes, shows again.
-            if (upgrades.Settings.Weekly && upgrades.Warning is { } warning && await Prefs.GetAsync<string?>(Key, null) != warning)
+            if (upgrades.Settings.Scheduled && upgrades.Warning is { } warning && await Prefs.GetAsync<string?>(Key, null) != warning)
             {
                 _warning = warning;
                 StateHasChanged();

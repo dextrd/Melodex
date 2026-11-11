@@ -114,20 +114,66 @@ else
         }
         <div class="card settings-card">
             <label class="setting-line">
-                <input type="checkbox" checked="@_upgradeSettings!.Weekly" @onchange="e => SetUpgrades(_upgradeSettings with { Weekly = (bool)e.Value! })" />
-                Look through the whole library once a week, for at most
-                <NumberField Value="_upgradeSettings.PerRun" Min="1" Max="500" Label="Songs each week"
-                             ValueChanged="n => SetUpgrades(_upgradeSettings with { PerRun = n })" />
-                songs
+                <input type="checkbox" checked="@_upgradeSettings!.Scheduled" @onchange="e => SetUpgrades(_upgradeSettings with { Scheduled = (bool)e.Value! })" />
+                Look through the whole library for upgrades on a schedule
             </label>
-            <div class="muted small">
-                Those looked for longest ago come first, and the worst of those. Each is a request on the Activity page; one that finds nothing better
-                just stays as it is, and is looked for again another week.
-                @if (upgrades.NextRun is { } next && _upgradeSettings.Weekly)
-                {
-                    <span>Next: @next.ToLocalTime().ToString("d MMMM").</span>
-                }
-            </div>
+            @if (_upgradeSettings.Scheduled)
+            {
+                <div class="setting-line" role="group" aria-label="Days">
+                    On
+                    <span class="day-toggles">
+                        @foreach (var day in Week)
+                        {
+                            var on = _upgradeSettings.Days.Contains(day);
+                            <button type="button" class="day-toggle @(on ? "on" : "")" aria-pressed="@(on ? "true" : "false")" title="@day"
+                                    @onclick="() => ToggleDay(day)">@day.ToString()[..3]</button>
+                        }
+                    </span>
+                </div>
+                <div class="setting-line">
+                    Between
+                    <input type="time" aria-label="From" value="@_upgradeSettings.From.ToString("HH:mm")"
+                           @onchange="e => SetTime(e.Value, t => _upgradeSettings with { From = t })" />
+                    and
+                    <input type="time" aria-label="Until" value="@_upgradeSettings.Until.ToString("HH:mm")"
+                           @onchange="e => SetTime(e.Value, t => _upgradeSettings with { Until = t })" />
+                    @if (_upgradeSettings.Until <= _upgradeSettings.From)
+                    {
+                        <span class="muted small">the next day</span>
+                    }
+                </div>
+                <div class="setting-line">
+                    @if (_upgradeSettings.PerRun is { } most)
+                    {
+                        <span>Asking for at most</span>
+                        <NumberField Value="most" Min="1" Max="500" Label="Songs each time" ValueChanged="n => SetUpgrades(_upgradeSettings with { PerRun = n })" />
+                        <span>songs each time</span>
+                    }
+                    else
+                    {
+                        <span>Asking for as many songs as there's time for</span>
+                    }
+                    <label class="small">
+                        <input type="checkbox" checked="@(_upgradeSettings.PerRun is null)"
+                               @onchange="e => SetUpgrades(_upgradeSettings with { PerRun = (bool)e.Value! ? null : 25 })" />
+                        No limit
+                    </label>
+                </div>
+                <div class="muted small">
+                    In the window, a few songs are looked for at a time, as many as fetches run at once, more as each finishes, until the limit, the
+                    last song or the end of the window; any not started by then wait for the next. Those looked for longest ago come first, and
+                    the worst of those. Each is a request on the Activity page, after anything asked for by hand; one that finds nothing better just
+                    stays as it is. Times are in @(_upgradeSettings.TimeZone)@(_upgradeSettings.TimeZone == BrowserZone ? ", this browser's" : "").
+                    @if (upgrades.Running)
+                    {
+                        <span>Looking now.</span>
+                    }
+                    else if (upgrades.NextRun is { } next)
+                    {
+                        <span>Next: @next.ToLocalTime().ToString("dddd d MMMM, HH:mm").</span>
+                    }
+                </div>
+            }
             @foreach (var (value, label) in OldFileOptions)
             {
                 <label class="dialog-choice">
@@ -162,7 +208,7 @@ else
                 <button @onclick="SearchUpgradesAsync" disabled="@(_searching || upgrades.Upgradable == 0)">Look for upgrades now</button>
             </div>
             <div class="muted small">
-                As many as a week's look, starting now. A song, album or artist can be looked for on its own page.
+                As many as a scheduled look asks for (500 at most), starting now, whatever the time. A song, album or artist can be looked for on its own page.
                 @if (_searched is { } found)
                 {
                     <span>@(found.Queued == 0 ? "Nothing new to look for: the rest are being looked for already." : $"Looking for {found.Queued}: they're in Activity.")</span>
@@ -291,6 +337,21 @@ else
         }
     }
 
+    // Monday first.
+    private static readonly DayOfWeek[] Week = [.. Enumerable.Range(1, 7).Select(i => (DayOfWeek)(i % 7))];
+
+    // The browser's own time zone, which the schedule is saved in.
+    private static string BrowserZone => TimeZoneInfo.Local.Id;
+
+    private void ToggleDay(DayOfWeek day) =>
+        SetUpgrades(_upgradeSettings! with { Days = _upgradeSettings.Days.Contains(day) ? _upgradeSettings.Days.Where(d => d != day).ToList() : [.. _upgradeSettings.Days, day] });
+
+    private void SetTime(object? value, Func<TimeOnly, UpgradeSettings> with)
+    {
+        if (TimeOnly.TryParse(value?.ToString(), out var time))
+            SetUpgrades(with(time));
+    }
+
     private void SetUpgrades(UpgradeSettings value)
     {
         _upgradeSettings = value;
@@ -302,7 +363,7 @@ else
         _upgradeError = null;
         try
         {
-            await Api.SaveUpgradeSettingsAsync(_upgradeSettings!);
+            await Api.SaveUpgradeSettingsAsync(_upgradeSettings! with { TimeZone = BrowserZone });
             _upgradesSaved = true;
             _upgradeSettings = null;
             await LoadUpgradesAsync();

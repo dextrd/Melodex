@@ -24,14 +24,14 @@ public sealed class Upgrades(
     IOptions<MelodexOptions> options,
     ILogger<Upgrades> logger)
 {
-    /// <summary>How often the whole library is looked through, while that's on.</summary>
-    public static readonly TimeSpan Week = TimeSpan.FromDays(7);
-
     /// <summary>The oldest Navidrome that gives a song the same ID once its file is replaced, as long as its tags are the same.</summary>
     public static readonly Version KeepingNavidrome = new(0, 55, 0);
 
-    /// <summary>Who weekly upgrades are asked for by, on the Activity page.</summary>
-    public const string WeeklyRequester = "Weekly upgrades";
+    /// <summary>Who scheduled upgrades are asked for by, on the Activity page.</summary>
+    public const string ScheduledRequester = "Scheduled upgrades";
+
+    /// <summary>The most a look through the whole library by hand asks for.</summary>
+    public const int MostByHand = 500;
 
     // Upgrades go after anything asked for by hand, made before or after them: they're never in a hurry.
     private const double Later = 1e10;
@@ -76,9 +76,10 @@ public sealed class Upgrades(
 
     /// <summary>
     /// Asks for an upgrade of each upgradable file in a set that isn't being upgraded or fetched already: those looked
-    /// for longest ago (or never) first, and the worst of those first, up to a limit.
+    /// for longest ago (or never) first, and the worst of those first, up to a limit. Files looked for since
+    /// <paramref name="lookedBefore"/> are left for another time.
     /// </summary>
-    public async Task<UpgradeSearch> SearchAsync(FormatScope scope, int? limit, string requester, CancellationToken ct)
+    public async Task<UpgradeSearch> SearchAsync(FormatScope scope, int? limit, string requester, CancellationToken ct, DateTime? lookedBefore = null)
     {
         var upgradable = await UpgradableAsync(FormatTask.Files(db, scope), ct);
         var ids = upgradable.Select(u => u.FileId).ToList();
@@ -92,6 +93,7 @@ public sealed class Upgrades(
             .ToDictionaryAsync(g => g.Key, g => g.Last, ct);
         var wanted = upgradable
             .Where(u => !busy.Any(b => b.UpgradesFileId == u.FileId || b.TargetId == u.TrackId))
+            .Where(u => lookedBefore is null || looked.GetValueOrDefault(u.FileId) < lookedBefore)
             .OrderBy(u => looked.GetValueOrDefault(u.FileId))
             .ThenByDescending(u => u.Position)
             .Take(limit ?? int.MaxValue)
@@ -120,30 +122,57 @@ public sealed class Upgrades(
         return new UpgradeSearch(upgradable.Count, wanted.Count);
     }
 
-    /// <summary>The weekly look through the whole library, when it's on and due. The first time it's seen on, it's due a week later.</summary>
-    public async Task<UpgradeSearch?> RunWeeklyAsync(CancellationToken ct)
+    /// <summary>
+    /// The scheduled look through the whole library, run every minute. While a window is open it keeps as many upgrades
+    /// going as fetches run at once, asking for more as they finish, until it's asked for as many as a look may, there
+    /// are none left, or the window closes; then those not started yet are cancelled. Returns how many it asked for.
+    /// </summary>
+    public async Task<int> RunScheduledAsync(DateTime utcNow, CancellationToken ct)
     {
         var upgrades = await settings.GetUpgradesAsync(ct);
-        if (!upgrades.Weekly)
-            return null;
-        var last = await settings.GetUpgradeRunAsync(ct);
-        if (last is null)
+        var run = await settings.GetUpgradeRunAsync(ct);
+        var window = upgrades.Scheduled ? UpgradeWindows.Current(upgrades, utcNow) : null;
+        if (window is not { } open)
         {
-            await settings.SaveUpgradeRunAsync(DateTime.UtcNow, ct);
-            return null;
+            if (run.Window is not null && !run.Closed)
+            {
+                var cancelled = await db.Requests.Where(r => r.Requester == ScheduledRequester && r.Status == RequestStatus.Queued)
+                    .ExecuteUpdateAsync(u => u.SetProperty(r => r.Status, RequestStatus.Cancelled)
+                        .SetProperty(r => r.Detail, "Not started before the upgrade window closed").SetProperty(r => r.UpdatedAt, utcNow), ct);
+                await settings.SaveUpgradeRunAsync(run with { Closed = true }, ct);
+                logger.LogInformation("The upgrade window closed, having asked for {Asked} upgrades ({Cancelled} not started)", run.Asked, cancelled);
+            }
+            return 0;
         }
-        if (DateTime.UtcNow - last.Value < Week)
-            return null;
-        await settings.SaveUpgradeRunAsync(DateTime.UtcNow, ct);
-        return await SearchAsync(new FormatScope(FormatScopeKind.Library), Math.Clamp(upgrades.PerRun, 1, 500), WeeklyRequester, ct);
+        if (run.Window != open.Start)
+            run = new UpgradeRun { Window = open.Start };
+        if (run.Done)
+            return 0;
+
+        var active = await db.Requests.CountAsync(r => r.Requester == ScheduledRequester && !RequestService.Finished.Contains(r.Status), ct);
+        var slots = Math.Clamp((await settings.GetFetchAsync(ct)).ParallelFetches, 1, 8) - active;
+        var take = upgrades.PerRun is { } most ? Math.Min(slots, Math.Clamp(most, 1, 500) - run.Asked) : slots;
+        var queued = 0;
+        if (upgrades.PerRun is { } limit && run.Asked >= Math.Clamp(limit, 1, 500))
+            run = run with { Done = true };
+        else if (take > 0)
+        {
+            queued = (await SearchAsync(new FormatScope(FormatScopeKind.Library), take, ScheduledRequester, ct, lookedBefore: open.Start)).Queued;
+            run = run with { Asked = run.Asked + queued, Done = queued == 0 && active == 0 };
+        }
+        await settings.SaveUpgradeRunAsync(run, ct);
+        return queued;
     }
 
     public async Task<UpgradeStatus> StatusAsync(CancellationToken ct)
     {
         var upgrades = await settings.GetUpgradesAsync(ct);
-        DateTime? next = upgrades.Weekly ? (await settings.GetUpgradeRunAsync(ct) ?? DateTime.UtcNow) + Week : null;
+        var now = DateTime.UtcNow;
+        var run = await settings.GetUpgradeRunAsync(ct);
+        var running = upgrades.Scheduled && UpgradeWindows.Current(upgrades, now) is { } open && !(run.Window == open.Start && run.Done);
+        DateTime? next = upgrades.Scheduled ? UpgradeWindows.Next(upgrades, now) : null;
         var upgradable = await UpgradableAsync(db.LibraryFiles, ct);
-        return new UpgradeStatus(upgrades, await WarningAsync(ct), next, upgradable.Count, await HeldAsync(null, ct));
+        return new UpgradeStatus(upgrades, await WarningAsync(ct), next, upgradable.Count, await HeldAsync(null, ct), running);
     }
 
     /// <summary>Files held after an upgrade, newest first, of one song or all.</summary>
@@ -336,10 +365,10 @@ public sealed class Upgrades(
     }
 }
 
-/// <summary>Looks through the library for upgrades once a week, when that's on, and deletes held files whose time is up.</summary>
+/// <summary>Looks through the library for upgrades in their window, when that's on, and deletes held files whose time is up.</summary>
 public sealed class UpgradeScheduler(IServiceScopeFactory scopes, ILogger<UpgradeScheduler> logger) : BackgroundService
 {
-    public static readonly TimeSpan Interval = TimeSpan.FromHours(1);
+    public static readonly TimeSpan Interval = TimeSpan.FromMinutes(1);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -351,7 +380,7 @@ public sealed class UpgradeScheduler(IServiceScopeFactory scopes, ILogger<Upgrad
                 using var scope = scopes.CreateScope();
                 var upgrades = scope.ServiceProvider.GetRequiredService<Upgrades>();
                 await upgrades.SweepAsync(stoppingToken);
-                await upgrades.RunWeeklyAsync(stoppingToken);
+                await upgrades.RunScheduledAsync(DateTime.UtcNow, stoppingToken);
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {

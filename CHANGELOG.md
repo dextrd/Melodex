@@ -31,7 +31,8 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   with a new `POST /v1/spectrum`, so update its image with the core's.
 - **Upgrades** (#20): a song below its cutoff is replaced by a better copy once one is found. Look for upgrades from
   **Quality** on a song's, album's or artist's page, or for the whole library under **Settings → Quality**, where a
-  weekly look through the library is on by default, for up to 25 songs at a time. Sources are asked only for copies
+  scheduled look through the library is on by default: on the days and between the times you pick, as many at once
+  as fetches run, up to a limit (25 to start with) or none. Sources are asked only for copies
   that may be better, and a copy is kept only if it is, by its quality as read and its spectrum. It takes the old
   file's place and exactly its tags, so Navidrome 0.55 or later keeps the song's stars, ratings, plays and playlists;
   with another media server, an older Navidrome or none, Settings and a dialog when the web app starts say they may be

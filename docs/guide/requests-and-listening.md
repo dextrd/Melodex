@@ -70,11 +70,16 @@ cutoff is met.
 - **Look for upgrades** from **Quality** on a song's, album's or artist's page, or for the whole library under
   **Settings → Quality**. Each song is its own request on the Activity page, marked **Upgrade**; an album is upgraded a
   song at a time, so it can be of mixed quality for a while.
-- **Once a week** the whole library is looked through, for up to 25 songs (a setting), those looked for longest ago
-  first and the worst of those. It's on from the start, and can be turned off. Upgrades go after anything you ask for.
+- **On a schedule** the whole library is looked through: on the days you pick (Mondays to start with), between two
+  times (01:00 and 06:00 to start with, in your browser's time zone; a window can run past midnight). In the window a
+  few songs are looked for at a time, as many as **Settings → Fetching** runs at once, more as each finishes, until
+  the limit (25 to start with, or **No limit**), the last song or the end of the window; any not started by then are
+  cancelled and wait for the next. Those looked for longest ago go first, and the worst of those. It's on from the
+  start, and can be turned off. Upgrades go after anything you ask for, and **Look for upgrades now** ignores the
+  window.
 - **Only a better copy is kept.** Sources are only asked for copies that may be better than what you have, and a
   copy's quality is read and its spectrum checked once it's here: one no better is refused (Activity says **No
-  better**). A song nothing better is found for is left as it is (**Unchanged**), and looked for again another week.
+  better**). A song nothing better is found for is left as it is (**Unchanged**), and looked for again in a later window.
 - **The better copy takes the old file's place**: the same path with its own extension (`10 Voyager.mp3` becomes
   `10 Voyager.flac`), and exactly the old file's tags, MusicBrainz IDs and embedded cover included. Its lyrics file
   stays with it. Only its loudness (ReplayGain) is its own.
@@ -97,7 +102,7 @@ shares depends on how it tells songs apart.
   tell which.
 
 When the media server isn't Navidrome 0.55 or later, or none is connected, **Settings → Quality** says so above the
-upgrade settings, and while weekly upgrades are on the web app says so once each time it starts, until you tick
+upgrade settings, and while scheduled upgrades are on the web app says so once each time it starts, until you tick
 **Don't show this again**. Upgrades still run: whether that matters is yours to decide.
 
 ## Listen now

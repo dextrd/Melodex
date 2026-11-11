@@ -688,9 +688,70 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
     {
         var status = await Api.GetUpgradesAsync();
         Assert.StartsWith("No media server is connected", status.Warning);
-        Assert.True(status.Settings.Weekly);
+        Assert.True(status.Settings.Scheduled);
+        Assert.Equal([DayOfWeek.Monday], status.Settings.Days);
         Assert.Equal((25, OldFiles.Hold, 14), (status.Settings.PerRun, status.Settings.OldFiles, status.Settings.HoldDays));
         Assert.NotNull(status.NextRun);
+    }
+
+    [TestLibraryFact]
+    public async Task Scheduled_upgrades_ask_for_no_more_than_the_limit_and_stop_when_the_window_closes()
+    {
+        var before = await Api.GetUpgradesAsync();
+        var now = DateTime.UtcNow;
+        // All of today, in UTC.
+        await Api.SaveUpgradeSettingsAsync(before.Settings with
+        {
+            Days = [now.DayOfWeek], From = new(0, 0), Until = new(0, 0), TimeZone = "UTC", PerRun = 1
+        });
+        using var scope = fixture.Factory.Services.CreateScope();
+        var upgrades = scope.ServiceProvider.GetRequiredService<Upgrades>();
+        var db = scope.ServiceProvider.GetRequiredService<Melodex.Core.Data.MelodexDbContext>();
+        try
+        {
+            Assert.True((await Api.GetUpgradesAsync()).Running);
+            Assert.Equal(1, await upgrades.RunScheduledAsync(now, default));
+            Assert.Equal(0, await upgrades.RunScheduledAsync(now.AddMinutes(1), default));
+            await Api.SaveUpgradeSettingsAsync((await Api.GetUpgradesAsync()).Settings with { PerRun = null });
+            Assert.Null((await Api.GetUpgradesAsync()).Settings.PerRun);
+
+            // Two days on, the window has closed: nothing more is asked for, and any not started never will be.
+            Assert.Equal(0, await upgrades.RunScheduledAsync(now.AddDays(2), default));
+            Assert.False(await db.Requests.AnyAsync(r => r.Requester == Upgrades.ScheduledRequester && r.Status == Melodex.Core.Data.RequestStatus.Queued));
+        }
+        finally
+        {
+            await Api.SaveUpgradeSettingsAsync(before.Settings);
+            foreach (var id in await db.Requests.Where(r => r.Requester == Upgrades.ScheduledRequester && r.Status != Melodex.Core.Data.RequestStatus.Cancelled).Select(r => r.Id).ToListAsync())
+                await fixture.WaitAsync(id);
+        }
+    }
+
+    [Theory]
+    // Monday 01:00–06:00 in London, which is UTC in winter and an hour ahead in summer.
+    [InlineData("2026-11-09T03:00:00Z", true)]
+    [InlineData("2026-11-09T06:00:00Z", false)]
+    [InlineData("2026-11-10T03:00:00Z", false)]
+    [InlineData("2026-07-06T00:30:00Z", true)]
+    [InlineData("2026-07-06T05:30:00Z", false)]
+    public void An_upgrade_window_is_in_its_own_time_zone(string at, bool open)
+    {
+        var settings = new UpgradeSettings { TimeZone = "Europe/London" };
+        Assert.Equal(open, UpgradeWindows.Current(settings, DateTime.Parse(at).ToUniversalTime()) is not null);
+    }
+
+    [Fact]
+    public void An_upgrade_window_can_run_past_midnight_into_the_next_day()
+    {
+        // Fridays and Saturdays, 22:00 until 04:00 the next morning.
+        var settings = new UpgradeSettings { Days = [DayOfWeek.Friday, DayOfWeek.Saturday], From = new(22, 0), Until = new(4, 0) };
+        var saturdayMorning = new DateTime(2026, 11, 14, 3, 0, 0, DateTimeKind.Utc);
+        Assert.Equal((new DateTime(2026, 11, 13, 22, 0, 0), new DateTime(2026, 11, 14, 4, 0, 0)), UpgradeWindows.Current(settings, saturdayMorning));
+        Assert.NotNull(UpgradeWindows.Current(settings, new DateTime(2026, 11, 15, 3, 0, 0, DateTimeKind.Utc)));
+        Assert.Null(UpgradeWindows.Current(settings, new DateTime(2026, 11, 16, 3, 0, 0, DateTimeKind.Utc)));
+        Assert.Equal(new DateTime(2026, 11, 14, 22, 0, 0), UpgradeWindows.Next(settings, saturdayMorning));
+        Assert.Equal(new DateTime(2026, 11, 20, 22, 0, 0), UpgradeWindows.Next(settings, new DateTime(2026, 11, 15, 3, 0, 0, DateTimeKind.Utc)));
+        Assert.Null(UpgradeWindows.Next(settings with { Days = [] }, saturdayMorning));
     }
 
     [Theory]

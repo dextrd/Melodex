@@ -58,15 +58,10 @@ public sealed class SettingsService(MelodexDbContext db)
 
     public Task SaveUpgradesAsync(UpgradeSettings value, CancellationToken ct) => SaveAsync(UpgradesKey, value, ct);
 
-    /// <summary>When the weekly look for upgrades last ran, or was first seen on.</summary>
-    public async Task<DateTime?> GetUpgradeRunAsync(CancellationToken ct) => (await GetAsync<UpgradeRun>(UpgradeRunKey, ct)).At;
+    /// <summary>Where the scheduled look for upgrades stands, in its latest window.</summary>
+    public Task<UpgradeRun> GetUpgradeRunAsync(CancellationToken ct) => GetAsync<UpgradeRun>(UpgradeRunKey, ct);
 
-    public Task SaveUpgradeRunAsync(DateTime at, CancellationToken ct) => SaveAsync(UpgradeRunKey, new UpgradeRun { At = at }, ct);
-
-    private sealed record UpgradeRun
-    {
-        public DateTime? At { get; init; }
-    }
+    public Task SaveUpgradeRunAsync(UpgradeRun run, CancellationToken ct) => SaveAsync(UpgradeRunKey, run, ct);
 
     public Task<LogSettings> GetLogAsync(CancellationToken ct) => GetAsync<LogSettings>(LogKey, ct);
 
@@ -88,4 +83,14 @@ public sealed class SettingsService(MelodexDbContext db)
             row.ValueJson = json;
         await db.SaveChangesAsync(ct);
     }
+}
+
+/// <summary>The scheduled look for upgrades in a window.</summary>
+/// <remarks>Window is when it opened, in UTC; Asked, how many upgrades it's asked for; Done, that it needs no more; Closed, that it's over.</remarks>
+public sealed record UpgradeRun
+{
+    public DateTime? Window { get; init; }
+    public int Asked { get; init; }
+    public bool Done { get; init; }
+    public bool Closed { get; init; }
 }
