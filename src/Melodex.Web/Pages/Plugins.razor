@@ -39,7 +39,7 @@ else
 
     @if (_choosing is { } type)
     {
-        <Dialog Title="@(_adding is { } a ? $"Add {a.Name}" : $"Add to {SectionName(type)}")" OnClose="CloseAdd" Class="wide">
+        <Dialog Title="@(_adding is { } a ? $"Add {(a.Key == Own ? "your own plugin" : a.Name)}" : $"Add to {SectionName(type)}")" OnClose="CloseAdd" Class="wide">
             @if (_error is not null) { <p class="error">@_error</p> }
             @if (_adding is { } adding)
             {
@@ -53,6 +53,12 @@ else
                 }
                 else
                 {
+                    @if (adding.Key == Own)
+                    {
+                        <p class="muted">A plugin that doesn't come with Melodex, running on its own, such as in a container of its own. It must speak
+                            Melodex's @ContractName(type) contract: see <a href="settings/help/plugins#your-own-plugins">your own plugins</a> in the guide.
+                            Only add plugins you trust: they're sent their settings, and what they answer goes into your library.</p>
+                    }
                     <label class="field">
                         <span class="field-label">Address</span>
                         <input type="text" placeholder="http://my-plugin:8080" @bind="_endpoint" @bind:event="oninput" />
@@ -69,6 +75,10 @@ else
             else
             {
                 <div class="templates">
+                    @if (!Templates(type).Any())
+                    {
+                        <p class="muted small">Nothing that comes with Melodex is left to add here.</p>
+                    }
                     @foreach (var template in Templates(type))
                     {
                         var added = Added(template);
@@ -82,7 +92,11 @@ else
                         </button>
                     }
                 </div>
-                <div class="toolbar dialog-buttons"><button @onclick="CloseAdd">Cancel</button></div>
+                <div class="toolbar dialog-buttons">
+                    <button class="link own-plugin" @onclick="() => Pick(OwnPlugin(type))">Add your own plugin…</button>
+                    <span class="spacer"></span>
+                    <button @onclick="CloseAdd">Cancel</button>
+                </div>
             }
         </Dialog>
     }
@@ -146,8 +160,21 @@ else
         new("tidal", "Tidal", "Downloads from Tidal with your own subscription, in FLAC up to 24-bit/192 kHz.", PluginType.Retrieval, "http://retriever-tidal:8080"),
         new("bandcamp", "Bandcamp", "Downloads albums and songs you've bought on Bandcamp, in FLAC or another format it offers.", PluginType.Retrieval, "http://retriever-bandcamp:8080"),
         new("inbox", "Inbox folder", "Offers audio files you drop into a folder, matched to requests by their tags.", PluginType.Retrieval, "http://retriever-inbox:8080"),
-        new("other", "Another plugin", "Any plugin that speaks the retrieval contract, by its address.", PluginType.Retrieval, ""),
     ];
+
+    private const string Own = "own";
+
+    /// <summary>A plugin that doesn't come with Melodex, of the section's kind, by its address.</summary>
+    private static Template OwnPlugin(PluginType type) => new(Own, "Your own plugin", "", type, "");
+
+    private static string ContractName(PluginType type) => type switch
+    {
+        PluginType.Retrieval => "retrieval",
+        PluginType.Connector => "media server",
+        PluginType.Index => "catalogue",
+        PluginType.Lyrics => "lyrics",
+        _ => "artwork",
+    };
 
     private IReadOnlyList<PluginInfo>? _plugins;
     private IReadOnlyList<AvailablePlugin> _available = [];
@@ -233,10 +260,7 @@ else
                     <h2>@title</h2>
                     <p class="muted small">@about</p>
                 </div>
-                @if (Templates(type).Any())
-                {
-                    <button class="primary small" @onclick="() => Choose(type)">Add</button>
-                }
+                <button class="primary small" @onclick="() => Choose(type)">Add</button>
             </header>
             @if (plugins.Count == 0)
             {
@@ -354,7 +378,7 @@ else
         var adding = _adding!;
         var added = adding.BuiltIn is { } builtIn
             ? await Api.AddPluginAsync(new AddPlugin(PluginId: builtIn.Manifest.Id, Settings: builtIn.Manifest.UsesSettingsOf is null ? _addForm!.ToJson() : null))
-            : await Api.AddPluginAsync(new AddPlugin(Endpoint: _endpoint.Trim()));
+            : await Api.AddPluginAsync(new AddPlugin(Endpoint: _endpoint.Trim(), Type: adding.Type));
         _adding = null;
         _choosing = null;
         await Api.TestPluginAsync(added.Id);

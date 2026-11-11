@@ -5,11 +5,14 @@ go with the catalogue and the words of the songs. Each has its own contract:
 
 | Type | Answers | Runs | Contract | Reference plugin |
 | --- | --- | --- | --- | --- |
-| [Index plugin](index-plugins.md) | What exists | In process (.NET assembly) | `IIndexPlugin` v1.0 | MusicBrainz |
+| [Index plugin](index-plugins.md) | What exists | In process (.NET assembly), or [at an address](remote-plugins.md) | `IIndexPlugin` v1.0 | MusicBrainz |
 | [Retrieval plugin](retrieval-plugins.md) | How music is fetched | Own container, over HTTP | [`retrieval-v1.openapi.yaml`](retrieval-v1.openapi.yaml) v1.0 | yt-dlp |
-| [Media-server connector](media-server-connectors.md) | Where music ends up | In process (.NET assembly) | `IMediaServerConnector` v1.3 | Navidrome (Subsonic API) |
-| [Artwork plugin](artwork-plugins.md) | What it looks like | In process (.NET assembly) | `IArtworkPlugin` v1.0 | Cover Art Archive, Wikimedia Commons, Deezer |
-| [Lyrics plugin](lyrics-plugins.md) | What the words are | In process (.NET assembly) | `ILyricsPlugin` v1.1 | LRCLIB |
+| [Media-server connector](media-server-connectors.md) | Where music ends up | In process (.NET assembly), or [at an address](remote-plugins.md) | `IMediaServerConnector` v1.3 | Navidrome (Subsonic API) |
+| [Artwork plugin](artwork-plugins.md) | What it looks like | In process (.NET assembly), or [at an address](remote-plugins.md) | `IArtworkPlugin` v1.0 | Cover Art Archive, Wikimedia Commons, Deezer |
+| [Lyrics plugin](lyrics-plugins.md) | What the words are | In process (.NET assembly), or [at an address](remote-plugins.md) | `ILyricsPlugin` v1.1 | LRCLIB |
+
+Plugins that come with Melodex run in process, but a catalogue, artwork, lyrics or media-server plugin can also run
+on its own, in any language, and be added by its address: see [plugins at an address](remote-plugins.md).
 
 The .NET types live in the `Melodex.Contracts` package (`src/Melodex.Contracts`). The XML docs on those types
 are normative; these pages explain the intent and the rules around them.
@@ -29,7 +32,7 @@ are normative; these pages explain the intent and the rules around them.
 ## Manifest
 
 Every plugin ships a manifest (`PluginManifest`). .NET plugins return it from `IPluginFactory.Manifest`; retrieval
-plugins serve it at `GET /v1/manifest`. Over JSON, names are camelCase and enums are lowercase strings.
+plugins, and any other plugin at an address, serve it at `GET /v1/manifest`. Over JSON, names are camelCase and enums are lowercase strings.
 
 ```json
 {
@@ -80,7 +83,8 @@ Each type is versioned on its own as `major.minor`:
 ## Lifecycle
 
 1. **Install.** The user picks a plugin from the in-app catalogue. .NET plugins are dropped into the plugins folder
-   and loaded at startup; retrieval plugins are containers the user adds to the Compose stack and registers by URL.
+   and loaded at startup; retrieval plugins, and any other plugin at an address, are services the user runs, such as
+   containers in the Compose stack, and adds by URL.
 2. **Configure.** The web app renders the settings form from `settingsSchema`. The core validates settings against
    the schema before saving them.
 3. **Test.** The Test button runs the plugin's health check with the entered settings, before they're saved.

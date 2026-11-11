@@ -7,6 +7,7 @@ using Melodex.Contracts.Plugins.Artwork;
 using Melodex.Contracts.Plugins.Connectors;
 using Melodex.Contracts.Plugins.Index;
 using Melodex.Contracts.Plugins.Lyrics;
+using Melodex.Contracts.Plugins.Remote;
 using Melodex.Core.Data;
 using Melodex.Plugins.Deezer;
 using Melodex.Plugins.Lrclib;
@@ -16,8 +17,9 @@ using Melodex.Plugins.Wikimedia;
 namespace Melodex.Core.Plugins;
 
 /// <summary>
-/// Creates and caches live instances of configured in-process plugins. An instance is rebuilt when its settings
-/// change; its HTTP client (and so its rate limit) lives as long as the instance.
+/// Creates and caches live instances of configured catalogue, artwork, lyrics and media-server plugins: loaded in
+/// process, or reached at an address (<see cref="RemotePlugin"/>). An instance is rebuilt when its settings change;
+/// its HTTP client (and so its rate limit) lives as long as the instance.
 /// </summary>
 public sealed class PluginHost(
     PluginCatalog catalog,
@@ -26,12 +28,15 @@ public sealed class PluginHost(
     ILoggerFactory loggerFactory)
 {
     private readonly ConcurrentDictionary<Guid, (string Settings, IPlugin Plugin)> _instances = new();
+    private readonly ConcurrentDictionary<string, PluginManifest?> _remoteManifests = new();
 
     public T Get<T>(PluginInstance instance) where T : class, IPlugin
     {
+        // A plugin at an address is rebuilt when it moves or says something new about itself, as well.
+        var key = instance.Endpoint is null ? instance.SettingsJson : $"{instance.SettingsJson}\n{instance.Endpoint}\n{instance.ManifestJson}";
         var cached = _instances.AddOrUpdate(instance.Id,
-            _ => (instance.SettingsJson, Create(instance)),
-            (_, existing) => existing.Settings == instance.SettingsJson ? existing : (instance.SettingsJson, Create(instance)));
+            _ => (key, Create(instance)),
+            (_, existing) => existing.Settings == key ? existing : (key, Create(instance)));
         return cached.Plugin as T
                ?? throw new InvalidOperationException($"Plugin {instance.PluginId} doesn't implement {typeof(T).Name}.");
     }
@@ -42,7 +47,7 @@ public sealed class PluginHost(
     /// </summary>
     public async Task<PluginInstance?> ResolveAsync(MelodexDbContext db, PluginInstance instance, CancellationToken ct)
     {
-        if (catalog.Find(instance.PluginId)?.Manifest.UsesSettingsOf is not { } lender)
+        if (instance.Endpoint is not null || catalog.Find(instance.PluginId)?.Manifest.UsesSettingsOf is not { } lender)
             return instance;
         var settings = await db.PluginInstances.Where(p => p.PluginId == lender).OrderBy(p => p.Priority)
             .Select(p => p.SettingsJson).FirstOrDefaultAsync(ct);
@@ -55,8 +60,25 @@ public sealed class PluginHost(
             };
     }
 
+    /// <summary>
+    /// The manifest of a plugin that can run: as it said at its address when added or last tested, or as loaded. Null
+    /// when it can't, such as after its plugin was taken out of the plugins folder.
+    /// </summary>
+    public PluginManifest? ManifestOf(PluginInstance instance) => instance.Endpoint is not null
+        ? instance.ManifestJson is { } json
+            ? _remoteManifests.GetOrAdd(json, j => JsonSerializer.Deserialize<PluginManifest>(j, RemoteJson.Options))
+            : null
+        : catalog.Find(instance.PluginId) is { Factory: not null } found ? found.Manifest : null;
+
     private IPlugin Create(PluginInstance instance)
     {
+        if (instance.Endpoint is { } endpoint)
+        {
+            var manifest = ManifestOf(instance) ?? throw new InvalidOperationException($"{instance.Name} hasn't said what it is yet.");
+            var http = PluginHttp.CreateClient(httpOptions.Value, manifest.MaxRequestsPerSecond);
+            http.BaseAddress = new Uri(endpoint.EndsWith('/') ? endpoint : endpoint + "/");
+            return RemotePlugin.Create(instance.Type, http, JsonDocument.Parse(instance.SettingsJson).RootElement.Clone(), manifest);
+        }
         var plugin = catalog.Find(instance.PluginId)
                      ?? throw new InvalidOperationException($"Plugin {instance.PluginId} isn't installed.");
         if (plugin.Factory is null)
@@ -82,7 +104,7 @@ public sealed record CatalogueIndex(PluginInstance Instance, IIndexPlugin Plugin
 /// it doesn't have, and each is asked about entities by its own IDs. There may be none: Melodex is then a plain music
 /// library, showing files as their tags say, without missing music or fetching.
 /// </summary>
-public sealed class IndexPlugins(MelodexDbContext db, PluginHost host, PluginCatalog catalog)
+public sealed class IndexPlugins(MelodexDbContext db, PluginHost host)
 {
     public const string DefaultsSetting = "index.defaults";
 
@@ -94,7 +116,7 @@ public sealed class IndexPlugins(MelodexDbContext db, PluginHost host, PluginCat
             .ToListAsync(cancellationToken);
         // A plugin that doesn't say is taken to use MusicBrainz IDs, as every index plugin did before the field existed.
         return instances
-            .Select(i => new CatalogueIndex(i, host.Get<IIndexPlugin>(i), catalog.Find(i.PluginId)?.Manifest.Provider ?? Melodex.Contracts.Catalogue.Providers.MusicBrainz))
+            .Select(i => new CatalogueIndex(i, host.Get<IIndexPlugin>(i), host.ManifestOf(i)?.Provider ?? Melodex.Contracts.Catalogue.Providers.MusicBrainz))
             .ToList();
     }
 
@@ -139,7 +161,7 @@ public sealed class ConnectorPlugins(MelodexDbContext db, PluginHost host)
 }
 
 /// <summary>The enabled artwork plugins that can picture a subject, in the user's order.</summary>
-public sealed class ArtworkPlugins(MelodexDbContext db, PluginHost host, PluginCatalog catalog)
+public sealed class ArtworkPlugins(MelodexDbContext db, PluginHost host)
 {
     public const string DefaultsSetting = "artwork.defaults";
 
@@ -150,7 +172,7 @@ public sealed class ArtworkPlugins(MelodexDbContext db, PluginHost host, PluginC
         var plugins = new List<(PluginInstance, IArtworkPlugin)>();
         foreach (var instance in instances)
         {
-            if (catalog.Find(instance.PluginId) is not { Factory: not null } found || !found.Manifest.Capabilities.Contains(capability))
+            if (host.ManifestOf(instance) is not { } manifest || !manifest.Capabilities.Contains(capability))
                 continue;
             if (await host.ResolveAsync(db, instance, ct) is { } running)
                 plugins.Add((instance, host.Get<IArtworkPlugin>(running)));
@@ -205,7 +227,7 @@ public sealed class ArtworkPlugins(MelodexDbContext db, PluginHost host, PluginC
 }
 
 /// <summary>The enabled lyrics plugins, in the user's order.</summary>
-public sealed class LyricsPlugins(MelodexDbContext db, PluginHost host, PluginCatalog catalog)
+public sealed class LyricsPlugins(MelodexDbContext db, PluginHost host)
 {
     public const string DefaultsSetting = "lyrics.defaults";
 
@@ -215,7 +237,7 @@ public sealed class LyricsPlugins(MelodexDbContext db, PluginHost host, PluginCa
         var plugins = new List<(PluginInstance, ILyricsPlugin)>();
         foreach (var instance in instances)
         {
-            if (catalog.Find(instance.PluginId) is not { Factory: not null })
+            if (host.ManifestOf(instance) is null)
                 continue;
             if (await host.ResolveAsync(db, instance, ct) is { } running)
                 plugins.Add((instance, host.Get<ILyricsPlugin>(running)));

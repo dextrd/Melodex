@@ -4,6 +4,12 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ## [Unreleased]
 
+### Added
+
+- Plugins of every kind can be your own, not just sources: a catalogue, artwork, lyrics or media-server plugin can run
+  on its own, in any language, and be added by its address with **Add your own plugin…**, a button of its own in every
+  section's Add dialog. They speak a small HTTP contract for their kind (#46).
+
 ### Fixed
 
 - An album page no longer zooms out on iPhones when an edition's name is long: its Edition list shrinks to fit the

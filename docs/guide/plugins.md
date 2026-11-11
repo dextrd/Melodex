@@ -42,6 +42,19 @@ lossless download is checked by its spectrum before it's kept; see
 The inbox plugin fetches nothing itself: it offers whatever you drop into its folder (`INBOX_PATH`). Drop in the files
 for a request, then press **Retry** on it.
 
+## Your own plugins
+
+Plugins don't have to come with Melodex. Anyone can write one, in any language, as a small web service that speaks the
+contract for its kind (see [plugins at an address](../contracts/remote-plugins.md), and
+[retrieval plugins](../contracts/retrieval-plugins.md) for sources). Run it where Melodex can reach it, such as in a
+container in the same Compose project. Then, in its section, choose **Add**, then **Add your own plugin…**, and give
+its address, for example `http://my-plugin:8080`. Melodex asks it what it is, refuses it if it's another kind or built
+for a contract this version of Melodex doesn't have, and shows its settings. From then on it's used just like a plugin
+that came with Melodex: in its place in the order, with **Test** to check it.
+
+Only add plugins you trust. A plugin is sent its settings, keys and passwords included, and what it answers goes into
+your library.
+
 ## Your responsibility
 
 Melodex ships no media sources. You're responsible for the plugins you run, and for complying with each source's
