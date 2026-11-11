@@ -6,7 +6,7 @@ Melodex is pluggable in five ways. Manage them under **Settings → Plugins**, w
 | Kind | Does | Comes with Melodex |
 | --- | --- | --- |
 | **Catalogue** | Where artists, albums and songs come from | MusicBrainz (its public server, or your own mirror), Deezer |
-| **Media server** | Told to scan when music arrives; also lends its covers, and can sync playlists | Navidrome |
+| **Media server** | Told to scan when music arrives; Navidrome also lends its covers, and can sync playlists | Navidrome, Plex |
 | **Retrieval** | Fetches music | YouTube Music (yt-dlp) and the inbox folder; Internet Archive, Prowlarr, Qobuz, Tidal and Bandcamp when you turn them on |
 | **Artwork** | Covers and artist pictures | Cover Art Archive, Wikimedia Commons, Deezer, fanart.tv (with your own key) |
 | **Lyrics** | The words of songs, synced where they can be | LRCLIB |
@@ -36,6 +36,26 @@ Bandcamp's, straight from the store, and Prowlarr's with a rip's log and cue, or
 **Trackers known for lossless** setting (by their names in Prowlarr, separated by commas). Whatever it's said to be, a
 lossless download is checked by its spectrum before it's kept; see
 [lossless that seems lossy](requests-and-listening.md#lossless-that-seems-lossy).
+
+## Plex
+
+Melodex can tell Plex Media Server about new music instead of Navidrome. Add **Plex** under **Media server**, with:
+
+- **Server URL**, where Melodex reaches Plex, such as `http://plex:32400`.
+- **Plex token**, the `X-Plex-Token` of the server's owner or an admin. Plex's support article *Finding an
+  authentication token* shows where to find it.
+- **Music library**, the name of the Plex library that holds Melodex's music folder, if it isn't the first music
+  library.
+- **Music folder on the Plex server**, if Plex sees that folder somewhere other than the library's first folder.
+  Melodex's paths are relative to its music folder, so this is how they become Plex's.
+
+Plex is told to scan only the folders new music went into, and finds each song by its file. Some things are
+Navidrome's alone for now:
+
+- Plex's accounts are plex.tv's rather than logins to the server, so playlists don't sync with Plex.
+- Covers from your own files come through Navidrome only.
+- An upgraded song with a new file name may be a new song to Plex, without its plays and ratings (see
+  [upgrades](requests-and-listening.md#upgrades)).
 
 ## The inbox
 

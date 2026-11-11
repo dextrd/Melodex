@@ -8,6 +8,7 @@ using Melodex.Plugins.Lrclib;
 using Melodex.Plugins.Wikimedia;
 using Melodex.Plugins.MusicBrainz;
 using Melodex.Plugins.Navidrome;
+using Melodex.Plugins.Plex;
 
 namespace Melodex.Core.Plugins;
 
@@ -27,7 +28,8 @@ public sealed class PluginCatalog
 {
     private static readonly Assembly[] BuiltIn =
         [typeof(MusicBrainzIndexFactory).Assembly, typeof(NavidromeConnectorFactory).Assembly, typeof(FanartTvFactory).Assembly,
-         typeof(WikimediaCommonsFactory).Assembly, typeof(DeezerFactory).Assembly, typeof(LrclibFactory).Assembly];
+         typeof(WikimediaCommonsFactory).Assembly, typeof(DeezerFactory).Assembly, typeof(LrclibFactory).Assembly,
+         typeof(PlexConnectorFactory).Assembly];
 
     private readonly Dictionary<string, DiscoveredPlugin> _plugins = new(StringComparer.Ordinal);
 

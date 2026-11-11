@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Melodex.Plugins.Plex</RootNamespace>
+    <Description>Melodex media-server connector for Plex Media Server.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Melodex.Contracts\Melodex.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

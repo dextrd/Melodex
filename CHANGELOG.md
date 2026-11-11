@@ -6,6 +6,9 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ### Added
 
+- Plex can be the media server instead of Navidrome. Melodex tells it to scan just the folders new music went into,
+  and finds each song there by its file, its MusicBrainz ID or its tags. Setup's music step offers a choice of media
+  server. Playlists don't sync with Plex (#47).
 - Plugins of every kind can be your own, not just sources: a catalogue, artwork, lyrics or media-server plugin can run
   on its own, in any language, and be added by its address with **Add your own plugin…**, a button of its own in every
   section's Add dialog. They speak a small HTTP contract for their kind (#46).

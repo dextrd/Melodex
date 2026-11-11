@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Melodex.Contracts.Plugins;
 using Melodex.Contracts.Plugins.Connectors;
@@ -70,38 +69,15 @@ public sealed class NavidromeConnector : IMediaServerConnector, IFullScan, IPlay
             return found.Id;
         // Navidrome searches the words in its own titles, so "Digital Love (album version)" doesn't find a song tagged
         // "Digital Love". Without the brackets it can, and the IDs, or the shorter title with every other tag, pick it.
-        if (Bare(lookup.Title) is { } bare)
+        if (TrackMatching.WithoutBrackets(lookup.Title) is { } bare)
             return Pick(await SearchAsync(bare, 0, 50, cancellationToken), lookup with { Title = bare })?.Id;
         return null;
     }
 
-    // A title without what's in brackets at its end.
-    private static string? Bare(string title)
-    {
-        var cut = title.IndexOfAny(['(', '[']);
-        return cut > 0 ? title[..cut].Trim() : null;
-    }
-
     /// <summary>The best of the songs for the lookup, most certain evidence first; null if none fits.</summary>
-    public static Song? Pick(IReadOnlyList<Song> songs, TrackLookup lookup)
-    {
-        if (lookup.MusicBrainzRecordingId is { Length: > 0 } recording
-            && songs.FirstOrDefault(s => string.Equals(s.MusicBrainzId, recording, StringComparison.OrdinalIgnoreCase)) is { } byRecording)
-            return byRecording;
-        if (lookup.Isrc is { Length: > 0 } isrc && songs.FirstOrDefault(s => s.Isrcs.Any(i => SameIsrc(i, isrc))) is { } byIsrc)
-            return byIsrc;
-        if (lookup.Path is { Length: > 0 } path && songs.FirstOrDefault(s => s.Path is not null && SamePath(s.Path, path)) is { } byPath)
-            return byPath;
-
-        // A song with its own MusicBrainz ID that isn't this recording is a different song, however alike the tags.
-        return songs
-            .Where(s => lookup.MusicBrainzRecordingId is null || string.IsNullOrEmpty(s.MusicBrainzId))
-            .Where(s => Same(s.Title, lookup.Title))
-            .Where(s => lookup.Artist is null || Same(s.Artist, lookup.Artist))
-            .Where(s => lookup.Album is null || Same(s.Album, lookup.Album))
-            .Where(s => lookup.Duration is null || s.Duration is null || Math.Abs((s.Duration.Value - lookup.Duration.Value).TotalSeconds) <= 3)
-            .FirstOrDefault();
-    }
+    public static Song? Pick(IReadOnlyList<Song> songs, TrackLookup lookup) =>
+        TrackMatching.Pick(songs.Select(s => new TrackMatching.Candidate(s.Id, s.Title, s.Artist, s.Album, s.Duration, s.Path, s.MusicBrainzId, s.Isrcs)), lookup)
+            is { } found ? songs.First(s => s.Id == found.Id) : null;
 
     public async Task<IReadOnlyList<ServerPlaylist>> GetPlaylistsAsync(CancellationToken cancellationToken)
     {
@@ -268,24 +244,6 @@ public sealed class NavidromeConnector : IMediaServerConnector, IFullScan, IPlay
 
     internal static string? Text(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-
-    private static bool SameIsrc(string a, string b) =>
-        string.Equals(a.Replace("-", ""), b.Replace("-", ""), StringComparison.OrdinalIgnoreCase);
-
-    private static bool SamePath(string server, string ours) =>
-        server.Replace('\\', '/').TrimStart('/').EndsWith(ours.Replace('\\', '/').TrimStart('/'), StringComparison.Ordinal);
-
-    internal static bool Same(string? a, string? b) => a is not null && b is not null && Simplify(a) == Simplify(b);
-
-    private static string Simplify(string text)
-    {
-        var normalised = text.Normalize(NormalizationForm.FormD);
-        var result = new StringBuilder(normalised.Length);
-        foreach (var c in normalised)
-            if (char.IsLetterOrDigit(c))
-                result.Append(char.ToLowerInvariant(c));
-        return result.ToString();
-    }
 
     /// <summary>A song from a Subsonic response.</summary>
     public sealed record Song(string Id, string Title, string? Artist, string? Album, TimeSpan? Duration, string? Path, string? MusicBrainzId, IReadOnlyList<string> Isrcs)

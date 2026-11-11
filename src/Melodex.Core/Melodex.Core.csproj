@@ -25,6 +25,7 @@
     <ProjectReference Include="..\Melodex.Client\Melodex.Client.csproj" />
     <ProjectReference Include="..\Melodex.Web\Melodex.Web.csproj" />
     <ProjectReference Include="..\Melodex.Plugins.Navidrome\Melodex.Plugins.Navidrome.csproj" />
+    <ProjectReference Include="..\Melodex.Plugins.Plex\Melodex.Plugins.Plex.csproj" />
     <ProjectReference Include="..\Melodex.Plugins.FanartTv\Melodex.Plugins.FanartTv.csproj" />
     <ProjectReference Include="..\Melodex.Plugins.Wikimedia\Melodex.Plugins.Wikimedia.csproj" />
     <ProjectReference Include="..\Melodex.Plugins.Deezer\Melodex.Plugins.Deezer.csproj" />
