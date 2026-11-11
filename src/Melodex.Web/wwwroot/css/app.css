@@ -468,6 +468,9 @@ td.actions > * + * { margin-left: .6rem; }
 .suggestion-row { display: grid; grid-template-columns: 3rem minmax(0, 1fr); gap: .6rem; align-items: start; }
 .suggestion-row > a { display: block; }
 .suggestion-row .cover { width: 3rem; }
+/* A song's title links to its page, but reads like the file titles beside it. */
+.suggestion-text > div:first-child > a { color: inherit; }
+.suggestion-text > div:first-child > a:hover { text-decoration: underline; }
 .suggestion-text { min-width: 0; }
 .suggestion-text .suggestion { display: flex; gap: .5rem; align-items: baseline; min-width: 0; flex-wrap: nowrap; }
 /* A long title wraps to two lines, then ends with an ellipsis, rather than running under the buttons. */

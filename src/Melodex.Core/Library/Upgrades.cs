@@ -181,8 +181,13 @@ public sealed class Upgrades(
         var held = await db.HeldFiles.Where(h => trackId == null || h.TrackId == trackId).OrderByDescending(h => h.HeldAt).ToListAsync(ct);
         var fileIds = held.Select(h => h.LibraryFileId).OfType<Guid>().ToList();
         var now = await db.LibraryFiles.Where(f => fileIds.Contains(f.Id)).ToDictionaryAsync(f => f.Id, ct);
-        return held.Select(h => new HeldFileInfo(h.Id, h.TrackId, h.Title, h.Path, h.ReplacedBy, h.Quality,
-            h.LibraryFileId is { } id && now.TryGetValue(id, out var f) ? f.Quality : null, h.HeldAt, h.DeleteAt)).ToList();
+        return held.Select(h =>
+        {
+            var better = h.LibraryFileId is { } id ? now.GetValueOrDefault(id) : null;
+            // The better copy's cover, which is the old one's: it took its tags and art.
+            return new HeldFileInfo(h.Id, h.TrackId, h.Title, h.Path, h.ReplacedBy, h.Quality, better?.Quality, h.HeldAt, h.DeleteAt,
+                better is null ? null : LocalMusic.CoverUrl(better.Id), (better?.Duration ?? h.Duration)?.TotalSeconds);
+        }).ToList();
     }
 
     /// <summary>

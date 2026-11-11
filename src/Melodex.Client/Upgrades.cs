@@ -62,7 +62,7 @@ public sealed record UpgradeStatus(UpgradeSettings Settings, string? Warning, Da
 /// <param name="Was">Its quality.</param>
 /// <param name="Now">The better copy's quality.</param>
 public sealed record HeldFileInfo(Guid Id, Guid? TrackId, string Title, string Path, string ReplacedBy, FileQuality Was, FileQuality? Now, DateTime HeldAt,
-    DateTime DeleteAt);
+    DateTime DeleteAt, string? CoverUrl = null, double? DurationSeconds = null);
 
 /// <summary>What a look for upgrades found.</summary>
 /// <param name="Upgradable">Files below their cutoff in what was looked through.</param>

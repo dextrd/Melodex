@@ -12,7 +12,7 @@ Press the download button beside a missing track or album, **Get album** or **Ge
 3. The beets worker tags it from the MusicBrainz release Melodex chose and files it in your music folder.
 4. Navidrome is told to scan.
 
-The **Activity** page shows every request and each attempt. A request no plugin could satisfy waits under **Review → Requests**:
+The **Activity** page shows every request and each attempt. A request no plugin could satisfy waits under **Review → Not fetched**:
 retry it later, add another plugin, or pick one of the candidates found.
 
 Requests run one at a time, in order. Move them up and down the queue, pause them or cancel them from Activity.

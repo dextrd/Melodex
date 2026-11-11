@@ -1,0 +1,36 @@
+@* A file or song as Review shows it, on each of its tabs: its cover, its title and artist, and lines about it below. *@
+<div class="suggestion-row">
+    @if (Href is not null)
+    {
+        <a href="@Href" tabindex="-1"><Cover Url="@CoverUrl" /></a>
+    }
+    else
+    {
+        <Cover Url="@CoverUrl" />
+    }
+    <div class="suggestion-text">
+        <div>
+            @if (Href is not null) { <a href="@Href">@Title</a> } else { @Title }
+            @if (Artist is not null) { <span class="muted"> · @Artist</span> }
+        </div>
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? CoverUrl { get; set; }
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Artist { get; set; }
+
+    /// <summary>The song's, album's or artist's page, when it has one.</summary>
+    [Parameter] public string? Href { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>A request's or upgrade's title, <c>Glory Box · Portishead</c>, as the title and artist.</summary>
+    public static (string Title, string? Artist) Split(string title)
+    {
+        var at = title.LastIndexOf(" · ", StringComparison.Ordinal);
+        return at < 0 ? (title, null) : (title[..at], title[(at + 3)..]);
+    }
+}
