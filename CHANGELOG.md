@@ -8,6 +8,8 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 - An album page no longer zooms out on iPhones when an edition's name is long: its Edition list shrinks to fit the
   screen (#42).
+- Stopping Melodex no longer leaves the library's views being worked out and saved in the background: a save under
+  way is finished, and nothing more is started (#45).
 
 ## [1.1.0] - 2026-11-11
 
