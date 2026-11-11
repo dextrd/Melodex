@@ -40,7 +40,9 @@ Scans and other long jobs show on **Activity**, where they can be paused, cancel
 
 ## Review
 
-Files Melodex couldn't match confidently wait on **Review**. They don't count as owned until they're matched. Each file
+**Review** has three tabs: **Files** to match, **Requests** that stopped short (see
+[Requests and listening](requests-and-listening.md)) and **Upgraded**, upgrades to approve or roll back (see
+[Upgrades](requests-and-listening.md#upgrades)). Files Melodex couldn't match confidently wait under **Files**. They don't count as owned until they're matched. Each file
 has a button for each of these; hover over one to see what it does. The buttons at the top, with their names, do the
 same for every file the filter shows. On a narrow screen the filter becomes a button that opens it, and the buttons
 keep only their icons.

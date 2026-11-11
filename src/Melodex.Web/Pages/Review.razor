@@ -1,4 +1,6 @@
 @page "/review"
+@page "/review/requests"
+@page "/review/upgraded"
 @implements IDisposable
 @inject MelodexClient Api
 @inject RequestTracker Tracker
@@ -9,6 +11,18 @@
 <PageTitle>Review · Melodex</PageTitle>
 
 <h1>Review</h1>
+@* Three things wait for you here: files to match, requests that stopped short, and upgrades to keep or roll back. *@
+<nav class="page-tabs" aria-label="Review">
+    @foreach (var (tab, label, count) in Tabs)
+    {
+        <a href="@(tab == "files" ? "review" : $"review/{tab}")" class="@(Tab == tab ? "active" : null)" aria-current="@(Tab == tab ? "page" : null)">
+            @label@if (count > 0) { <span class="tab-count">@count</span> }
+        </a>
+    }
+</nav>
+
+@if (Tab == "files")
+{
 <p class="muted">
     Files that couldn't be matched confidently. They don't count as owned until they're matched. <strong>Exclude</strong> music
     no catalogue knows, such as your own recordings: it's never matched, and the library shows it as its tags say.
@@ -19,10 +33,14 @@
 {
     <div class="empty card">You can't review files: that needs the Review and match permission, which the admin can give you.</div>
 }
+}
 
-@if (Stuck.Any())
+@if (Tab == "requests" && !Stuck.Any())
 {
-    <h2>Requests</h2>
+    <div class="empty card">No requests need you: none stopped short.</div>
+}
+else if (Tab == "requests")
+{
     <p class="muted small">No plugin found a copy that passed the checks. Retry later, add another plugin, or pick a candidate on the Activity page.</p>
     <div class="card">
         <table class="table">
@@ -46,13 +64,7 @@
     </div>
 }
 
-@* Requests show here only when one is stuck, and then the files need a heading of their own. *@
-@if (Stuck.Any())
-{
-    <h2>Files</h2>
-}
-
-@if (!Auth.May(UserPermissions.Review))
+@if (Tab != "files" || !Auth.May(UserPermissions.Review))
 {
 }
 else if (_items is null)
@@ -192,7 +204,7 @@ else
     }
 }
 
-@foreach (var (list, title, hint) in Lists)
+@foreach (var (list, title, hint) in Tab == "files" ? Lists : [])
 {
     if (_lists.GetValueOrDefault(list) is not { Count: > 0 } files)
         continue;
@@ -233,8 +245,82 @@ else
     }
 }
 
+@if (Tab == "upgraded")
+{
+    <p class="muted">
+        Songs upgraded to better copies. The file each replaced is held outside your music folder for a while:
+        <strong>Approve</strong> keeps the upgrade and deletes the old file now; <strong>Roll back</strong> deletes the better copy,
+        puts the old file back and sets its song never to be upgraded. Any left are approved by themselves once their time is up.
+        How long that is is under <a href="settings/quality#upgrades">Settings → Quality</a>.
+    </p>
+    @if (!Auth.May(UserPermissions.Request))
+    {
+        <div class="empty card">You can't review upgrades: that needs the Request permission, which the admin can give you.</div>
+    }
+    else if (_held is null)
+    {
+        <Loading />
+    }
+    else if (_held.Count == 0)
+    {
+        <div class="empty card">No upgrades to review.</div>
+    }
+    else
+    {
+        <div class="toolbar">
+            <span class="spacer"></span>
+            <IconButton Icon="approve" Primary="true" Label="Approve all" Disabled="_busy" Title="Keep every upgrade, and delete the old files now"
+                        OnClick="ApproveAllUpgradesAsync" />
+        </div>
+        <div class="card"><HeldFiles Files="_held" Changed="LoadHeldAsync" /></div>
+    }
+}
+
 @code {
     private IReadOnlyList<ReviewItem>? _items;
+    private IReadOnlyList<HeldFileInfo>? _held;
+
+    // files, requests or upgraded, from the address.
+    private string Tab => new Uri(Nav.Uri).AbsolutePath.TrimEnd('/') switch
+    {
+        var path when path.EndsWith("/review/requests") => "requests",
+        var path when path.EndsWith("/review/upgraded") => "upgraded",
+        _ => "files",
+    };
+
+    private IEnumerable<(string Tab, string Label, int Count)> Tabs =>
+    [
+        ("files", "Files", _items?.Count ?? 0),
+        ("requests", "Requests", Stuck.Count()),
+        ("upgraded", "Upgraded", _held?.Count ?? 0),
+    ];
+
+    private async Task LoadHeldAsync()
+    {
+        try
+        {
+            _held = Auth.May(UserPermissions.Request) ? await Api.GetHeldFilesAsync() : [];
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            _held = [];
+        }
+    }
+
+    private async Task ApproveAllUpgradesAsync()
+    {
+        _busy = true;
+        try
+        {
+            foreach (var file in _held ?? [])
+                await Api.DeleteHeldFileAsync(file.Id);
+        }
+        finally
+        {
+            await LoadHeldAsync();
+            _busy = false;
+        }
+    }
     private Dictionary<ReviewList, IReadOnlyList<ReviewItem>> _lists = [];
     private readonly HashSet<ReviewList> _open = [];
 
@@ -360,13 +446,14 @@ else
     protected override async Task OnInitializedAsync()
     {
         _filter = Filter ?? "";
-        Tracker.Changed += Refresh;
+        Tracker.Changed += OnRequestsChanged;
         _sort = await Preferences.GetAsync("review.sort", "path");
         if (Sorts.All(s => s.Key != _sort))
             _sort = "path";
         _descending = await Preferences.GetAsync("review.descending", StartsDescending(_sort));
+        Nav.LocationChanged += OnLocationChanged;
         await Tracker.EnsureLoadedAsync();
-        await LoadAsync();
+        await Task.WhenAll(LoadAsync(), LoadHeldAsync());
     }
 
     private async Task LoadAsync()
@@ -418,6 +505,13 @@ else
 
     private void Refresh() => InvokeAsync(StateHasChanged);
 
+    // A request that finishes may be an upgrade, held for review.
+    private void OnRequestsChanged() => InvokeAsync(async () =>
+    {
+        await LoadHeldAsync();
+        StateHasChanged();
+    });
+
     private static string ConfidenceClass(double confidence) => confidence >= 0.8 ? "high" : confidence >= 0.6 ? "medium" : "low";
 
     private static string SearchLink(ReviewItem item)
@@ -441,5 +535,11 @@ else
         await Tracker.RefreshAsync();
     }
 
-    public void Dispose() => Tracker.Changed -= Refresh;
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => Refresh();
+
+    public void Dispose()
+    {
+        Tracker.Changed -= OnRequestsChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
 }

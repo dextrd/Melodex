@@ -46,6 +46,44 @@ else
         </div>
     </div>
 
+    <h3 class="section">
+        <button class="section-toggle" aria-expanded="@(_stepsOpen ? "true" : "false")" @onclick="() => _stepsOpen = !_stepsOpen">
+            <span class="chevron @(_stepsOpen ? "open" : "")" aria-hidden="true"></span>
+            Qualities, best first <span class="muted small">(@_steps.Count(s => s.Allowed) of @_steps.Count kept)</span>
+        </button>
+    </h3>
+    @if (_stepsOpen)
+    {
+        <ol class="quality-steps card" aria-label="Qualities, best first">
+            @for (var i = 0; i < _steps.Count; i++)
+            {
+                var index = i;
+                var (step, allowed) = _steps[i];
+                @if (i == 0 || _steps[i - 1].Step.Level != step.Level)
+                {
+                    <li class="quality-level muted small" aria-hidden="true">@LevelHeading(step.Level)</li>
+                }
+                <li class="quality-step @(allowed ? "" : "off") @(index > CutoffIndex ? "under" : "")">
+                    <label>
+                        <input type="checkbox" checked="@allowed" @onchange="e => SetAllowed(index, (bool)e.Value!)" />
+                        <span>@step.Name</span>
+                    </label>
+                    @if (step.Key == _profile.Cutoff)
+                    {
+                        <span class="badge owned small">Cutoff</span>
+                    }
+                    @if (step.Key == _profile.ListenTarget)
+                    {
+                        <span class="badge neutral small">Listen now</span>
+                    }
+                    <span class="spacer"></span>
+                    <IconButton Icon="up" Title="Prefer it" Disabled="@(index == 0)" OnClick="() => Move(index, -1)" />
+                    <IconButton Icon="down" Title="Prefer it less" Disabled="@(index == _steps.Count - 1)" OnClick="() => Move(index, 1)" />
+                </li>
+            }
+        </ol>
+    }
+
     <h2>Lossless that seems lossy</h2>
     <p class="muted small">
         Lossy music is sometimes passed off as lossless: an MP3 saved as FLAC, labelled FLAC, but no better than the MP3. Lossy encoders cut off the highs
@@ -63,41 +101,66 @@ else
         }
     </div>
 
-    <ol class="quality-steps card" aria-label="Qualities, best first">
-        @for (var i = 0; i < _steps.Count; i++)
-        {
-            var index = i;
-            var (step, allowed) = _steps[i];
-            @if (i == 0 || _steps[i - 1].Step.Level != step.Level)
-            {
-                <li class="quality-level muted small" aria-hidden="true">@LevelHeading(step.Level)</li>
-            }
-            <li class="quality-step @(allowed ? "" : "off") @(index > CutoffIndex ? "under" : "")">
-                <label>
-                    <input type="checkbox" checked="@allowed" @onchange="e => SetAllowed(index, (bool)e.Value!)" />
-                    <span>@step.Name</span>
-                </label>
-                @if (step.Key == _profile.Cutoff)
-                {
-                    <span class="badge owned small">Cutoff</span>
-                }
-                @if (step.Key == _profile.ListenTarget)
-                {
-                    <span class="badge neutral small">Listen now</span>
-                }
-                <span class="spacer"></span>
-                <IconButton Icon="up" Title="Prefer it" Disabled="@(index == 0)" OnClick="() => Move(index, -1)" />
-                <IconButton Icon="down" Title="Prefer it less" Disabled="@(index == _steps.Count - 1)" OnClick="() => Move(index, 1)" />
-            </li>
-        }
-    </ol>
-
     <div class="toolbar">
         <button class="primary" @onclick="SaveAsync">Save</button>
         <button @onclick="Reset">Use the default</button>
         @if (_saved) { <span class="muted small">Saved.</span> }
         @if (_saveError is not null) { <span class="error small" title="@_saveError">@_saveError</span> }
     </div>
+
+    <h3>The library's lossless files</h3>
+    @if (_spectra is { } spectra)
+    {
+        <div class="card settings-card">
+            <div class="setting-line">
+                @if (spectra.Lossless == 0)
+                {
+                    <span>There are no FLAC, WAV or AIFF files in the library to check.</span>
+                }
+                else
+                {
+                    <span>
+                        @spectra.Checked of @spectra.Lossless checked;
+                        @(spectra.Suspects.Count == 0 ? "none seem lossy" : spectra.Suspects.Count == 1 ? "1 seems lossy" : $"{spectra.Suspects.Count} seem lossy").
+                    </span>
+                    <span class="spacer"></span>
+                    @if (spectra.Checked < spectra.Lossless)
+                    {
+                        <button @onclick="() => CheckAsync(false)" disabled="@_checking">Check the rest</button>
+                    }
+                    <button @onclick="() => CheckAsync(true)" disabled="@_checking">Check them all again</button>
+                }
+            </div>
+            <div class="muted small">
+                Files are only read. New and changed ones are checked after each scan; ALAC, APE and WavPack can't be.
+                @if (_checkQueued) { <span>Queued: it's under Tasks in Activity.</span> }
+            </div>
+            @if (spectra.Suspects.Count > 0)
+            {
+                <ul class="suspect-files small">
+                    @foreach (var file in spectra.Suspects.Take(_showAll ? int.MaxValue : 20))
+                    {
+                        <li>
+                            <QualityBadge Quality="file.Quality" Dot="true" />
+                            @if (file.TrackId is { } track)
+                            {
+                                <a href="/tracks/@track">@file.Path</a>
+                            }
+                            else
+                            {
+                                <span>@file.Path</span>
+                            }
+                            <span class="muted">· @file.Quality.Details</span>
+                        </li>
+                    }
+                </ul>
+                @if (!_showAll && spectra.Suspects.Count > 20)
+                {
+                    <button class="link" @onclick="() => _showAll = true">Show all @spectra.Suspects.Count</button>
+                }
+            }
+        </div>
+    }
 
     <h2 id="upgrades">Upgrades</h2>
     <p class="muted small">
@@ -185,7 +248,7 @@ else
                             <strong>Hold the old file for
                                 <NumberField Value="_upgradeSettings.HoldDays" Min="1" Max="365" Label="Days to hold"
                                              ValueChanged="n => SetUpgrades(_upgradeSettings with { HoldDays = n })" />
-                                days, then delete it</strong>
+                                days, then approve the upgrade</strong>
                             <span class="muted small">@label</span>
                         </span>
                     }
@@ -218,74 +281,20 @@ else
 
         @if (upgrades.Held.Count > 0)
         {
-            <h2>Replaced files</h2>
             <p class="muted small">
-                Held outside the music folder, so the app you listen with never sees two copies. Putting one back deletes the copy that replaced it,
-                and sets its song never to be upgraded.
+                @(upgrades.Held.Count == 1 ? "1 upgrade is" : $"{upgrades.Held.Count} upgrades are") waiting to be approved or rolled back under
+                <a href="review/upgraded">Review → Upgraded</a>.
             </p>
-            <HeldFiles Files="upgrades.Held" Changed="LoadUpgradesAsync" />
         }
     }
 
-    <h2>The library's lossless files</h2>
-    @if (_spectra is { } spectra)
-    {
-        <div class="card settings-card">
-            <div class="setting-line">
-                @if (spectra.Lossless == 0)
-                {
-                    <span>There are no FLAC, WAV or AIFF files in the library to check.</span>
-                }
-                else
-                {
-                    <span>
-                        @spectra.Checked of @spectra.Lossless checked;
-                        @(spectra.Suspects.Count == 0 ? "none seem lossy" : spectra.Suspects.Count == 1 ? "1 seems lossy" : $"{spectra.Suspects.Count} seem lossy").
-                    </span>
-                    <span class="spacer"></span>
-                    @if (spectra.Checked < spectra.Lossless)
-                    {
-                        <button @onclick="() => CheckAsync(false)" disabled="@_checking">Check the rest</button>
-                    }
-                    <button @onclick="() => CheckAsync(true)" disabled="@_checking">Check them all again</button>
-                }
-            </div>
-            <div class="muted small">
-                Files are only read. New and changed ones are checked after each scan; ALAC, APE and WavPack can't be.
-                @if (_checkQueued) { <span>Queued: it's under Tasks in Activity.</span> }
-            </div>
-            @if (spectra.Suspects.Count > 0)
-            {
-                <ul class="suspect-files small">
-                    @foreach (var file in spectra.Suspects.Take(_showAll ? int.MaxValue : 20))
-                    {
-                        <li>
-                            <QualityBadge Quality="file.Quality" Dot="true" />
-                            @if (file.TrackId is { } track)
-                            {
-                                <a href="/tracks/@track">@file.Path</a>
-                            }
-                            else
-                            {
-                                <span>@file.Path</span>
-                            }
-                            <span class="muted">· @file.Quality.Details</span>
-                        </li>
-                    }
-                </ul>
-                @if (!_showAll && spectra.Suspects.Count > 20)
-                {
-                    <button class="link" @onclick="() => _showAll = true">Show all @spectra.Suspects.Count</button>
-                }
-            }
-        </div>
-    }
 }
 
 @code {
     private QualityProfile? _profile;
     private List<(QualityStep Step, bool Allowed)>? _steps;
     private bool _saved;
+    private bool _stepsOpen;
     private string? _saveError;
 
     private SpectrumStatus? _spectra;
@@ -298,8 +307,8 @@ else
 
     private static readonly (OldFiles Value, string Help)[] OldFileOptions =
     [
-        (OldFiles.Hold, "It can be put back from here, the Activity page or the song's page until then."),
-        (OldFiles.Delete, "Nothing can be put back."),
+        (OldFiles.Hold, "Until then the upgrade can be rolled back, under Review → Upgraded or on the song's page; approving it deletes the old file sooner."),
+        (OldFiles.Delete, "Nothing can be rolled back."),
     ];
     private bool _checking, _checkQueued, _showAll;
 

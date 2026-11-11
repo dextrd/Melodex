@@ -98,16 +98,6 @@ else
     </div>
 }
 
-@if (_held.Count > 0)
-{
-    <h2>Replaced files</h2>
-    <p class="muted small">
-        Files upgrades replaced with better copies, held outside the music folder until they're deleted. Putting one back deletes the copy that
-        replaced it, and sets its song never to be upgraded. How long they're held is under <a href="settings/quality#upgrades">Settings → Quality</a>.
-    </p>
-    <div class="card"><HeldFiles Files="_held" Changed="LoadHeldAsync" /></div>
-}
-
 @code {
     [SupplyParameterFromQuery(Name = "open")] public Guid? OpenId { get; set; }
 
@@ -172,7 +162,7 @@ else
     {
         Tracker.Changed += Refresh;
         Events.Received += OnEvent;
-        await Task.WhenAll(Tracker.RefreshAsync(), LoadTasksAsync(), LoadHeldAsync());
+        await Task.WhenAll(Tracker.RefreshAsync(), LoadTasksAsync());
         _loaded = true;
         // Tasks are polled here; requests by the tracker. Quicker while something's running.
         _timer = new Timer(_ => InvokeAsync(async () =>
@@ -196,20 +186,6 @@ else
                 await LoadTasksAsync();
                 StateHasChanged();
             });
-    }
-
-    private IReadOnlyList<HeldFileInfo> _held = [];
-
-    private async Task LoadHeldAsync()
-    {
-        try
-        {
-            _held = await Api.GetHeldFilesAsync();
-        }
-        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
-        {
-            // Shown without them.
-        }
     }
 
     private async Task LoadTasksAsync()
@@ -240,8 +216,6 @@ else
 
     private void Refresh() => InvokeAsync(async () =>
     {
-        // An upgrade that finishes may have held a file.
-        await LoadHeldAsync();
         // Open requests that are still moving are reloaded with the list.
         foreach (var id in _open.Keys.ToList())
             if (Tracker.Requests.FirstOrDefault(r => r.Id == id) is not { Active: false } || _open[id]?.Children?.Any(c => c.Active) == true)

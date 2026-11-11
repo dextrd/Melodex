@@ -36,8 +36,9 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   that may be better, and a copy is kept only if it is, by its quality as read and its spectrum. It takes the old
   file's place and exactly its tags, so Navidrome 0.55 or later keeps the song's stars, ratings, plays and playlists;
   with another media server, an older Navidrome or none, Settings and a dialog when the web app starts say they may be
-  lost. The old file is held outside the music folder for 14 days (a setting), and can be put back from Activity, the
-  song's page or Settings until then; or it can be deleted straight away. The beets worker does the replacing, with
+  lost. The old file is held outside the music folder for 14 days (a setting), and until then the upgrade waits under the
+  new **Upgraded** tab of Review (and on the song's page) to be approved or rolled back, approved by itself once its time
+  is up; or the old file can be deleted straight away. Review is now in tabs: Files, Requests and Upgraded. The beets worker does the replacing, with
   new `POST /v1/replace` and `POST /v1/restore`, so update its image with the core's. Media-server connectors can say
   which server and version they talk to (contract 1.3).
 

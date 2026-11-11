@@ -12,7 +12,7 @@ Press the download button beside a missing track or album, **Get album** or **Ge
 3. The beets worker tags it from the MusicBrainz release Melodex chose and files it in your music folder.
 4. Navidrome is told to scan.
 
-The **Activity** page shows every request and each attempt. A request no plugin could satisfy waits on **Review**:
+The **Activity** page shows every request and each attempt. A request no plugin could satisfy waits under **Review → Requests**:
 retry it later, add another plugin, or pick one of the candidates found.
 
 Requests run one at a time, in order. Move them up and down the queue, pause them or cancel them from Activity.
@@ -83,10 +83,11 @@ cutoff is met.
 - **The better copy takes the old file's place**: the same path with its own extension (`10 Voyager.mp3` becomes
   `10 Voyager.flac`), and exactly the old file's tags, MusicBrainz IDs and embedded cover included. Its lyrics file
   stays with it. Only its loudness (ReplayGain) is its own.
-- **The old file is held for 14 days** (a setting), outside the music folder in the staging volume, then deleted; or it
-  can be deleted straight away. While it's held, **Put back** on the Activity page, the song's page or under
-  **Settings → Quality** deletes the better copy, puts the old file back, and sets the song never to be upgraded, so it
-  isn't replaced again.
+- **The old file is held for 14 days** (a setting), outside the music folder in the staging volume; or it can be
+  deleted straight away. While it's held the upgrade waits under **Review → Upgraded** (and on the song's page):
+  **Approve** keeps it and deletes the old file now, and **Roll back** deletes the better copy, puts the old file back,
+  and sets the song never to be upgraded, so it isn't replaced again. An upgrade left alone is approved by itself once
+  its time is up.
 
 #### What your player keeps
 

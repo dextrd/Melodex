@@ -14,7 +14,7 @@ out everywhere else.
 | Permission | Allows |
 | --- | --- |
 | **Browse** | Seeing the library, the catalogue, what's being fetched and what's running |
-| **Request** | Asking for music to be fetched into the library, and ignoring albums and songs |
+| **Request** | Asking for music to be fetched into the library, and ignoring albums and songs; looking for upgrades, and approving or rolling them back |
 | **Listen** | Playing music, fetching songs to listen to without adding them, and having playlists |
 | **Review and match** | Approving, matching, excluding, deferring and hiding files on Review |
 | **Format** | Rewriting files' tags and covers, and moving them; choosing album and song covers; looking for, choosing, editing and deleting a song's lyrics |
