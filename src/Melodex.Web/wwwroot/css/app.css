@@ -443,6 +443,11 @@ h2.section { margin: 1.5rem 0 .5rem; }
 /* A long option, such as an edition's full description, mustn't push the page wider than the screen. */
 .toolbar label { max-width: 100%; min-width: 0; }
 .toolbar select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+/* A list with its name, such as an album's editions: the label lays the two out in a row no wider than the line, and the
+   list shrinks into what's left. A percentage on the list alone is circular, as the label is as wide as the list, and
+   Safari on iOS widens the page to the longest option's width instead (#42). */
+.toolbar label:has(> select) { display: inline-flex; align-items: center; gap: .4rem; }
+.toolbar label:has(> select) > select { flex: 0 1 auto; max-width: none; }
 
 /* Requests on their way: a badge in the accent colour, linking to the Activity page. */
 .badge.active { color: var(--accent); background: var(--bg); border: 1px solid var(--accent); }
