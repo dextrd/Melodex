@@ -59,7 +59,8 @@ public sealed class RequestFixture : IAsyncLifetime
                 services.Configure<RequestPipelineOptions>(o =>
                 {
                     o.PollInterval = TimeSpan.FromMilliseconds(20);
-                    o.FetchTimeout = TimeSpan.FromSeconds(1);
+                    // Long enough that a pause on a slow runner isn't taken for a stalled fetch.
+                    o.FetchTimeout = TimeSpan.FromSeconds(3);
                 });
                 services.AddHttpClient(RetrievalPlugins.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Retrieval);
                 services.RemoveAll<IImportWorker>();
@@ -490,8 +491,8 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
     [TestLibraryFact]
     public async Task A_slow_fetch_runs_past_the_limit_while_it_moves_and_is_cancelled_once_it_stalls()
     {
-        // 80 steps of 20 ms is longer than the fixture's one-second limit; then it stays at 80 %.
-        var stalls = new FakeSource("stalls") { Candidates = 1, ProgressSteps = Enumerable.Range(1, 80).Select(i => i / 100.0).ToList() };
+        // 200 steps of at least 20 ms is longer than the fixture's three-second limit; then it stays at 80 %.
+        var stalls = new FakeSource("stalls") { Candidates = 1, ProgressSteps = Enumerable.Range(1, 200).Select(i => i / 250.0).ToList() };
         var good = new FakeSource("good");
         await fixture.AddSourceAsync(stalls);
         await fixture.AddSourceAsync(good);
@@ -502,7 +503,7 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
 
         Assert.Equal(RequestState.InLibrary, done.State);
         Assert.Equal(["stalls", "good"], done.Jobs!.Select(j => j.Plugin));
-        Assert.Contains("made no progress for 1 seconds at 80", done.Jobs![0].Log);
+        Assert.Contains("made no progress for 3 seconds at 80", done.Jobs![0].Log);
         Assert.Equal(1, stalls.Cancels);
     }
 

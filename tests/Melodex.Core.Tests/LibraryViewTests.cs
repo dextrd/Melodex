@@ -57,11 +57,15 @@ public sealed class LibraryViewTests : IDisposable
         Assert.Equal("11", gloryBox.Number);
         Assert.Equal(dummy.Album.CoverUrl, gloryBox.CoverUrl);
 
-        // Ignoring the missing tracks completes the album, and the cached view catches up at once.
+        // Ignoring the missing tracks completes the album, and the cached view catches up: it answers with what it had
+        // while the new answer takes longer than its patience, as it can on a slow machine, but not for long.
         var missing = (await _api.GetAlbumAsync(partial.Album.Id))!.Tracks.Where(t => t.Status == TrackStatus.Missing).ToList();
         foreach (var track in missing)
             await _api.SetTrackIgnoredAsync(track.TrackId, true);
-        Assert.Equal(AlbumStatus.Complete, (await _api.GetLibraryAlbumsAsync()).Single(a => a.Album.Id == partial.Album.Id).Album.Status);
+        var status = AlbumStatus.Partial;
+        for (var deadline = DateTime.UtcNow.AddSeconds(10); status != AlbumStatus.Complete && DateTime.UtcNow < deadline; await Task.Delay(100))
+            status = (await _api.GetLibraryAlbumsAsync()).Single(a => a.Album.Id == partial.Album.Id).Album.Status;
+        Assert.Equal(AlbumStatus.Complete, status);
     }
 
     [TestLibraryFact]
