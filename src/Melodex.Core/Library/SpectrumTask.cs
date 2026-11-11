@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Melodex.Client;
 using Melodex.Core.Data;
 using Melodex.Core.Import;
+using Melodex.Core.Requests;
 using Melodex.Core.Tasks;
 
 namespace Melodex.Core.Library;
@@ -27,7 +28,7 @@ public sealed class SpectrumTask(MelodexDbContext db, IImportWorker worker) : IT
         db.LibraryFiles.Where(f => f.Codec != null && Checkable.Contains(f.Codec) && f.HiddenAt == null);
 
     /// <summary>Those not checked since they last changed.</summary>
-    public static IQueryable<LibraryFile> Unchecked(MelodexDbContext db) => Lossless(db).Where(f => f.SpectrumCheckedAt == null);
+    public static IQueryable<LibraryFile> Unchecked(MelodexDbContext db) => Lossless(db).Where(f => f.SpectrumCheckedAt == null && f.TrustedAt == null);
 
     public async Task RunAsync(BackgroundTask task, IProgress<string> progress, CancellationToken ct)
     {
@@ -55,6 +56,8 @@ public sealed class SpectrumTask(MelodexDbContext db, IImportWorker worker) : IT
                 if (files.FirstOrDefault(f => f.Path == result.Path) is not { } file)
                     continue;
                 // One that can't be told (too quiet, or unreadable) isn't asked about again until it changes.
+                if (file.TrustedAt is not null)
+                    continue;
                 file.CutoffHz = result.CutoffHz;
                 file.SpectrumCheckedAt = now;
                 if (result.Error is not null)
@@ -76,14 +79,33 @@ public sealed class SpectrumTask(MelodexDbContext db, IImportWorker worker) : IT
     public static async Task<SpectrumStatus> StatusAsync(MelodexDbContext db, CancellationToken ct)
     {
         var files = await Lossless(db)
-            .Select(f => new { f.Id, f.Path, f.TrackId, f.Codec, f.BitrateKbps, f.BitDepth, f.SampleRate, f.CutoffHz, f.SpectrumCheckedAt })
+            .Select(f => new { f.Id, f.Path, f.TrackId, f.Codec, f.BitrateKbps, f.BitDepth, f.SampleRate, f.CutoffHz, f.SpectrumCheckedAt, f.TrustedAt })
             .ToListAsync(ct);
-        var suspects = files.Where(f => f.SpectrumCheckedAt != null)
-            .Select(f => (f.Id, f.Path, f.TrackId, Quality: LibraryFile.QualityOf(f.Codec, f.BitrateKbps, f.BitDepth, f.SampleRate, f.CutoffHz)))
-            .Where(f => f.Quality.Suspect)
-            .OrderBy(f => f.Path, StringComparer.CurrentCultureIgnoreCase)
-            .Select(f => new SuspectFile(f.Id, f.Path, f.TrackId, f.Quality))
-            .ToList();
-        return new SpectrumStatus(files.Count, files.Count(f => f.SpectrumCheckedAt != null), suspects);
+        var suspectIds = files.Where(f => f.SpectrumCheckedAt != null && LibraryFile.QualityOf(f.Codec, f.BitrateKbps, f.BitDepth, f.SampleRate, f.CutoffHz).Suspect)
+            .Select(f => f.Id).ToList();
+        var suspects = await db.LibraryFiles.Where(f => suspectIds.Contains(f.Id)).ToListAsync(ct);
+        // Those an upgrade is looking for a better copy of.
+        var replacing = await db.Requests.Where(r => r.UpgradesFileId != null && suspectIds.Contains(r.UpgradesFileId.Value) && !RequestService.Finished.Contains(r.Status))
+            .Select(r => r.UpgradesFileId!.Value).ToListAsync(ct);
+        var listed = suspects.OrderBy(f => f.Path, StringComparer.CurrentCultureIgnoreCase).Select(f =>
+        {
+            var tags = FileTags.Parse(f.TagsJson);
+            return new SuspectFile(f.Id, f.Path, f.TrackId, f.Quality, tags.Title, tags.Artist ?? tags.AlbumArtist, LocalMusic.CoverUrl(f.Id),
+                f.Duration?.TotalSeconds, f.ModifiedAt, replacing.Contains(f.Id));
+        }).ToList();
+        return new SpectrumStatus(files.Count, files.Count(f => f.SpectrumCheckedAt != null || f.TrustedAt != null), listed);
+    }
+
+    /// <summary>Trusts lossless files that seem lossy to be what they say: they count as lossless, and aren't checked again.</summary>
+    public static async Task<int> TrustAsync(MelodexDbContext db, IReadOnlyList<Guid> ids, CancellationToken ct)
+    {
+        var files = await db.LibraryFiles.Where(f => ids.Contains(f.Id)).ToListAsync(ct);
+        foreach (var file in files)
+        {
+            file.TrustedAt = DateTime.UtcNow;
+            file.CutoffHz = null;
+        }
+        await db.SaveChangesAsync(ct);
+        return files.Count;
     }
 }

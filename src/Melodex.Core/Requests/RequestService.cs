@@ -8,7 +8,8 @@ using Melodex.Core.Library;
 namespace Melodex.Core.Requests;
 
 /// <summary>Creates, cancels and retries requests, and reports on them.</summary>
-public sealed class RequestService(MelodexDbContext db, RequestSignal signal, RequestCancellations cancellations, LibraryReading reading)
+public sealed class RequestService(MelodexDbContext db, RequestSignal signal, RequestCancellations cancellations, LibraryReading reading,
+    Microsoft.Extensions.Options.IOptions<MelodexOptions> options)
 {
     public static readonly RequestStatus[] Finished = [RequestStatus.InLibrary, RequestStatus.NeedsReview, RequestStatus.Failed, RequestStatus.Cancelled, RequestStatus.Playable];
 
@@ -175,6 +176,30 @@ public sealed class RequestService(MelodexDbContext db, RequestSignal signal, Re
         return true;
     }
 
+    /// <summary>
+    /// Queues a finished track request to keep the copy an attempt fetched but didn't keep for its quality: one turned off,
+    /// or lossless that seemed lossy. False if it isn't such an attempt of this request, or its copy isn't in staging.
+    /// </summary>
+    public async Task<bool> KeepAsync(Request request, Guid jobId, CancellationToken ct)
+    {
+        if (!Finished.Contains(request.Status) || request.Status == RequestStatus.InLibrary || request.UpgradesFileId is not null
+            || await db.Requests.AnyAsync(r => r.ParentRequestId == request.Id, ct))
+            return false;
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId && j.RequestId == request.Id, ct);
+        if (job is not { Verification: VerificationResult.SuspectLossless or VerificationResult.QualityRefused, PluginInstanceId: { } plugin, CandidateJson: { } json, StagingDirectory: { } staged }
+            || !Directory.Exists(Path.Combine(Path.GetFullPath(options.Value.StagingPath), staged)))
+            return false;
+        var candidate = JsonSerializer.Deserialize<Candidate>(json, RetrievalJson.Options)!;
+        request.ChoiceJson = JsonSerializer.Serialize(new Choice(plugin, candidate, job.Id), RetrievalJson.Options);
+        request.Status = RequestStatus.Queued;
+        request.Detail = "Keeping the copy that wasn't kept";
+        request.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        await UpdateAncestorsAsync(request.ParentRequestId, ct);
+        signal.Wake();
+        return true;
+    }
+
     /// <summary>Recomputes the state of every request above this one from its parts.</summary>
     public async Task UpdateAncestorsAsync(Guid? parentId, CancellationToken ct)
     {
@@ -258,7 +283,7 @@ public sealed class RequestService(MelodexDbContext db, RequestSignal signal, Re
         var parts = r.TargetKind == EntityKind.Track ? null : await PartsAsync(r.Id, ct);
         return new RequestInfo(r.Id, ToKind(r.TargetKind), r.TargetId, r.EditionId, r.Title, (RequestState)(int)r.Status, r.Detail,
             r.ParentRequestId, r.CreatedAt, r.UpdatedAt, parts is { Total: > 0 } ? parts : null, ListenNow: r.Mode == RequestMode.ListenNow,
-            Paused: r.Paused, QueueOrder: r.QueueOrder);
+            Paused: r.Paused, QueueOrder: r.QueueOrder, Upgrade: r.UpgradesFileId != null);
     }
 
     public static RequestKind ToKind(EntityKind kind) => kind switch
@@ -355,4 +380,5 @@ public sealed class RequestCancellations
 }
 
 /// <summary>A candidate the user picked, and the plugin instance that offered it.</summary>
-public sealed record Choice(Guid PluginInstanceId, Candidate Candidate);
+/// <param name="Keep">The attempt whose copy, still in staging, is kept as it is, without fetching or checking its quality.</param>
+public sealed record Choice(Guid PluginInstanceId, Candidate Candidate, Guid? Keep = null);

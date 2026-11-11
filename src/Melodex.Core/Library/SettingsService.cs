@@ -18,6 +18,8 @@ public sealed class SettingsService(MelodexDbContext db)
     private const string LogKey = "log";
     private const string ArtistShowingKey = "artistShowing";
     private const string QualityKey = "quality";
+    private const string UpgradesKey = "upgrades";
+    private const string UpgradeRunKey = "upgrades.lastRun";
 
     /// <summary>The library's settings, with the artists that have their own choices for the missing view.</summary>
     public async Task<LibrarySettings> GetLibraryAsync(CancellationToken ct)
@@ -52,6 +54,15 @@ public sealed class SettingsService(MelodexDbContext db)
     public Task SaveQualityAsync(QualityProfile value, CancellationToken ct) =>
         SaveAsync(QualityKey, value with { Steps = value.Ordered().Select(s => new ProfileStep(s.Step.Key, s.Allowed)).ToList() }, ct);
 
+    public Task<UpgradeSettings> GetUpgradesAsync(CancellationToken ct) => GetAsync<UpgradeSettings>(UpgradesKey, ct);
+
+    public Task SaveUpgradesAsync(UpgradeSettings value, CancellationToken ct) => SaveAsync(UpgradesKey, value, ct);
+
+    /// <summary>Where the scheduled look for upgrades stands, in its latest window.</summary>
+    public Task<UpgradeRun> GetUpgradeRunAsync(CancellationToken ct) => GetAsync<UpgradeRun>(UpgradeRunKey, ct);
+
+    public Task SaveUpgradeRunAsync(UpgradeRun run, CancellationToken ct) => SaveAsync(UpgradeRunKey, run, ct);
+
     public Task<LogSettings> GetLogAsync(CancellationToken ct) => GetAsync<LogSettings>(LogKey, ct);
 
     public Task SaveLogAsync(LogSettings value, CancellationToken ct) => SaveAsync(LogKey, value, ct);
@@ -72,4 +83,14 @@ public sealed class SettingsService(MelodexDbContext db)
             row.ValueJson = json;
         await db.SaveChangesAsync(ct);
     }
+}
+
+/// <summary>The scheduled look for upgrades in a window.</summary>
+/// <remarks>Window is when it opened, in UTC; Asked, how many upgrades it's asked for; Done, that it needs no more; Closed, that it's over.</remarks>
+public sealed record UpgradeRun
+{
+    public DateTime? Window { get; init; }
+    public int Asked { get; init; }
+    public bool Done { get; init; }
+    public bool Closed { get; init; }
 }

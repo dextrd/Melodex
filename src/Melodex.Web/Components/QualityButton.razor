@@ -45,6 +45,10 @@
             <input type="radio" name="quality-kind" checked="@(_kind == QualityOverrideKind.NeverUpgrade)" @onchange="() => _kind = QualityOverrideKind.NeverUpgrade" />
             <span><strong>Never upgrade</strong><span class="muted small">Keep it as it is, whatever its quality.</span></span>
         </label>
+        <div class="setting-line">
+            <button @onclick="LookAsync" disabled="@_looking">Look for upgrades now</button>
+            <span class="muted small">@(_looked ?? "By the setting as it's saved: each song below its cutoff gets a request in Activity.")</span>
+        </div>
         @if (_error is not null) { <div class="error small">@_error</div> }
         <div class="toolbar dialog-buttons">
             <button @onclick="() => _open = false">Cancel</button>
@@ -70,7 +74,8 @@
     private QualitySetting? _setting;
     private List<(QualityStep Step, bool Allowed)>? _steps;
     private bool _open;
-    private bool _saving;
+    private bool _saving, _looking;
+    private string? _looked;
     private string? _error;
     private QualityOverrideKind _kind;
     private string? _cutoff;
@@ -110,8 +115,35 @@
         if (_setting is null)
             return;
         _kind = _setting.Kind;
+        _looked = null;
         _cutoff = _setting.Cutoff ?? _setting.Applies.Cutoff ?? _steps.First(s => s.Allowed).Step.Key;
         _open = true;
+    }
+
+    private async Task LookAsync()
+    {
+        _looking = true;
+        _error = null;
+        try
+        {
+            var scope = Kind switch { "artists" => FormatScopeKind.Artist, "albums" => FormatScopeKind.Album, _ => FormatScopeKind.Track };
+            var found = await Api.SearchUpgradesAsync(new FormatScope(scope, Id));
+            _looked = found switch
+            {
+                { Upgradable: 0 } => "Nothing here is below its cutoff.",
+                { Queued: 0 } => "It's being looked for already.",
+                { Queued: 1 } => "Looking for an upgrade: it's in Activity.",
+                _ => $"Looking for {found.Queued} upgrades: they're in Activity.",
+            };
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _looking = false;
+        }
     }
 
     private async Task SaveAsync()

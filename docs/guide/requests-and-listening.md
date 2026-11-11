@@ -12,8 +12,9 @@ Press the download button beside a missing track or album, **Get album** or **Ge
 3. The beets worker tags it from the MusicBrainz release Melodex chose and files it in your music folder.
 4. Navidrome is told to scan.
 
-The **Activity** page shows every request and each attempt. A request no plugin could satisfy waits on **Review**:
-retry it later, add another plugin, or pick one of the candidates found.
+The **Activity** page shows every request and each attempt. A request that ended without a copy to keep waits under **Review → Couldn't fetch**:
+**Look again** later or after adding another plugin, open its **Details** to pick one of the candidates found, or, when
+a copy was turned away only for its quality, **Keep it anyway**, as it is.
 
 Requests run one at a time, in order. Move them up and down the queue, pause them or cancel them from Activity.
 
@@ -48,17 +49,66 @@ lossy. A hi-res file that stops where a CD does was made from one, and counts as
 
 - **What happens to a suspect download** is a setting under **Settings → Quality**: refuse it and try the next
   candidate (the default; Activity says **Seems lossy**, and where its highs stop), or keep it as what it seems, if
-  the profile allows that.
+  the profile allows that. A refused copy is left in staging: if nothing better is found, **Keep it anyway** under
+  **Review → Couldn't fetch** files it, counted as what it seems.
 - **Lossless with reason to think it's real is tried first**, of candidates otherwise alike: straight from a store
   such as Qobuz or Tidal, a torrent with its rip's log and cue, or one from a tracker you've set as known for lossless
   in the Prowlarr plugin's settings.
 - **The library's lossless files are checked too**, after each scan, for any new or changed. Suspect ones show their
-  quality with a ⚠ and a dashed edge, count as what they seem, below the cutoff, for upgrades, and are listed under
-  **Settings → Quality**, which can check them all again. Files are only read.
+  quality with a ⚠ and a dashed edge, count as what they seem, below the cutoff, for upgrades, and wait under
+  **Review → Seems lossy**: **Replace** looks for a better copy, as an upgrade, and **Trust it** says it's lossless,
+  so it counts as that and isn't checked again (until an upgrade replaces it). **Settings → Quality** can check them
+  all again. Files are only read.
 
 It's a suspicion, not proof. A master can be cut off on purpose, an old recording may have little in the highs, and
 an encode that keeps them (MP3 V0, AAC at 256) can't be told this way. FLAC, WAV and AIFF can be checked; ALAC, APE
 and WavPack can't.
+
+### Upgrades
+
+A song below its cutoff is **upgraded** when a better copy is found. Like Sonarr, Melodex keeps looking until the
+cutoff is met.
+
+- **Only matched songs are upgraded**, never deferred, excluded or hidden files, nor a song set never to be upgraded.
+  A suspect lossless file counts as what it seems, so it's below the cutoff too.
+- **Look for upgrades** from **Quality** on a song's, album's or artist's page, or for the whole library under
+  **Settings → Quality**. Each song is its own request on the Activity page, marked **Upgrade**; an album is upgraded a
+  song at a time, so it can be of mixed quality for a while.
+- **On a schedule** the whole library is looked through: on the days you pick (Mondays to start with), between two
+  times (01:00 and 06:00 to start with, in your browser's time zone; a window can run past midnight). In the window a
+  few songs are looked for at a time, as many as **Settings → Fetching** runs at once, more as each finishes, until
+  the limit (25 to start with, or **No limit**), the last song or the end of the window; any not started by then are
+  cancelled and wait for the next. Those looked for longest ago go first, and the worst of those. It's on from the
+  start, and can be turned off. Upgrades go after anything you ask for, and **Look for upgrades now** ignores the
+  window.
+- **Only a better copy is kept.** Sources are only asked for copies that may be better than what you have, and a
+  copy's quality is read and its spectrum checked once it's here: one no better is refused (Activity says **No
+  better**). A song nothing better is found for is left as it is (**Unchanged**), and looked for again in a later window.
+- **The better copy takes the old file's place**: the same path with its own extension (`10 Voyager.mp3` becomes
+  `10 Voyager.flac`), and exactly the old file's tags, MusicBrainz IDs and embedded cover included. Its lyrics file
+  stays with it. Only its loudness (ReplayGain) is its own.
+- **The old file is held for 14 days** (a setting), outside the music folder in the staging volume; or it can be
+  deleted straight away. While it's held the upgrade waits under **Review → Upgraded** (and on the song's page):
+  **Approve** keeps it and deletes the old file now, and **Roll back** deletes the better copy and puts the old file
+  back, where a later upgrade may replace it again; **Roll back, never upgrade** also sets the song never to be
+  upgraded. An upgrade left alone is auto-approved once its time is up.
+
+#### What your player keeps
+
+An upgrade is a new file, so whether the app you listen with keeps a song's stars, ratings, play counts, playlists and
+shares depends on how it tells songs apart.
+
+- **Navidrome 0.55 or later keeps them all.** It gives each song an ID from its tags, so a file with the same tags at
+  the same path less the extension is the same song. Tested on 0.55.0 and 0.64.2: an MP3 replaced by a FLAC kept its
+  star, rating, plays and playlists, with or without MusicBrainz tags, and even when the path changed. A file tagged
+  differently became a new song, which is why the better copy takes the old file's tags rather than its own.
+- **Navidrome before 0.55 loses them**: it gives the upgraded song a new ID. Tested on 0.54.5.
+- **Other players** may treat an upgraded song as new, or match it by path or tags as Navidrome does. Melodex can't
+  tell which.
+
+When the media server isn't Navidrome 0.55 or later, or none is connected, **Settings → Quality** says so above the
+upgrade settings, and while scheduled upgrades are on the web app says so once each time it starts, until you tick
+**Don't show this again**. Upgrades still run: whether that matters is yours to decide.
 
 ## Listen now
 

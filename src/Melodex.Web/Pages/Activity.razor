@@ -79,7 +79,7 @@ else
                         <span class="chevron @(open ? "open" : "")" aria-hidden="true"></span>
                         <span class="request-title">@request.Title</span>
                     </button>
-                    <span class="muted small request-kind hide-narrow">@(request.ListenNow ? "Listen now" : request.Kind.ToString())</span>
+                    <span class="muted small request-kind hide-narrow">@(request.ListenNow ? "Listen now" : request.Upgrade ? "Upgrade" : request.Kind.ToString())</span>
                     <span class="request-state"><span class="badge @Format.RequestBadge(request)">@Format.RequestLabel(request)</span></span>
                     <span class="muted small request-time hide-narrow" title="@request.UpdatedAt.ToLocalTime()">@Format.Ago(request.UpdatedAt)</span>
                     <span class="request-actions"><Actions Request="request" Queue="@(request.ListenNow ? null : RequestQueue)" OnChanged="ChangedAsync" /></span>

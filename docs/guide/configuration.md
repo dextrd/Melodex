@@ -7,7 +7,7 @@ Most settings are in the web app, under **Settings**. The rest are environment v
 | --- | --- | --- |
 | `Melodex__DataPath` | The database, artwork cache, session keys and logs | `/config` |
 | `Melodex__LibraryPath` | Your music, read-only | `/music` |
-| `Melodex__StagingPath` | Downloads waiting to be filed | `/staging` |
+| `Melodex__StagingPath` | Downloads waiting to be filed, and files upgrades replaced while they're held | `/staging` |
 | `Melodex__ListenNowPath` | Songs fetched to listen to | `/listen-now` |
 | `Melodex__PluginsPath` | Extra in-process plugins (catalogue and media-server) | `/plugins` |
 | `Melodex__ImportWorker__Url` | The beets worker | `http://beets-worker:8080` |

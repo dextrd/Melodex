@@ -208,6 +208,44 @@ about 16.5 kHz for an MP3 at 128 kbps and 20 kHz at 320, and a hi-res file made 
 what a cutoff means is for the core to say. An encode that keeps the highs (LAME's V0, AAC at 256) can't be told
 this way, and a master cut off on purpose can look like one that wasn't, so it's a suspicion, not proof.
 
+## `POST /v1/replace`
+
+Replaces a library file with a better copy of the same song, for an upgrade. The copy takes exactly the old file's
+tags, every one beets knows (MusicBrainz IDs and the embedded cover included), with its own cleared first; only its
+loudness (ReplayGain and R128) stays its own. It goes at the old file's path with its own extension, so a media server
+that tells songs apart by their tags, as Navidrome 0.55 and later does, sees the same song in a better file.
+
+```json
+{ "staged": "0199f0c2-…/better.flac", "path": "Daft Punk/Discovery (2001)/10 Voyager.mp3", "hold": "held/0199f0c3…" }
+```
+
+| Field | Meaning |
+| --- | --- |
+| `staged` | The better copy, relative to staging. It's tagged in a copy, so it stays as it was if anything fails, and is deleted once it's in. |
+| `path` | The file it replaces, relative to the library. |
+| `hold` | A folder in staging to move the old file into, for putting back. Omit it to delete the old file. |
+
+The old file leaves the library before the copy goes in, so a scan never sees both; if the copy can't go in, the old
+file goes back. A file already at the new path that isn't the old one is refused. The file's `.lrc`, named as it is,
+stays with it. Response `200`, with `held` only when the old file was:
+
+```json
+{ "path": "Daft Punk/Discovery (2001)/10 Voyager.flac", "size": 30816412, "durationSeconds": 227.94, "format": "FLAC", "held": "held/0199f0c3…/10 Voyager.mp3" }
+```
+
+Errors are `422 replace-failed`, with why.
+
+## `POST /v1/restore`
+
+Puts a held file back where it was, deleting the copy that replaced it first.
+
+```json
+{ "held": "held/0199f0c3…/10 Voyager.mp3", "path": "Daft Punk/Discovery (2001)/10 Voyager.mp3", "remove": "Daft Punk/Discovery (2001)/10 Voyager.flac" }
+```
+
+Response `200`: `{ "path": "Daft Punk/Discovery (2001)/10 Voyager.mp3", "size": 9214470 }`. Errors are
+`422 restore-failed`, such as when the file isn't held any more. The core deletes held files whose time is up itself.
+
 ## `GET /v1/health`
 
 `{ "status": "healthy" | "unhealthy", "message": "..." }`. Unhealthy when the staging or library volume isn't

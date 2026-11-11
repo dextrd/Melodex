@@ -46,6 +46,11 @@
     <PlayerBar />
 }
 
+@if (Auth.May(UserPermissions.Settings))
+{
+    <UpgradeWarning />
+}
+
 @code {
     // Library and Search go back to where you were in them; see NavSections.
     private RenderFragment SectionLink(NavSection section, string name) =>

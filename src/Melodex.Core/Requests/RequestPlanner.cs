@@ -73,6 +73,9 @@ public sealed class RequestPlanner(MelodexDbContext db, CatalogueService catalog
         var albumId = await db.Editions.Where(e => e.Id == request.EditionId).Select(e => e.AlbumId).FirstAsync(ct);
         var detail = (await view.GetAlbumAsync(albumId, request.EditionId, ct))!;
         var track = detail.Tracks.FirstOrDefault(t => t.TrackId == request.TargetId);
+        // An upgrade is for a track that's owned, by its nature.
+        if (request.UpgradesFileId is not null)
+            return new Plan(true, [], null);
         return track?.Status switch
         {
             TrackStatus.Owned or TrackStatus.OwnedElsewhere => new Plan(false, [], "You already have this track"),

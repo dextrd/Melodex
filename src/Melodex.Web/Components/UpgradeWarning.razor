@@ -1,0 +1,62 @@
+@inject MelodexClient Api
+@inject Preferences Prefs
+
+@*
+    Once each time the web app starts: while scheduled upgrades are on and the media server may not keep a song's stars,
+    plays and playlists across an upgrade, says so, unless told not to again for that warning.
+*@
+@if (_warning is not null)
+{
+    <Dialog Title="Upgrades may lose stars, plays and playlists" Alert="true" OnClose="() => _warning = null">
+        <p>@_warning</p>
+        <p class="muted small">
+            Upgrades replace songs below their cutoff with better copies, on a schedule. They can be turned off, and replaced files kept to put back, under
+            <a href="settings/quality#upgrades" @onclick="() => _warning = null">Settings → Quality</a>.
+        </p>
+        <label class="setting-line small">
+            <input type="checkbox" @bind="_dontShow" />
+            Don't show this again
+        </label>
+        <div class="toolbar dialog-buttons">
+            <button class="primary" @onclick="CloseAsync">OK</button>
+        </div>
+    </Dialog>
+}
+
+@code {
+    private const string Key = "upgradeWarningHidden";
+
+    // Seen this time the app started: a page change doesn't show it again.
+    private static bool _shown;
+
+    private string? _warning;
+    private bool _dontShow;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _shown)
+            return;
+        _shown = true;
+        try
+        {
+            var upgrades = await Api.GetUpgradesAsync();
+            // Hidden for this warning; a different one, such as after the server changes, shows again.
+            if (upgrades.Settings.Scheduled && upgrades.Warning is { } warning && await Prefs.GetAsync<string?>(Key, null) != warning)
+            {
+                _warning = warning;
+                StateHasChanged();
+            }
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            // Said again at the setting itself.
+        }
+    }
+
+    private async Task CloseAsync()
+    {
+        if (_dontShow)
+            await Prefs.SetAsync(Key, _warning);
+        _warning = null;
+    }
+}

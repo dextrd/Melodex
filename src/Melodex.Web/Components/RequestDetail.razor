@@ -121,6 +121,7 @@
         Verification.FingerprintMismatch => "Wrong recording",
         Verification.QualityRefused => "Quality turned off",
         Verification.SuspectLossless => "Seems lossy",
+        Verification.NotBetter => "No better",
         _ => job.State switch
         {
             JobState.Succeeded => "Filed",

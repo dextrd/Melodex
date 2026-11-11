@@ -25,10 +25,24 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   where a lossy encoder cuts them (about 16.5 kHz for an MP3 at 128 kbps, 20 kHz at 320), as an MP3 saved as FLAC has.
   One that is is suspect and counts as what it seems; by default it's refused and the next candidate tried (Activity
   says **Seems lossy**), or it can be kept as that. The library's lossless files are checked after each scan, suspect
-  ones are marked on their quality and listed under **Settings → Quality**, and count as below the cutoff. Lossless
+  ones are marked on their quality, count as below the cutoff, and wait under **Review → Seems lossy** to be replaced
+  (looked for as an upgrade) or trusted (lossless after all, and not checked again). A refused copy can be kept anyway
+  under **Review → Couldn't fetch**. Lossless
   vouched for, straight from Qobuz, Tidal or Bandcamp, or a torrent with its rip's log and cue or from a tracker set
   as known for lossless (a new Prowlarr setting), is tried before others alike. The beets worker does the checking,
   with a new `POST /v1/spectrum`, so update its image with the core's.
+- **Upgrades** (#20): a song below its cutoff is replaced by a better copy once one is found. Look for upgrades from
+  **Quality** on a song's, album's or artist's page, or for the whole library under **Settings → Quality**, where a
+  scheduled look through the library is on by default: on the days and between the times you pick, as many at once
+  as fetches run, up to a limit (25 to start with) or none. Sources are asked only for copies
+  that may be better, and a copy is kept only if it is, by its quality as read and its spectrum. It takes the old
+  file's place and exactly its tags, so Navidrome 0.55 or later keeps the song's stars, ratings, plays and playlists;
+  with another media server, an older Navidrome or none, Settings and a dialog when the web app starts say they may be
+  lost. The old file is held outside the music folder for 14 days (a setting), and until then the upgrade waits under the
+  new **Upgraded** tab of Review (and on the song's page) to be approved or rolled back, approved by itself once its time
+  is up; or the old file can be deleted straight away. Review is now in tabs, Matching, Seems lossy, Couldn't fetch and Upgraded, each with a filter, a sort and buttons for everything shown. An upgrade can be rolled back, or rolled back and never upgraded. The beets worker does the replacing, with
+  new `POST /v1/replace` and `POST /v1/restore`, so update its image with the core's. Media-server connectors can say
+  which server and version they talk to (contract 1.3).
 
 ### Changed
 

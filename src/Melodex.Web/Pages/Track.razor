@@ -190,6 +190,14 @@ else
                 </dl>
             </div>
         }
+        @if (_held.Count > 0)
+        {
+            <h2 class="section">Replaced by an upgrade</h2>
+            <p class="muted small">
+                Held outside the music folder until it's deleted. Putting it back deletes the copy that replaced it, and sets this song never to be upgraded.
+            </p>
+            <div class="card"><HeldFiles Files="_held" ShowTitle="false" Changed="LoadAsync" /></div>
+        }
     }
 }
 
@@ -215,6 +223,7 @@ else
     private TrackDetail? _track;
     private TrackGlimpse? _glimpse;
     private bool _notFound;
+    private IReadOnlyList<HeldFileInfo> _held = [];
     private bool _formatting;
     private bool _choosingCover;
     private (string Name, IReadOnlyList<PlaylistItem> Songs)? _adding;
@@ -259,6 +268,14 @@ else
         }
         _track = Pages.Keep(Key, await Api.GetTrackAsync(Id));
         _notFound = _track is null;
+        try
+        {
+            _held = _track is { Files.Count: > 0 } ? await Api.GetHeldFilesAsync(Id) : [];
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            _held = [];
+        }
     }
 
     private string Key => $"track/{Id}";

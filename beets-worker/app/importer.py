@@ -24,7 +24,7 @@ from beets.library import Item, Library
 from beets.util import displayable_path
 from mediafile import MediaFile
 
-from . import reflinks
+from . import reflinks, upgrade
 from .folders import find_musicless, remove_musicless
 from .formatter import FormatFile, format_files
 
@@ -192,6 +192,16 @@ class Importer:
                         item.remove(delete=False)
 
             return format_files(self.library, files, artwork, destination, folder_artwork)
+
+    def replace(self, staged: str, path: str, hold: str | None) -> dict[str, Any]:
+        """Replaces a library file with a better copy of it: see upgrade.py."""
+        with self._lock:
+            return upgrade.replace(self.staging, self.library, staged, path, hold)
+
+    def restore(self, held: str, path: str, remove: str | None) -> dict[str, Any]:
+        """Puts a replaced file back: see upgrade.py."""
+        with self._lock:
+            return upgrade.restore(self.staging, self.library, held, path, remove)
 
     def musicless(self, remove: bool) -> tuple[list[str], list[dict[str, str]]]:
         """The library's folders with no music in them (see folders.py), and with <remove>, removes them. Not while an

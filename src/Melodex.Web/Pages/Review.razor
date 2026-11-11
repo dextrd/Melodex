@@ -1,71 +1,84 @@
 @page "/review"
+@page "/review/seems-lossy"
+@page "/review/couldnt-fetch"
+@page "/review/upgraded"
 @implements IDisposable
 @inject MelodexClient Api
 @inject RequestTracker Tracker
 @inject AuthState Auth
 @inject NavigationManager Nav
 @inject Preferences Preferences
+@inject LibraryStore Library
 
 <PageTitle>Review · Melodex</PageTitle>
 
 <h1>Review</h1>
-<p class="muted">
-    Files that couldn't be matched confidently. They don't count as owned until they're matched. <strong>Exclude</strong> music
-    no catalogue knows, such as your own recordings: it's never matched, and the library shows it as its tags say.
-    <strong>Defer</strong> takes a file off this list; each scan tries it again and matches it only when it's confident.
-    <strong>Hide</strong> takes it out of the library altogether. Every file stays in your music folder.
-</p>
-@if (!Auth.May(UserPermissions.Review))
+@* Four things wait for you here: files to match, lossless files that seem lossy, requests that ended without a copy, and upgrades to keep or roll back. *@
+<nav class="page-tabs" aria-label="Review">
+    @foreach (var (tab, label, count) in Tabs)
+    {
+        <a href="@(tab == "matching" ? "review" : $"review/{tab}")" class="@(Tab == tab ? "active" : null)" aria-current="@(Tab == tab ? "page" : null)">
+            @label@if (count > 0) { <span class="tab-count">@count</span> }
+        </a>
+    }
+</nav>
+
+@switch (Tab)
 {
-    <div class="empty card">You can't review files: that needs the Review and match permission, which the admin can give you.</div>
+    case "matching":
+        <p class="muted">
+            Files that couldn't be matched confidently. They don't count as owned until they're matched. <strong>Exclude</strong> music
+            no catalogue knows, such as your own recordings: it's never matched, and the library shows it as its tags say.
+            <strong>Defer</strong> takes a file off this list; each scan tries it again and matches it only when it's confident.
+            <strong>Hide</strong> takes it out of the library altogether. Every file stays in your music folder.
+        </p>
+        break;
+    case "seems-lossy":
+        <p class="muted">
+            Lossless files in the library whose highs stop where a lossy encoder's do: they seem to be lossy music passed off as
+            lossless, so they count as what they seem. <strong>Replace</strong> looks for a better copy, as an upgrade.
+            <strong>Trust it</strong> if you know it's lossless: it counts as lossless, and isn't checked again. Every file stays in your
+            music folder until it's replaced.
+        </p>
+        break;
+    case "couldnt-fetch":
+        <p class="muted">
+            Requests that ended without a copy to keep: nothing was found, what was found wasn't the right song, or it wasn't a quality
+            you keep, such as lossless that seemed lossy. <strong>Keep it anyway</strong> files a copy turned away only for its quality,
+            as it is. <strong>Look again</strong> searches every plugin again. <strong>Details</strong> shows each attempt, where you can
+            pick another candidate.
+        </p>
+        break;
+    default:
+        <p class="muted">
+            Songs upgraded to better copies. The file each replaced is held outside your music folder for a while:
+            <strong>Approve</strong> keeps the upgrade and deletes the old file now; <strong>Roll back</strong> deletes the better copy,
+            puts the old file back, and a later upgrade may replace it again, unless you choose <strong>Roll back, never upgrade</strong>.
+            Any left are auto-approved once their time is up, which is set under <a href="settings/quality#upgrades">Settings → Quality</a>.
+        </p>
+        break;
 }
 
-@if (Stuck.Any())
+@if (Denied is { } denied)
 {
-    <h2>Requests</h2>
-    <p class="muted small">No plugin found a copy that passed the checks. Retry later, add another plugin, or pick a candidate on the Activity page.</p>
-    <div class="card">
-        <table class="table">
-            <tbody>
-                @foreach (var request in Stuck)
-                {
-                    <tr>
-                        <td>
-                            <div>@request.Title</div>
-                            <div class="muted small">@request.Detail</div>
-                        </td>
-                        <td class="num"><span class="badge @Format.RequestBadge(request)">@Format.RequestLabel(request)</span></td>
-                        <td class="num actions">
-                            <a class="small" href="activity?open=@request.Id">Details</a>
-                            @if (Auth.May(UserPermissions.Request)) { <button class="link small" @onclick="() => RetryAsync(request)">Retry</button> }
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
+    <div class="empty card">@denied</div>
 }
-
-@* Requests show here only when one is stuck, and then the files need a heading of their own. *@
-@if (Stuck.Any())
-{
-    <h2>Files</h2>
-}
-
-@if (!Auth.May(UserPermissions.Review))
-{
-}
-else if (_items is null)
+else if (!Loaded)
 {
     <Loading />
 }
-else if (_items.Count == 0)
+else if (Total == 0)
 {
-    <div class="empty card">No files to review.</div>
+    <div class="empty card">@(Tab switch
+    {
+        "matching" => "No files to review.",
+        "seems-lossy" => _spectra is { Lossless: > 0 } ? "No lossless files seem lossy." : "There are no lossless files in the library to check.",
+        "couldnt-fetch" => "No requests need you: every one found a copy.",
+        _ => "No upgrades to review.",
+    })</div>
 }
 else
 {
-    var approvable = Visible.Count(i => i.Suggestion is not null);
     var some = _filter.Length > 0;
     @* One line where there's room: the filter box gives way first, to a button that opens it below, then the buttons
        lose their names. *@
@@ -76,18 +89,47 @@ else
                     aria-expanded="@(_filterOpen ? "true" : "false")" @onclick="ToggleFilter">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="M20 20l-4.5-4.5" /></svg>
             </button>
-            <SortMenu Options="Sorts" Value="@_sort" Descending="_descending" DirectionHint="@DirectionHint"
+            <SortMenu Options="Sorts" Value="@Sort.Key" Descending="Sort.Descending" DirectionHint="@DirectionHint"
                       OnChange="SortAsync" OnReverse="ReverseAsync" />
             <span class="spacer"></span>
-            @* The buttons for every file carry their names where there's room, which teaches the icons each file has below. *@
-            <IconButton Icon="approve" Primary="true" Label="@(some ? "Approve these" : "Approve all")" Disabled="@(_busy || approvable == 0)"
-                        Title="@(some ? "Accept the suggestion for every file the filter shows" : "Accept the suggestion for every file that has one")"
-                        OnClick="@(() => _confirm = "approve")" />
-            @foreach (var (aside, verb, icon) in Asides)
+            @* The buttons for every item carry their names where there's room, which teaches the icons each item has below. *@
+            @if (Tab == "matching")
             {
-                <IconButton Icon="@icon" Label="@($"{verb} {(some ? "these" : "all")}")" Disabled="@(_busy || !Visible.Any())"
-                            Title="@($"{verb} every file {(some ? "the filter shows" : "waiting for review")}. {AsideHint(aside)}")"
-                            OnClick="() => _confirm = aside.ToString()" />
+                var approvable = Visible.Count(i => i.Suggestion is not null);
+                <IconButton Icon="approve" Primary="true" Label="@(some ? "Approve these" : "Approve all")" Disabled="@(_busy || approvable == 0)"
+                            Title="@(some ? "Accept the suggestion for every file the filter shows" : "Accept the suggestion for every file that has one")"
+                            OnClick="@(() => _confirm = "approve")" />
+                @foreach (var (aside, verb, icon) in Asides)
+                {
+                    <IconButton Icon="@icon" Label="@($"{verb} {(some ? "these" : "all")}")" Disabled="@(_busy || !Visible.Any())"
+                                Title="@($"{verb} every file {(some ? "the filter shows" : "waiting for review")}. {AsideHint(aside)}")"
+                                OnClick="() => _confirm = aside.ToString()" />
+                }
+            }
+            else if (Tab == "seems-lossy")
+            {
+                @if (Auth.May(UserPermissions.Review))
+                {
+                    <IconButton Icon="approve" Primary="true" Label="@(some ? "Trust these" : "Trust all")" Disabled="@(_busy || !VisibleSuspects.Any())"
+                                Title="@($"Trust every file {(some ? "the filter shows" : "here")} to be lossless")" OnClick="@(() => _confirm = "trust")" />
+                }
+                @if (Auth.May(UserPermissions.Request))
+                {
+                    <IconButton Icon="quality" Label="@(some ? "Replace these" : "Replace all")" Disabled="@(_busy || !VisibleSuspects.Any(f => f.TrackId is not null && !f.Replacing))"
+                                Title="@($"Look for a better copy of every file {(some ? "the filter shows" : "here")}")" OnClick="ReplaceShownAsync" />
+                }
+            }
+            else if (Tab == "couldnt-fetch" && Auth.May(UserPermissions.Request))
+            {
+                <IconButton Icon="retry" Primary="true" Label="@(some ? "Look again for these" : "Look again for all")" Disabled="@(_busy || !VisibleRequests.Any())"
+                            Title="@($"Search every plugin again for every request {(some ? "the filter shows" : "here")}")" OnClick="RetryShownAsync" />
+            }
+            else if (Tab == "upgraded")
+            {
+                <IconButton Icon="approve" Primary="true" Label="@(some ? "Approve these" : "Approve all")" Disabled="@(_busy || !VisibleHeld.Any())"
+                            Title="@($"Keep every upgrade {(some ? "the filter shows" : "here")}, and delete the old files now")" OnClick="@(() => _confirm = "approve-upgrades")" />
+                <IconButton Icon="putback" Label="@(some ? "Roll back these" : "Roll back all")" Disabled="@(_busy || !VisibleHeld.Any())"
+                            Title="@($"Put back the old file of every upgrade {(some ? "the filter shows" : "here")}")" OnClick="@(() => _confirm = "rollback-upgrades")" />
             }
         </div>
         @if (_filterOpen)
@@ -97,102 +139,236 @@ else
             </div>
         }
     </div>
-    @if (_confirm == "approve")
+    @if (Shown == 0)
     {
-        var unsure = Visible.Count(i => i.Suggestion is not null && i.Confidence < 0.6);
-        var without = Visible.Count() - approvable;
-        <Dialog Title="@($"Approve {Format.Count(approvable, "file", "files")}?")" OnClose="() => _confirm = null" Alert="true">
-            <p>Each is matched to the song suggested for it, and counts as owned.</p>
-            @if (without > 0)
-            {
-                <p class="muted">@Format.Count(without, "file has", "files have") no suggestion, so @(without == 1 ? "it stays" : "they stay") here.</p>
-            }
-            @if (unsure > 0)
-            {
-                <p class="plugin-message">@Format.Count(unsure, "suggestion is", "suggestions are") less than 60% sure. Filter to check them first if you'd rather.</p>
-            }
-            <div class="toolbar dialog-buttons">
-                <button @onclick="() => _confirm = null">Cancel</button>
-                <button class="primary" disabled="@_busy" @onclick="ApproveShownAsync">@if (_busy) { <span class="spinner"></span> }Approve</button>
-            </div>
-        </Dialog>
+        <div class="empty card">Nothing matches that filter.</div>
     }
-    else if (_confirm is not null && Enum.TryParse<SetAside>(_confirm, out var bulk))
+    @if (Tab == "matching")
     {
-        var verb = Asides.First(a => a.As == bulk).Verb;
-        <Dialog Title="@($"{verb} {Format.Count(Visible.Count(), "file", "files")}?")" OnClose="() => _confirm = null" Alert="true">
-            <p>@AsideHint(bulk) You can put any of them back from the lists below.</p>
-            <div class="toolbar dialog-buttons">
-                <button @onclick="() => _confirm = null">Cancel</button>
-                <button class="danger" disabled="@_busy" @onclick="() => SetShownAsideAsync(bulk)">@if (_busy) { <span class="spinner"></span> }@verb</button>
-            </div>
-        </Dialog>
-    }
-    @if (!Visible.Any())
-    {
-        <div class="empty card">No files match that filter.</div>
-    }
-    @foreach (var item in Visible)
-    {
-        <div class="card review-item">
-            <div>
-                <div class="label">File</div>
-                <div class="suggestion-row">
-                    <Cover Url="@item.CoverUrl" />
-                    <div class="suggestion-text">
-                        <div>@(item.Title ?? "(no title)") <span class="muted">· @(item.Artist ?? "unknown artist")</span></div>
+        @if (_confirm == "approve")
+        {
+            var approvable = Visible.Count(i => i.Suggestion is not null);
+            var unsure = Visible.Count(i => i.Suggestion is not null && i.Confidence < 0.6);
+            var without = Visible.Count() - approvable;
+            <Dialog Title="@($"Approve {Format.Count(approvable, "file", "files")}?")" OnClose="() => _confirm = null" Alert="true">
+                <p>Each is matched to the song suggested for it, and counts as owned.</p>
+                @if (without > 0)
+                {
+                    <p class="muted">@Format.Count(without, "file has", "files have") no suggestion, so @(without == 1 ? "it stays" : "they stay") here.</p>
+                }
+                @if (unsure > 0)
+                {
+                    <p class="plugin-message">@Format.Count(unsure, "suggestion is", "suggestions are") less than 60% sure. Filter to check them first if you'd rather.</p>
+                }
+                <div class="toolbar dialog-buttons">
+                    <button @onclick="() => _confirm = null">Cancel</button>
+                    <button class="primary" disabled="@_busy" @onclick="ApproveShownAsync">@if (_busy) { <span class="spinner"></span> }Approve</button>
+                </div>
+            </Dialog>
+        }
+        else if (_confirm is not null && Enum.TryParse<SetAside>(_confirm, out var bulk))
+        {
+            var verb = Asides.First(a => a.As == bulk).Verb;
+            <Dialog Title="@($"{verb} {Format.Count(Visible.Count(), "file", "files")}?")" OnClose="() => _confirm = null" Alert="true">
+                <p>@AsideHint(bulk) You can put any of them back from the lists below.</p>
+                <div class="toolbar dialog-buttons">
+                    <button @onclick="() => _confirm = null">Cancel</button>
+                    <button class="danger" disabled="@_busy" @onclick="() => SetShownAsideAsync(bulk)">@if (_busy) { <span class="spinner"></span> }@verb</button>
+                </div>
+            </Dialog>
+        }
+        @foreach (var item in Visible)
+        {
+            <div class="card review-item">
+                <div>
+                    <div class="label">File</div>
+                    <ReviewSong CoverUrl="@item.CoverUrl" Title="@(item.Title ?? Path.GetFileNameWithoutExtension(item.Path))" Artist="@item.Artist" ArtistHref="@ArtistHref(item.Artist)">
                         <div class="muted small path">
                             @item.Path · @Format.Duration(item.DurationSeconds)
                             @if (item.ModifiedAt is { } modified) { <span title="When the file last changed"> · @Changed(modified)</span> }
                         </div>
-                        @if (item.Reason is not null) { <div class="muted small">@item.Reason</div> }
-                    </div>
+                        @* With a suggestion, how sure it is shows beside it. *@
+                        @if (item.Reason is not null && item.Suggestion is null) { <div class="muted small">@item.Reason</div> }
+                    </ReviewSong>
                 </div>
-            </div>
-            <div>
-                <div class="label">Suggestion</div>
-                @if (item.Suggestion is { } s)
-                {
-                    <div class="suggestion-row">
-                        @if (s.AlbumId is { } coverAlbum) { <a href="albums/@coverAlbum" tabindex="-1"><Cover Url="@s.CoverUrl" /></a> }
-                        else { <Cover Url="@s.CoverUrl" /> }
-                        <div class="suggestion-text">
-                            <div class="suggestion">
-                                <span class="suggestion-title" title="@s.Title">@s.Title</span>
-                                @if (item.Confidence is { } confidence)
-                                {
-                                    <span class="confidence @ConfidenceClass(confidence)" title="How sure the match is">@confidence.ToString("P0")</span>
-                                }
-                            </div>
-                            <div class="muted small">
-                                @if (s.ArtistId is { } artistId) { <a href="artists/@artistId">@s.ArtistCredit</a> } else { @s.ArtistCredit }
-                                @if (s.AlbumId is { } albumId) { <span> · <a href="albums/@albumId">@s.AlbumTitle</a></span> }
-                                @if (s.DurationSeconds is not null) { <span> · @Format.Duration(s.DurationSeconds)</span> }
+                <div>
+                    <div class="label">Suggestion</div>
+                    @if (item.Suggestion is { } s)
+                    {
+                        <div class="suggestion-row">
+                            @if (s.AlbumId is { } coverAlbum) { <a href="albums/@coverAlbum" tabindex="-1"><Cover Url="@s.CoverUrl" /></a> }
+                            else { <Cover Url="@s.CoverUrl" /> }
+                            <div class="suggestion-text">
+                                <div class="suggestion">
+                                    <span class="suggestion-title" title="@s.Title">@s.Title</span>
+                                    @if (item.Confidence is { } confidence)
+                                    {
+                                        <span class="confidence @ConfidenceClass(confidence)" title="How sure the match is">@confidence.ToString("P0")</span>
+                                    }
+                                </div>
+                                <div class="muted small">
+                                    @if (s.ArtistId is { } artistId) { <a href="artists/@artistId">@s.ArtistCredit</a> } else { @s.ArtistCredit }
+                                    @if (s.AlbumId is { } albumId) { <span> · <a href="albums/@albumId">@s.AlbumTitle</a></span> }
+                                    @if (s.DurationSeconds is not null) { <span> · @Format.Duration(s.DurationSeconds)</span> }
+                                </div>
                             </div>
                         </div>
+                    }
+                    else
+                    {
+                        <div class="muted">None found</div>
+                    }
+                </div>
+                <div class="review-actions">
+                    @if (item.Suggestion is { } suggestion)
+                    {
+                        <IconButton Icon="approve" Primary="true" Title="Approve: match it to the suggestion" Disabled="_busy" OnClick="() => ApproveAsync(item, suggestion)" />
+                    }
+                    <IconButton Icon="search" Title="Search for what it is" OnClick="() => Nav.NavigateTo(SearchLink(item))" />
+                    @foreach (var (aside, verb, icon) in Asides)
+                    {
+                        <IconButton Icon="@icon" Title="@($"{verb}. {AsideHint(aside)}")" Disabled="_busy" OnClick="() => SetAsideAsync(item, aside)" />
+                    }
+                </div>
+            </div>
+        }
+    }
+    else if (Tab == "seems-lossy")
+    {
+        @if (_confirm == "trust")
+        {
+            <Dialog Title="@($"Trust {Format.Count(VisibleSuspects.Count(), "file", "files")}?")" OnClose="() => _confirm = null" Alert="true">
+                <p>Each counts as the lossless file it says it is, isn't checked again, and isn't upgraded unless it's below the cutoff as lossless.</p>
+                <div class="toolbar dialog-buttons">
+                    <button @onclick="() => _confirm = null">Cancel</button>
+                    <button class="primary" disabled="@_busy" @onclick="TrustShownAsync">@if (_busy) { <span class="spinner"></span> }Trust</button>
+                </div>
+            </Dialog>
+        }
+        @foreach (var file in VisibleSuspects)
+        {
+            <div class="card review-item">
+                <div>
+                    <div class="label">File</div>
+                    <ReviewSong CoverUrl="@file.CoverUrl" Title="@(file.Title ?? Path.GetFileNameWithoutExtension(file.Path))" Artist="@file.Artist"
+                                ArtistHref="@ArtistHref(file.Artist)" Href="@(file.TrackId is { } track ? $"tracks/{track}" : null)">
+                        <div class="muted small path">
+                            @file.Path · @Format.Duration(file.DurationSeconds)
+                            @if (file.ModifiedAt is { } modified) { <span title="When the file last changed"> · @Changed(modified)</span> }
+                        </div>
+                    </ReviewSong>
+                </div>
+                <div>
+                    <div class="label">Seems to be</div>
+                    <div class="small"><QualityBadge Quality="file.Quality" Dot="true" /> @file.Quality.Label</div>
+                    <div class="muted small">@file.Quality.Details</div>
+                    @if (file.Replacing) { <div class="muted small">Looking for a better copy: it's in Activity.</div> }
+                </div>
+                <div class="review-actions">
+                    @if (Auth.May(UserPermissions.Review))
+                    {
+                        <IconButton Icon="approve" Primary="true" Title="Trust it: it's lossless, so it counts as lossless and isn't checked again" Disabled="_busy"
+                                    OnClick="() => TrustAsync([file.Id])" />
+                    }
+                    @if (Auth.May(UserPermissions.Request))
+                    {
+                        <IconButton Icon="quality" Title="@(file.TrackId is null ? "It can't be replaced until it's matched" : file.Replacing ? "A better copy is being looked for" : "Replace: look for a better copy, as an upgrade")"
+                                    Disabled="@(_busy || file.TrackId is null || file.Replacing)" OnClick="() => ReplaceAsync([file])" />
+                    }
+                </div>
+            </div>
+        }
+    }
+    else if (Tab == "couldnt-fetch")
+    {
+        @foreach (var request in VisibleRequests)
+        {
+            var (title, artist) = ReviewSong.Split(request.Title);
+            var keepable = Keepable(request);
+            <div class="card review-item">
+                <div>
+                    <div class="label">Asked for</div>
+                    <ReviewSong CoverUrl="@RequestCover(request)" Title="@title" Artist="@artist" ArtistHref="@ArtistHref(artist)" Href="@RequestHref(request)">
+                        <div class="muted small">@request.Kind · asked @Format.Ago(request.CreatedAt)</div>
+                    </ReviewSong>
+                </div>
+                <div>
+                    <div class="label">Why it wasn't kept</div>
+                    <div class="small">@(request.Detail ?? "Nothing was found")</div>
+                    @if (keepable?.VerificationDetail is { } why && request.Detail?.Contains(why) != true) { <div class="muted small">@why</div> }
+                </div>
+                <div class="review-actions">
+                    @if (Auth.May(UserPermissions.Request))
+                    {
+                        @if (keepable is not null)
+                        {
+                            <IconButton Icon="approve" Primary="true" Title="Keep it anyway: file the copy that was turned away for its quality, as it is" Disabled="_busy"
+                                        OnClick="() => KeepAsync(request, keepable)" />
+                        }
+                        <IconButton Icon="retry" Primary="@(keepable is null)" Title="Look again: search every plugin again" Disabled="_busy" OnClick="() => RetryAsync(request)" />
+                    }
+                    <IconButton Icon="open" Title="Details: each attempt, where you can pick another candidate" OnClick="@(() => Nav.NavigateTo($"activity?open={request.Id}"))" />
+                </div>
+            </div>
+        }
+    }
+    else
+    {
+        @if (_confirm is "approve-upgrades" or "rollback-upgrades")
+        {
+            var approving = _confirm == "approve-upgrades";
+            var count = Format.Count(VisibleHeld.Count(), "upgrade", "upgrades");
+            <Dialog Title="@(approving ? $"Approve {count}?" : $"Roll back {count}?")" OnClose="() => _confirm = null" Alert="true">
+                <p>
+                    @(approving ? "Each keeps its better copy, and the old file is deleted now; it can't be put back."
+                                : "Each better copy is deleted and the old file put back. A later upgrade may replace them again, unless they're never to be upgraded.")
+                </p>
+                <div class="toolbar dialog-buttons">
+                    <button @onclick="() => _confirm = null">Cancel</button>
+                    @if (approving)
+                    {
+                        <button class="primary" disabled="@_busy" @onclick="() => SettleShownAsync(Settle.Approve)">@if (_busy) { <span class="spinner"></span> }Approve</button>
+                    }
+                    else
+                    {
+                        <button class="danger" disabled="@_busy" @onclick="() => SettleShownAsync(Settle.RollBack)">@if (_busy) { <span class="spinner"></span> }Roll back</button>
+                        <button class="danger" disabled="@_busy" @onclick="() => SettleShownAsync(Settle.RollBackNever)">Roll back, never upgrade</button>
+                    }
+                </div>
+            </Dialog>
+        }
+        @foreach (var held in VisibleHeld)
+        {
+            var (title, artist) = ReviewSong.Split(held.Title);
+            <div class="card review-item">
+                <div>
+                    <div class="label">Replaced</div>
+                    <ReviewSong CoverUrl="@held.CoverUrl" Title="@title" Artist="@artist" ArtistHref="@ArtistHref(artist)" Href="@(held.TrackId is { } track ? $"tracks/{track}" : null)">
+                        <div class="muted small"><QualityBadge Quality="held.Was" Dot="true" /> @held.Was.Label</div>
+                        <div class="muted small path">@held.Path · @Format.Duration(held.DurationSeconds)</div>
+                    </ReviewSong>
+                </div>
+                <div>
+                    <div class="label">Upgrade</div>
+                    <div class="small">
+                        @if (held.Now is { } now) { <QualityBadge Quality="now" Dot="true" /> <span>@now.Label</span> } else { <span>A better copy</span> }
                     </div>
-                }
-                else
-                {
-                    <div class="muted">None found</div>
-                }
+                    <div class="muted small path">@held.ReplacedBy</div>
+                    <div class="muted small">Upgraded @Format.Ago(held.HeldAt); will be auto-approved on @held.DeleteAt.ToLocalTime().ToString("d MMMM")</div>
+                </div>
+                <div class="review-actions">
+                    <IconButton Icon="approve" Primary="true" Title="Approve: keep the better copy, and delete the old file now" Disabled="_busy" OnClick="() => SettleAsync(held, Settle.Approve)" />
+                    <IconButton Icon="putback" Title="Roll back: delete the better copy and put the old file back. A later upgrade may replace it again." Disabled="_busy"
+                                OnClick="() => SettleAsync(held, Settle.RollBack)" />
+                    <IconButton Icon="ignore" Title="Roll back, never upgrade: put the old file back, and never upgrade this song" Disabled="_busy"
+                                OnClick="() => SettleAsync(held, Settle.RollBackNever)" />
+                </div>
             </div>
-            <div class="review-actions">
-                @if (item.Suggestion is { } suggestion)
-                {
-                    <IconButton Icon="approve" Primary="true" Title="Approve: match it to the suggestion" Disabled="_busy" OnClick="() => ApproveAsync(item, suggestion)" />
-                }
-                <IconButton Icon="search" Title="Search for what it is" OnClick="() => Nav.NavigateTo(SearchLink(item))" />
-                @foreach (var (aside, verb, icon) in Asides)
-                {
-                    <IconButton Icon="@icon" Title="@($"{verb}. {AsideHint(aside)}")" Disabled="_busy" OnClick="() => SetAsideAsync(item, aside)" />
-                }
-            </div>
-        </div>
+        }
     }
 }
 
-@foreach (var (list, title, hint) in Lists)
+@foreach (var (list, title, hint) in Tab == "matching" && Denied is null ? Lists : [])
 {
     if (_lists.GetValueOrDefault(list) is not { Count: > 0 } files)
         continue;
@@ -235,6 +411,283 @@ else
 
 @code {
     private IReadOnlyList<ReviewItem>? _items;
+    private IReadOnlyList<HeldFileInfo>? _held;
+
+    // matching, seems-lossy, couldnt-fetch or upgraded, from the address.
+    private string Tab => new Uri(Nav.Uri).AbsolutePath.TrimEnd('/') switch
+    {
+        var path when path.EndsWith("/review/seems-lossy") => "seems-lossy",
+        var path when path.EndsWith("/review/couldnt-fetch") => "couldnt-fetch",
+        var path when path.EndsWith("/review/upgraded") => "upgraded",
+        _ => "matching",
+    };
+
+    private IEnumerable<(string Tab, string Label, int Count)> Tabs =>
+    [
+        ("matching", "Matching", _items?.Count ?? 0),
+        ("seems-lossy", "Seems lossy", _spectra?.Suspects.Count ?? 0),
+        ("couldnt-fetch", "Couldn't fetch", Stuck.Count()),
+        ("upgraded", "Upgraded", _held?.Count ?? 0),
+    ];
+
+    // Why this tab can't be used, if it can't.
+    private string? Denied => Tab switch
+    {
+        "matching" when !Auth.May(UserPermissions.Review) => "You can't review files: that needs the Review and match permission, which the admin can give you.",
+        "seems-lossy" when !Auth.May(UserPermissions.Review) && !Auth.May(UserPermissions.Request) =>
+            "You can't review these files: that needs the Review and match or the Request permission, which the admin can give you.",
+        "upgraded" when !Auth.May(UserPermissions.Request) => "You can't review upgrades: that needs the Request permission, which the admin can give you.",
+        _ => null,
+    };
+
+    private bool Loaded => Tab switch { "matching" => _items is not null, "seems-lossy" => _spectra is not null, "upgraded" => _held is not null, _ => true };
+
+    private int Total => Tab switch
+    {
+        "matching" => _items!.Count, "seems-lossy" => _spectra!.Suspects.Count, "upgraded" => _held!.Count, _ => Stuck.Count(),
+    };
+
+    private int Shown => Tab switch
+    {
+        "matching" => Visible.Count(), "seems-lossy" => VisibleSuspects.Count(), "upgraded" => VisibleHeld.Count(), _ => VisibleRequests.Count(),
+    };
+
+    private IEnumerable<SuspectFile> VisibleSuspects
+    {
+        get
+        {
+            var shown = (_spectra?.Suspects ?? []).Where(f => Matches(f.Path, f.Title, f.Artist));
+            var text = StringComparer.CurrentCultureIgnoreCase;
+            return Sort switch
+            {
+                ("name", var d) => d ? shown.OrderByDescending(f => f.Title ?? f.Path, text) : shown.OrderBy(f => f.Title ?? f.Path, text),
+                ("date", var d) => d ? shown.OrderByDescending(f => f.ModifiedAt) : shown.OrderBy(f => f.ModifiedAt),
+                (_, var d) => d ? shown.OrderByDescending(f => f.Path, text) : shown.OrderBy(f => f.Path, text),
+            };
+        }
+    }
+
+    // The library's artists by name, for linking an artist named in tags or a title.
+    private Dictionary<string, Guid> _artists = new(StringComparer.OrdinalIgnoreCase);
+
+    private string? ArtistHref(string? name) => name is not null && _artists.TryGetValue(name, out var id) ? $"artists/{id}" : null;
+
+    private async Task LoadArtistsAsync()
+    {
+        try
+        {
+            var artists = Library.Artists ?? await Library.LoadArtistsAsync();
+            _artists = artists.GroupBy(a => a.Name, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            // Shown without links.
+        }
+    }
+
+    private SpectrumStatus? _spectra;
+
+    private async Task LoadSuspectsAsync()
+    {
+        try
+        {
+            _spectra = await Api.GetSpectrumStatusAsync();
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            _spectra = new SpectrumStatus(0, 0, []);
+        }
+    }
+
+    private Task TrustShownAsync() => TrustAsync(VisibleSuspects.Select(f => f.Id).ToList());
+
+    private async Task TrustAsync(IReadOnlyList<Guid> ids)
+    {
+        _busy = true;
+        try
+        {
+            await Api.TrustLosslessAsync(ids);
+        }
+        finally
+        {
+            await LoadSuspectsAsync();
+            _busy = false;
+            _confirm = null;
+            ScanStatus.RaiseLibraryChanged();
+        }
+    }
+
+    private Task ReplaceShownAsync() => ReplaceAsync(VisibleSuspects.ToList());
+
+    // Each is looked for as an upgrade: it counts as what it seems, so it's below the cutoff.
+    private async Task ReplaceAsync(IReadOnlyList<SuspectFile> files)
+    {
+        _busy = true;
+        try
+        {
+            foreach (var file in files.Where(f => f.TrackId is not null && !f.Replacing))
+                await Api.SearchUpgradesAsync(new FormatScope(FormatScopeKind.Track, file.TrackId));
+            await Tracker.RefreshAsync();
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            // Those asked for show as being replaced.
+        }
+        finally
+        {
+            await LoadSuspectsAsync();
+            _busy = false;
+        }
+    }
+
+    // Each finished request's attempts, to find a copy turned away only for its quality.
+    private readonly Dictionary<Guid, RequestInfo> _details = [];
+
+    private JobInfo? Keepable(RequestInfo request) =>
+        request.Kind == RequestKind.Track && !request.Upgrade && _details.GetValueOrDefault(request.Id) is { UpdatedAt: var at, Jobs: { } jobs } && at == request.UpdatedAt
+            ? jobs.LastOrDefault(j => j.Verification is Verification.SuspectLossless or Verification.QualityRefused)
+            : null;
+
+    private async Task LoadDetailsAsync()
+    {
+        foreach (var request in Stuck.Where(r => r.Kind == RequestKind.Track && _details.GetValueOrDefault(r.Id)?.UpdatedAt != r.UpdatedAt).ToList())
+        {
+            try
+            {
+                if (await Api.GetRequestAsync(request.Id) is { } details)
+                    _details[request.Id] = details;
+            }
+            catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+            {
+                // Shown without keeping it anyway.
+            }
+        }
+    }
+
+    private async Task KeepAsync(RequestInfo request, JobInfo job)
+    {
+        _busy = true;
+        try
+        {
+            await Api.KeepRequestAsync(request.Id, job.Id);
+            await Tracker.RefreshAsync();
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            // Its copy has gone from staging: looking again is left.
+            _details.Remove(request.Id);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private bool Matches(params string?[] texts) =>
+        _filter.Length == 0 || texts.Any(text => text?.Contains(_filter, StringComparison.OrdinalIgnoreCase) == true);
+
+    private IEnumerable<RequestInfo> VisibleRequests
+    {
+        get
+        {
+            var shown = Stuck.Where(r => Matches(r.Title, r.Detail));
+            return (Sort.Key, Sort.Descending) switch
+            {
+                ("name", false) => shown.OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase),
+                ("name", true) => shown.OrderByDescending(r => r.Title, StringComparer.CurrentCultureIgnoreCase),
+                (_, false) => shown.OrderBy(r => r.UpdatedAt),
+                _ => shown.OrderByDescending(r => r.UpdatedAt),
+            };
+        }
+    }
+
+    private IEnumerable<HeldFileInfo> VisibleHeld
+    {
+        get
+        {
+            var shown = (_held ?? []).Where(h => Matches(h.Title, h.Path, h.ReplacedBy));
+            return (Sort.Key, Sort.Descending) switch
+            {
+                ("name", false) => shown.OrderBy(h => h.Title, StringComparer.CurrentCultureIgnoreCase),
+                ("name", true) => shown.OrderByDescending(h => h.Title, StringComparer.CurrentCultureIgnoreCase),
+                (_, false) => shown.OrderBy(h => h.HeldAt),
+                _ => shown.OrderByDescending(h => h.HeldAt),
+            };
+        }
+    }
+
+    // A request's picture: its edition's or album's cover, or its artist's.
+    private static string? RequestCover(RequestInfo request) => request.Kind switch
+    {
+        RequestKind.Artist => $"api/v1/artwork/artist/{request.TargetId}",
+        _ when request.EditionId is { } edition => $"api/v1/artwork/edition/{edition}",
+        RequestKind.Album => $"api/v1/artwork/album/{request.TargetId}",
+        _ => null,
+    };
+
+    private static string RequestHref(RequestInfo request) => request.Kind switch
+    {
+        RequestKind.Artist => $"artists/{request.TargetId}",
+        RequestKind.Album => $"albums/{request.TargetId}",
+        _ => $"tracks/{request.TargetId}",
+    };
+
+    private async Task LoadHeldAsync()
+    {
+        try
+        {
+            _held = Auth.May(UserPermissions.Request) ? await Api.GetHeldFilesAsync() : [];
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            _held = [];
+        }
+    }
+
+    // Approve keeps the better copy, deleting the old file; roll back puts the old file back, and may never upgrade the song.
+    private enum Settle { Approve, RollBack, RollBackNever }
+
+    private Task SettleAsync(HeldFileInfo held, Settle how) => SettleAsync([held], how);
+
+    private Task SettleShownAsync(Settle how) => SettleAsync(VisibleHeld.ToList(), how);
+
+    private async Task SettleAsync(IReadOnlyList<HeldFileInfo> held, Settle how)
+    {
+        _busy = true;
+        try
+        {
+            foreach (var file in held)
+                await (how == Settle.Approve ? Api.DeleteHeldFileAsync(file.Id) : Api.RestoreHeldFileAsync(file.Id, how == Settle.RollBackNever));
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            // What's left shows again below.
+        }
+        finally
+        {
+            await LoadHeldAsync();
+            _busy = false;
+            _confirm = null;
+            if (how != Settle.Approve)
+                ScanStatus.RaiseLibraryChanged();
+        }
+    }
+
+    private async Task RetryShownAsync()
+    {
+        _busy = true;
+        try
+        {
+            foreach (var request in VisibleRequests.ToList())
+                await Api.RetryRequestAsync(request.Id);
+            await Tracker.RefreshAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
     private Dictionary<ReviewList, IReadOnlyList<ReviewItem>> _lists = [];
     private readonly HashSet<ReviewList> _open = [];
 
@@ -270,36 +723,53 @@ else
     private bool _filterOpen, _focusFilter;
     private ElementReference _filterDrop;
 
-    private const string FilterHint = "Filter, for example a title, artist or folder";
+    private string FilterHint => Tab switch
+    {
+        "matching" => "Filter, for example a title, artist or folder",
+        "couldnt-fetch" => "Filter, for example a title, artist or reason",
+        _ => "Filter, for example a title, artist or folder",
+    };
 
-    private static readonly IReadOnlyList<(string Key, string Label)> Sorts =
-        [("match", "How sure the match is"), ("name", "Name"), ("path", "Path"), ("date", "Date changed")];
+    private IReadOnlyList<(string Key, string Label)> Sorts => Tab switch
+    {
+        "matching" => [("match", "How sure the match is"), ("name", "Name"), ("path", "Path"), ("date", "Date changed")],
+        "seems-lossy" => [("name", "Name"), ("path", "Path"), ("date", "Date changed")],
+        "upgraded" => [("date", "Date upgraded"), ("name", "Name")],
+        _ => [("date", "Date"), ("name", "Name")],
+    };
 
-    // How each sort starts out: the surest matches and the newest files first, names and paths from A.
+    // How each sort starts out: the surest matches and the newest first, names and paths from A.
     private static bool StartsDescending(string sort) => sort is "match" or "date";
 
-    private string _sort = "path";
-    private bool _descending;
-
-    private string DirectionHint => _sort switch
+    // Each tab's own, kept between visits.
+    private readonly Dictionary<string, (string Key, bool Descending)> _sorts = new()
     {
-        "match" => $"{(_descending ? "Surest" : "Least sure")} first; click to reverse",
-        "date" => $"{(_descending ? "Newest" : "Oldest")} first; click to reverse",
-        _ => $"Sorted {(_descending ? "Z to A" : "A to Z")}; click to reverse",
+        ["matching"] = ("path", false), ["seems-lossy"] = ("path", false), ["couldnt-fetch"] = ("date", true), ["upgraded"] = ("date", true),
     };
+
+    private (string Key, bool Descending) Sort => _sorts[Tab];
+
+    private string DirectionHint => Sort switch
+    {
+        ("match", var d) => $"{(d ? "Surest" : "Least sure")} first; click to reverse",
+        ("date", var d) => $"{(d ? "Newest" : "Oldest")} first; click to reverse",
+        (_, var d) => $"Sorted {(d ? "Z to A" : "A to Z")}; click to reverse",
+    };
+
+    // Matching kept its sort under these before it had tabs.
+    private static string SortKey(string tab) => tab == "matching" ? "review.sort" : $"review.{tab}.sort";
+    private static string DescendingKey(string tab) => tab == "matching" ? "review.descending" : $"review.{tab}.descending";
 
     // The bulk action waiting to be confirmed: approve or exclude.
     private string? _confirm;
 
-    private IEnumerable<ReviewItem> Visible => Sorted(_items!.Where(i => _filter.Length == 0
-        || new[] { i.Path, i.Title, i.Artist, i.Album, i.Suggestion?.Title, i.Suggestion?.AlbumTitle }
-            .Any(text => text?.Contains(_filter, StringComparison.OrdinalIgnoreCase) == true)));
+    private IEnumerable<ReviewItem> Visible => Sorted((_items ?? []).Where(i => Matches(i.Path, i.Title, i.Artist, i.Album, i.Suggestion?.Title, i.Suggestion?.AlbumTitle)));
 
     // Files without a match % go last either way; the path settles ties.
     private IEnumerable<ReviewItem> Sorted(IEnumerable<ReviewItem> items)
     {
         var text = StringComparer.CurrentCultureIgnoreCase;
-        var sorted = (_sort, _descending) switch
+        var sorted = Sort switch
         {
             ("match", true) => items.OrderBy(i => i.Confidence is null).ThenByDescending(i => i.Confidence),
             ("match", false) => items.OrderBy(i => i.Confidence is null).ThenBy(i => i.Confidence),
@@ -320,21 +790,20 @@ else
 
     private async Task SortAsync(string sort)
     {
-        _sort = sort;
-        _descending = StartsDescending(sort);
+        _sorts[Tab] = (sort, StartsDescending(sort));
         await KeepSortAsync();
     }
 
     private async Task ReverseAsync()
     {
-        _descending = !_descending;
+        _sorts[Tab] = (Sort.Key, !Sort.Descending);
         await KeepSortAsync();
     }
 
     private async Task KeepSortAsync()
     {
-        await Preferences.SetAsync("review.sort", _sort);
-        await Preferences.SetAsync("review.descending", _descending);
+        await Preferences.SetAsync(SortKey(Tab), Sort.Key);
+        await Preferences.SetAsync(DescendingKey(Tab), Sort.Descending);
     }
 
     private void ToggleFilter()
@@ -360,13 +829,17 @@ else
     protected override async Task OnInitializedAsync()
     {
         _filter = Filter ?? "";
-        Tracker.Changed += Refresh;
-        _sort = await Preferences.GetAsync("review.sort", "path");
-        if (Sorts.All(s => s.Key != _sort))
-            _sort = "path";
-        _descending = await Preferences.GetAsync("review.descending", StartsDescending(_sort));
+        Tracker.Changed += OnRequestsChanged;
+        foreach (var tab in _sorts.Keys.ToList())
+        {
+            var sort = await Preferences.GetAsync(SortKey(tab), _sorts[tab].Key);
+            if (sort is not ("name" or "date") && !(tab == "matching" && sort is "match" or "path") && !(tab == "seems-lossy" && sort is "path"))
+                sort = _sorts[tab].Key;
+            _sorts[tab] = (sort, await Preferences.GetAsync(DescendingKey(tab), StartsDescending(sort)));
+        }
+        Nav.LocationChanged += OnLocationChanged;
         await Tracker.EnsureLoadedAsync();
-        await LoadAsync();
+        await Task.WhenAll(LoadAsync(), LoadHeldAsync(), LoadSuspectsAsync(), LoadArtistsAsync(), LoadDetailsAsync());
     }
 
     private async Task LoadAsync()
@@ -418,6 +891,18 @@ else
 
     private void Refresh() => InvokeAsync(StateHasChanged);
 
+    // A request that finishes may be an upgrade, held for review.
+    private HashSet<Guid> _upgrading = [];
+
+    private void OnRequestsChanged() => InvokeAsync(async () =>
+    {
+        // An upgrade that finishes may have held a file, or replaced one that seemed lossy.
+        var finished = Tracker.Requests.Any(r => r.Upgrade && !r.Active && _upgrading.Contains(r.Id));
+        _upgrading = Tracker.Requests.Where(r => r.Upgrade && r.Active).Select(r => r.Id).ToHashSet();
+        await Task.WhenAll(finished ? LoadHeldAsync() : Task.CompletedTask, finished ? LoadSuspectsAsync() : Task.CompletedTask, LoadDetailsAsync());
+        StateHasChanged();
+    });
+
     private static string ConfidenceClass(double confidence) => confidence >= 0.8 ? "high" : confidence >= 0.6 ? "medium" : "low";
 
     private static string SearchLink(ReviewItem item)
@@ -441,5 +926,17 @@ else
         await Tracker.RefreshAsync();
     }
 
-    public void Dispose() => Tracker.Changed -= Refresh;
+    // Each tab starts unfiltered.
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => InvokeAsync(() =>
+    {
+        _filter = "";
+        _confirm = null;
+        StateHasChanged();
+    });
+
+    public void Dispose()
+    {
+        Tracker.Changed -= OnRequestsChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
 }

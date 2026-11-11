@@ -291,8 +291,12 @@ label { display: inline-flex; align-items: center; gap: .4rem; }
 .quality-dot.suspect.good { box-shadow: inset 0 0 0 1.5px var(--partial-fill); }
 .quality-dot.suspect.lossless { box-shadow: inset 0 0 0 1.5px var(--owned-fill); }
 
-.suspect-files { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: .25rem; }
-.suspect-files li { overflow-wrap: anywhere; }
+.day-toggles { display: inline-flex; gap: .25rem; flex-wrap: wrap; }
+.day-toggle { padding: .15rem .55rem; border-radius: 999px; font-size: .85rem; }
+.day-toggle.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text, #fff); }
+.held-files { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .5rem; }
+.held-files li { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.held-files .held-was { display: flex; align-items: baseline; gap: .4rem; flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
 
 .meter { height: 6px; background: var(--missing-fill); border-radius: 999px; overflow: hidden; min-width: 80px; }
 .meter > span { display: block; height: 100%; background: var(--owned-fill); }
@@ -462,6 +466,9 @@ td.actions > * + * { margin-left: .6rem; }
 .suggestion-row { display: grid; grid-template-columns: 3rem minmax(0, 1fr); gap: .6rem; align-items: start; }
 .suggestion-row > a { display: block; }
 .suggestion-row .cover { width: 3rem; }
+/* A song's title links to its page, but reads like the titles beside it. */
+.suggestion-title a { color: inherit; }
+.suggestion-title a:hover { text-decoration: underline; }
 .suggestion-text { min-width: 0; }
 .suggestion-text .suggestion { display: flex; gap: .5rem; align-items: baseline; min-width: 0; flex-wrap: nowrap; }
 /* A long title wraps to two lines, then ends with an ellipsis, rather than running under the buttons. */
@@ -1401,6 +1408,7 @@ input[type=search]:disabled { opacity: .6; }
 .page-tabs a { padding: .5rem .9rem; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 600; }
 .page-tabs a:hover { color: var(--text); }
 .page-tabs a.active { color: var(--text); border-bottom-color: var(--accent); }
+.page-tabs .tab-count { margin-left: .35rem; padding: 0 .4rem; border-radius: 999px; font-size: .75rem; background: var(--border); color: var(--text); }
 
 /* Pins: on a square, shown on hover like other tile buttons, and always once pinned; in a list, faint until wanted. */
 .tile-pin { left: .4rem; right: auto; }

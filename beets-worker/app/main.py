@@ -19,6 +19,7 @@ from .formatter import FormatFile
 from .importer import Importer, ImportFailed, Release, StagedFile
 from .removal import delete
 from .spectrum import analyse
+from .upgrade import UpgradeFailed
 
 STAGING = os.environ.get("STAGING_ROOT") or "/staging"
 LIBRARY = os.environ.get("LIBRARY_ROOT") or "/music"
@@ -81,6 +82,18 @@ class DeleteRequest(Model):
 
 class MusiclessRequest(Model):
     remove: bool = False
+
+
+class ReplaceRequest(Model):
+    staged: str
+    path: str
+    hold: str | None = None
+
+
+class RestoreRequest(Model):
+    held: str
+    path: str
+    remove: str | None = None
 
 
 class SpectrumFile(Model):
@@ -168,6 +181,25 @@ async def musicless_folders(body: MusiclessRequest) -> dict[str, Any]:
 async def run_delete(body: DeleteRequest) -> dict[str, Any]:
     deleted, failed = await run_in_threadpool(delete, LIBRARY, body.paths)
     return {"deleted": deleted, "failed": failed}
+
+
+@app.post("/v1/replace")
+async def run_replace(body: ReplaceRequest) -> dict[str, Any]:
+    """Replaces a library file with a better copy of the same song, tagged as the old one was (see upgrade.py)."""
+    try:
+        replaced = await run_in_threadpool(get_importer().replace, body.staged, body.path, body.hold)
+    except UpgradeFailed as e:
+        raise HTTPException(422, {"error": str(e), "code": "replace-failed"})
+    return {k: v for k, v in replaced.items() if v is not None}
+
+
+@app.post("/v1/restore")
+async def run_restore(body: RestoreRequest) -> dict[str, Any]:
+    """Puts a file an upgrade replaced back where it was, deleting the file that replaced it."""
+    try:
+        return await run_in_threadpool(get_importer().restore, body.held, body.path, body.remove)
+    except UpgradeFailed as e:
+        raise HTTPException(422, {"error": str(e), "code": "restore-failed"})
 
 
 @app.post("/v1/spectrum")

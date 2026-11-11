@@ -2,7 +2,8 @@
 
 The only thing that writes the music library. Melodex sends it staged files with the MusicBrainz release and
 recordings they are; beets tags them and works out where they go, and the worker moves them into the library. It
-also reads lossless files' spectra, staged or in the library, to catch lossy music passed off as lossless.
+also reads lossless files' spectra, staged or in the library, to catch lossy music passed off as lossless, and
+replaces files with better copies for upgrades, tagged as the old ones were.
 
 The HTTP API is in [docs/import-worker.md](../docs/import-worker.md).
 

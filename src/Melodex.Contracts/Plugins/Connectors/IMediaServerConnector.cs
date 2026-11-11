@@ -1,7 +1,7 @@
 namespace Melodex.Contracts.Plugins.Connectors;
 
 /// <summary>
-/// Media-server connector contract (version 1.1): tells a media server about new music and confirms it's
+/// Media-server connector contract (version 1.3): tells a media server about new music and confirms it's
 /// there. Optional features are separate interfaces, each matched by a capability name in the manifest;
 /// the core and API only offer actions the active connector supports.
 /// </summary>
@@ -187,6 +187,18 @@ public sealed record ServerTrack(
     TimeSpan? Duration,
     string? MusicBrainzRecordingId);
 
+/// <summary>Optional: which server it is, and its version (1.3). Capability <see cref="ConnectorCapabilities.ServerIdentity"/>.</summary>
+public interface IServerIdentity
+{
+    /// <summary>The server's kind and version, or null when it can't be reached.</summary>
+    Task<ServerIdentity?> GetServerAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>A media server, as it names itself.</summary>
+/// <param name="Kind">What it is, lower case: <c>navidrome</c>.</param>
+/// <param name="Version">Its version, as it reports it: <c>0.64.2 (4d1e8c42)</c>.</param>
+public sealed record ServerIdentity(string Kind, string? Version);
+
 /// <summary>Capability names a connector can declare in its manifest.</summary>
 public static class ConnectorCapabilities
 {
@@ -207,4 +219,7 @@ public static class ConnectorCapabilities
 
     /// <summary><see cref="IMediaServerConnector.TriggerScanAsync"/> honours its paths.</summary>
     public const string SelectiveScan = "selective-scan";
+
+    /// <summary>Implements <see cref="IServerIdentity"/> (1.3).</summary>
+    public const string ServerIdentity = "server-identity";
 }

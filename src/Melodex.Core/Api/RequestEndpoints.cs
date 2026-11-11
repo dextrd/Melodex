@@ -102,6 +102,17 @@ public static class RequestEndpoints
             .RequireScope(Scopes.Request).WithName("ChooseCandidate").WithSummary("Fetch one of the candidates an earlier search found, instead of searching again. For finished track or whole-album requests.")
             .Produces<RequestInfo>().Produces(StatusCodes.Status409Conflict);
 
+        requests.MapPost("/{id:guid}/keep", async (Guid id, KeepCopy body, MelodexDbContext db, RequestService service, CancellationToken ct) =>
+            {
+                if (await db.Requests.FindAsync([id], ct) is not { } request)
+                    return Results.NotFound();
+                return await service.KeepAsync(request, body.JobId, ct) ? Results.Ok(await service.GetAsync(id, ct)) : Results.Conflict();
+            })
+            .RequireScope(Scopes.Request).WithName("KeepCopy")
+            .WithSummary("Keep the copy an attempt fetched but didn't keep for its quality (turned off, or lossless that seemed lossy), as it is. "
+                         + "For finished track requests whose copy is still in staging.")
+            .Produces<RequestInfo>().Produces(StatusCodes.Status409Conflict);
+
         var settings = api.MapGroup("/settings").WithTags("Settings").RequireScope(Scopes.Settings);
         settings.MapGet("/fetch", (SettingsService s, CancellationToken ct) => s.GetFetchAsync(ct)).WithName("GetFetchSettings");
         settings.MapPut("/fetch", async (FetchSettings value, SettingsService s, CancellationToken ct) =>

@@ -1,0 +1,66 @@
+@* Files upgrades replaced, held outside the music folder: each upgrade can be approved, deleting the old file now, or rolled back. *@
+@inject MelodexClient Api
+
+<ul class="held-files small">
+    @foreach (var file in Files)
+    {
+        <li>
+            <span class="held-was">
+                <QualityBadge Quality="file.Was" Dot="true" />
+                @if (ShowTitle && file.TrackId is { } track)
+                {
+                    <a href="/tracks/@track">@file.Title</a>
+                }
+                else if (ShowTitle)
+                {
+                    <span>@file.Title</span>
+                }
+                <span class="muted">@file.Was.Label, upgraded to @(file.Now?.Label ?? "a better copy") @Format.Ago(file.HeldAt); will be auto-approved on @file.DeleteAt.ToLocalTime().ToString("d MMMM")</span>
+            </span>
+            <span class="spacer"></span>
+            <button class="primary" @onclick="() => DeleteAsync(file)" disabled="@_busy" title="Keep the better copy, and delete the old file now">Approve</button>
+            <button @onclick="() => RestoreAsync(file, false)" disabled="@_busy" title="Delete the better copy and put the old file back. A later upgrade may replace it again.">Roll back</button>
+            <button @onclick="() => RestoreAsync(file, true)" disabled="@_busy" title="Delete the better copy, put the old file back, and never upgrade this song">Roll back, never upgrade</button>
+        </li>
+    }
+</ul>
+@if (_error is not null)
+{
+    <div class="notice error">@_error</div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<HeldFileInfo> Files { get; set; } = [];
+
+    /// <summary>Called once one's approved or rolled back.</summary>
+    [Parameter] public EventCallback Changed { get; set; }
+
+    /// <summary>Name each song, where they're of more than one.</summary>
+    [Parameter] public bool ShowTitle { get; set; } = true;
+
+    private bool _busy;
+    private string? _error;
+
+    private Task RestoreAsync(HeldFileInfo file, bool never) => RunAsync(() => Api.RestoreHeldFileAsync(file.Id, never));
+
+    private Task DeleteAsync(HeldFileInfo file) => RunAsync(() => Api.DeleteHeldFileAsync(file.Id));
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await action();
+            await Changed.InvokeAsync();
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

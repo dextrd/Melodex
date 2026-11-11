@@ -387,6 +387,40 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
     }
 
     [TestLibraryFact]
+    public async Task A_copy_turned_away_for_seeming_lossy_can_be_kept_anyway()
+    {
+        await fixture.AddSourceAsync(new FakeSource("onlyfake") { Format = "flac", BitrateKbps = null, Candidates = 1, FileName = "onlyfake.wav" });
+        fixture.Importer.Cutoffs["onlyfake.wav"] = 16570;
+        try
+        {
+            var track = await MissingTrackAsync("Daft Punk", "Homework");
+            var done = await fixture.WaitAsync((await Api.CreateRequestAsync(new CreateRequest(RequestKind.Track, track))).Id);
+            Assert.Equal(RequestState.NeedsReview, done.State);
+            var refused = Assert.Single(done.Jobs!);
+            Assert.Equal(Verification.SuspectLossless, refused.Verification);
+
+            // Kept as it is, without fetching again, and counted as what it seems.
+            await Api.KeepRequestAsync(done.Id, refused.Id);
+            var kept = await fixture.WaitAsync(done.Id);
+            Dump(kept);
+            Assert.Equal(RequestState.InLibrary, kept.State);
+            Assert.Single(kept.Jobs!);
+            Assert.Contains("Keeping it anyway", kept.Jobs![0].Log);
+            using var scope = fixture.Factory.Services.CreateScope();
+            var file = await scope.ServiceProvider.GetRequiredService<Melodex.Core.Data.MelodexDbContext>().LibraryFiles.SingleAsync(f => f.TrackId == track);
+            Assert.Equal(16570, file.CutoffHz);
+            Assert.True(file.Quality.Suspect);
+
+            // Once kept, there's nothing left to keep.
+            await Assert.ThrowsAnyAsync<Exception>(() => Api.KeepRequestAsync(done.Id, refused.Id));
+        }
+        finally
+        {
+            fixture.Importer.Cutoffs.TryRemove("onlyfake.wav", out _);
+        }
+    }
+
+    [TestLibraryFact]
     public async Task Lossless_that_seems_lossy_can_be_kept_as_what_it_seems()
     {
         var profile = await Api.GetQualityProfileAsync();
@@ -435,10 +469,21 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
             // Only the library was read, and only its lossless files.
             Assert.All(fixture.Importer.Spectra.SelectMany(r => r.Files).Where(f => f.Root == SpectrumFile.Library),
                 f => Assert.True(f.Path.EndsWith(".flac") || f.Path.EndsWith(".wav"), f.Path));
+
+            // Trusted, it's lossless again, and checking everything again leaves it so.
+            await Api.TrustLosslessAsync([suspect.Id]);
+            Assert.Empty((await Api.GetSpectrumStatusAsync()).Suspects);
+            task = await Api.CheckSpectraAsync(again: true);
+            for (var deadline = DateTime.UtcNow.AddMinutes(1); task.Active && DateTime.UtcNow < deadline; task = (await Api.GetTaskAsync(task.Id))!)
+                await Task.Delay(50);
+            Assert.Empty((await Api.GetSpectrumStatusAsync()).Suspects);
         }
         finally
         {
             fixture.Importer.Cutoffs.TryRemove("04. Da Funk.flac", out _);
+            using var scope = fixture.Factory.Services.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<Melodex.Core.Data.MelodexDbContext>().LibraryFiles
+                .ExecuteUpdateAsync(u => u.SetProperty(f => f.TrustedAt, (DateTime?)null));
         }
     }
 
@@ -553,6 +598,217 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
         Assert.Equal(RequestState.Failed, done.State);
         Assert.Contains("Add one under Settings → Plugins", done.Detail);
         await Api.CancelRequestAsync(done.Id);
+    }
+
+    /// <summary>An owned file of the test library, by the end of its path, with the database to look at it.</summary>
+    private async Task<(Melodex.Core.Data.LibraryFile File, IServiceScope Scope)> OwnedAsync(string pathEnd)
+    {
+        var scope = fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Melodex.Core.Data.MelodexDbContext>();
+        var file = await db.LibraryFiles.SingleAsync(f => f.Path.EndsWith(pathEnd));
+        Assert.NotNull(file.TrackId);
+        return (file, scope);
+    }
+
+    private async Task<RequestInfo> UpgradeAsync(Guid fileId, Guid trackId)
+    {
+        var found = await Api.SearchUpgradesAsync(new FormatScope(FormatScopeKind.Track, trackId));
+        Assert.Equal((1, 1), (found.Upgradable, found.Queued));
+        using var scope = fixture.Factory.Services.CreateScope();
+        var request = await scope.ServiceProvider.GetRequiredService<Melodex.Core.Data.MelodexDbContext>().Requests
+            .Where(r => r.UpgradesFileId == fileId).OrderByDescending(r => r.CreatedAt).FirstAsync();
+        var done = await fixture.WaitAsync(request.Id);
+        Dump(done);
+        Assert.True(done.Upgrade);
+        return done;
+    }
+
+    [TestLibraryFact]
+    public async Task An_owned_mp3_is_upgraded_in_its_place_its_old_file_held_and_put_back()
+    {
+        await fixture.AddSourceAsync(new FakeSource("better") { Candidates = 1, BitrateKbps = null, FileName = "better.wav" });
+        var (file, scope) = await OwnedAsync("Discovery (2001)/10 Voyager.mp3");
+        using var owned = scope;
+        var (fileId, trackId, oldPath) = (file.Id, file.TrackId!.Value, file.Path);
+        try
+        {
+            var done = await UpgradeAsync(fileId, trackId);
+
+            Assert.Equal(RequestState.InLibrary, done.State);
+            Assert.Matches("^Upgraded from MP3 [0-9]+ to PCM [0-9/.]+\\. ", done.Detail!);
+            // The same library file, in the old one's place less its extension; the old one is held in staging.
+            var replace = Assert.Single(fixture.Importer.Replaces, r => r.Path == oldPath);
+            Assert.EndsWith("/better.wav", replace.Staged);
+            Assert.StartsWith("held/", replace.Hold);
+            var db = scope.ServiceProvider.GetRequiredService<Melodex.Core.Data.MelodexDbContext>();
+            var upgraded = await db.LibraryFiles.AsNoTracking().SingleAsync(f => f.Id == fileId);
+            Assert.Equal(Path.ChangeExtension(oldPath, ".wav"), upgraded.Path);
+            Assert.Equal((trackId, "pcm"), (upgraded.TrackId!.Value, upgraded.Codec));
+            Assert.False(File.Exists(Path.Combine(fixture.Music, oldPath)));
+            var held = Assert.Single(await Api.GetHeldFilesAsync(trackId));
+            Assert.Equal((oldPath, "mp3", "pcm"), (held.Path, held.Was.Codec, held.Now?.Codec));
+            Assert.True(File.Exists(Path.Combine(fixture.Staging, $"{replace.Hold}/10 Voyager.mp3")));
+            Assert.Contains(await Api.GetHeldFilesAsync(), h => h.Id == held.Id);
+
+            // Put back, the better copy goes, and the song isn't upgraded again.
+            await Api.RestoreHeldFileAsync(held.Id, never: true);
+            var restored = await db.LibraryFiles.AsNoTracking().SingleAsync(f => f.Id == fileId);
+            Assert.Equal((oldPath, "mp3"), (restored.Path, restored.Codec));
+            Assert.True(File.Exists(Path.Combine(fixture.Music, oldPath)));
+            Assert.False(File.Exists(Path.Combine(fixture.Music, upgraded.Path)));
+            Assert.Empty(await Api.GetHeldFilesAsync(trackId));
+            Assert.Equal(QualityOverrideKind.NeverUpgrade, (await Api.GetQualitySettingAsync("tracks", trackId, null))!.Kind);
+            Assert.Equal(0, (await Api.SearchUpgradesAsync(new FormatScope(FormatScopeKind.Track, trackId))).Upgradable);
+        }
+        finally
+        {
+            await Api.SaveQualityOverrideAsync("tracks", trackId, new QualityOverride(QualityOverrideKind.Inherit));
+        }
+    }
+
+    [TestLibraryFact]
+    public async Task An_upgrade_fetches_only_what_may_be_better_and_keeps_only_what_is()
+    {
+        var (file, scope) = await OwnedAsync("Discovery (2001)/11 Veridis Quo.mp3");
+        using var owned = scope;
+        var (fileId, trackId, oldPath) = (file.Id, file.TrackId!.Value, file.Path);
+
+        // Said to be no better: not even fetched.
+        var worse = new FakeSource("worse") { Format = "mp3", BitrateKbps = 8, Candidates = 1 };
+        await fixture.AddSourceAsync(worse);
+        var done = await UpgradeAsync(fileId, trackId);
+        Assert.Equal(RequestState.InLibrary, done.State);
+        Assert.Matches("^Nothing better found: worse found nothing better than the MP3 [0-9]+ you have", done.Detail!);
+        Assert.Equal(0, worse.Fetches);
+        await fixture.RemoveSourcesAsync();
+
+        // Said to be lossless, but it seems to be as low as what's there: fetched, checked and not kept.
+        var profile = await Api.GetQualityProfileAsync();
+        var lowToo = profile.Ordered().Select(s => new ProfileStep(s.Step.Key, s.Allowed || s.Step == new QualityStep(CodecFamily.Mp3, QualityLevel.Low))).ToList();
+        await Api.SaveQualityProfileAsync(profile with { Suspect = SuspectLossless.Keep, Steps = lowToo });
+        fixture.Importer.Cutoffs["seemslow.wav"] = 15000;
+        try
+        {
+            await fixture.AddSourceAsync(new FakeSource("seemslow") { Format = "flac", BitrateKbps = null, Candidates = 1, FileName = "seemslow.wav" });
+            done = await UpgradeAsync(fileId, trackId);
+            Assert.Equal(RequestState.InLibrary, done.State);
+            Assert.Equal(Verification.NotBetter, done.Jobs!.Single().Verification);
+            Assert.Matches("^It's PCM [0-9/.]+, no better than the MP3 [0-9]+ you have$", done.Jobs![0].VerificationDetail!);
+            Assert.True(File.Exists(Path.Combine(fixture.Music, oldPath)));
+            Assert.Empty(await Api.GetHeldFilesAsync(trackId));
+        }
+        finally
+        {
+            fixture.Importer.Cutoffs.TryRemove("seemslow.wav", out _);
+            await Api.SaveQualityProfileAsync(profile);
+        }
+    }
+
+    [TestLibraryFact]
+    public async Task Songs_never_to_be_upgraded_and_songs_set_aside_are_not_upgradable()
+    {
+        var album = await fixture.AlbumAsync("Daft Punk", "Discovery");
+        var before = await Api.SearchUpgradesAsync(new FormatScope(FormatScopeKind.Album, album.Id));
+        var (file, scope) = await OwnedAsync("Discovery (2001)/06 Nightvision.mp3");
+        using var owned = scope;
+        var trackId = file.TrackId!.Value;
+        await Api.SaveQualityOverrideAsync("tracks", trackId, new QualityOverride(QualityOverrideKind.NeverUpgrade));
+        try
+        {
+            var after = await Api.SearchUpgradesAsync(new FormatScope(FormatScopeKind.Album, album.Id));
+            Assert.Equal(before.Upgradable - 1, after.Upgradable);
+        }
+        finally
+        {
+            await Api.SaveQualityOverrideAsync("tracks", trackId, new QualityOverride(QualityOverrideKind.Inherit));
+            using var cancel = fixture.Factory.Services.CreateScope();
+            var db = cancel.ServiceProvider.GetRequiredService<Melodex.Core.Data.MelodexDbContext>();
+            foreach (var id in await db.Requests.Where(r => r.UpgradesFileId != null && r.Status != Melodex.Core.Data.RequestStatus.Cancelled).Select(r => r.Id).ToListAsync())
+                await fixture.WaitAsync(id);
+        }
+    }
+
+    [TestLibraryFact]
+    public async Task Upgrades_warn_without_a_media_server_that_keeps_stars_and_plays()
+    {
+        var status = await Api.GetUpgradesAsync();
+        Assert.StartsWith("No media server is connected", status.Warning);
+        Assert.True(status.Settings.Scheduled);
+        Assert.Equal([DayOfWeek.Monday], status.Settings.Days);
+        Assert.Equal((25, OldFiles.Hold, 14), (status.Settings.PerRun, status.Settings.OldFiles, status.Settings.HoldDays));
+        Assert.NotNull(status.NextRun);
+    }
+
+    [TestLibraryFact]
+    public async Task Scheduled_upgrades_ask_for_no_more_than_the_limit_and_stop_when_the_window_closes()
+    {
+        var before = await Api.GetUpgradesAsync();
+        var now = DateTime.UtcNow;
+        // All of today, in UTC.
+        await Api.SaveUpgradeSettingsAsync(before.Settings with
+        {
+            Days = [now.DayOfWeek], From = new(0, 0), Until = new(0, 0), TimeZone = "UTC", PerRun = 1
+        });
+        using var scope = fixture.Factory.Services.CreateScope();
+        var upgrades = scope.ServiceProvider.GetRequiredService<Upgrades>();
+        var db = scope.ServiceProvider.GetRequiredService<Melodex.Core.Data.MelodexDbContext>();
+        try
+        {
+            Assert.True((await Api.GetUpgradesAsync()).Running);
+            Assert.Equal(1, await upgrades.RunScheduledAsync(now, default));
+            Assert.Equal(0, await upgrades.RunScheduledAsync(now.AddMinutes(1), default));
+            await Api.SaveUpgradeSettingsAsync((await Api.GetUpgradesAsync()).Settings with { PerRun = null });
+            Assert.Null((await Api.GetUpgradesAsync()).Settings.PerRun);
+
+            // Two days on, the window has closed: nothing more is asked for, and any not started never will be.
+            Assert.Equal(0, await upgrades.RunScheduledAsync(now.AddDays(2), default));
+            Assert.False(await db.Requests.AnyAsync(r => r.Requester == Upgrades.ScheduledRequester && r.Status == Melodex.Core.Data.RequestStatus.Queued));
+        }
+        finally
+        {
+            await Api.SaveUpgradeSettingsAsync(before.Settings);
+            foreach (var id in await db.Requests.Where(r => r.Requester == Upgrades.ScheduledRequester && r.Status != Melodex.Core.Data.RequestStatus.Cancelled).Select(r => r.Id).ToListAsync())
+                await fixture.WaitAsync(id);
+        }
+    }
+
+    [Theory]
+    // Monday 01:00–06:00 in London, which is UTC in winter and an hour ahead in summer.
+    [InlineData("2026-11-09T03:00:00Z", true)]
+    [InlineData("2026-11-09T06:00:00Z", false)]
+    [InlineData("2026-11-10T03:00:00Z", false)]
+    [InlineData("2026-07-06T00:30:00Z", true)]
+    [InlineData("2026-07-06T05:30:00Z", false)]
+    public void An_upgrade_window_is_in_its_own_time_zone(string at, bool open)
+    {
+        var settings = new UpgradeSettings { TimeZone = "Europe/London" };
+        Assert.Equal(open, UpgradeWindows.Current(settings, DateTime.Parse(at).ToUniversalTime()) is not null);
+    }
+
+    [Fact]
+    public void An_upgrade_window_can_run_past_midnight_into_the_next_day()
+    {
+        // Fridays and Saturdays, 22:00 until 04:00 the next morning.
+        var settings = new UpgradeSettings { Days = [DayOfWeek.Friday, DayOfWeek.Saturday], From = new(22, 0), Until = new(4, 0) };
+        var saturdayMorning = new DateTime(2026, 11, 14, 3, 0, 0, DateTimeKind.Utc);
+        Assert.Equal((new DateTime(2026, 11, 13, 22, 0, 0), new DateTime(2026, 11, 14, 4, 0, 0)), UpgradeWindows.Current(settings, saturdayMorning));
+        Assert.NotNull(UpgradeWindows.Current(settings, new DateTime(2026, 11, 15, 3, 0, 0, DateTimeKind.Utc)));
+        Assert.Null(UpgradeWindows.Current(settings, new DateTime(2026, 11, 16, 3, 0, 0, DateTimeKind.Utc)));
+        Assert.Equal(new DateTime(2026, 11, 14, 22, 0, 0), UpgradeWindows.Next(settings, saturdayMorning));
+        Assert.Equal(new DateTime(2026, 11, 20, 22, 0, 0), UpgradeWindows.Next(settings, new DateTime(2026, 11, 15, 3, 0, 0, DateTimeKind.Utc)));
+        Assert.Null(UpgradeWindows.Next(settings with { Days = [] }, saturdayMorning));
+    }
+
+    [Theory]
+    [InlineData("0.64.2 (4d1e8c42)", "0.64.2", false)]
+    [InlineData("0.55.0", "0.55.0", false)]
+    [InlineData("v0.54.5", "0.54.5", true)]
+    [InlineData("0.53", "0.53.0", true)]
+    public void Navidrome_older_than_0_55_loses_what_an_upgraded_song_had(string reported, string version, bool loses)
+    {
+        var parsed = Upgrades.NavidromeVersion(reported);
+        Assert.Equal(version, parsed?.ToString(3));
+        Assert.Equal(loses, parsed < Upgrades.KeepingNavidrome);
     }
 
     /// <summary>A track of this album you have no copy of, on any of its editions.</summary>

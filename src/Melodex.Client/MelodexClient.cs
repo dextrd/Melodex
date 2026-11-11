@@ -356,6 +356,19 @@ public sealed class MelodexClient(HttpClient http)
         (await http.GetFromJsonAsync<SpectrumStatus>($"{Api}/library/spectrum", MelodexJson.Options, ct))!;
 
     /// <summary>Queues checking the library's lossless files: those not yet checked, or with again, all of them.</summary>
+    public async Task TrustLosslessAsync(IReadOnlyList<Guid> fileIds, CancellationToken ct = default)
+    {
+        using var response = await http.PostAsJsonAsync($"{Api}/library/spectrum/trust", new TrustLossless(fileIds), MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+    }
+
+    public async Task<RequestInfo> KeepRequestAsync(Guid id, Guid jobId, CancellationToken ct = default)
+    {
+        using var response = await http.PostAsJsonAsync($"{Api}/requests/{id}/keep", new KeepCopy(jobId), MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<RequestInfo>(MelodexJson.Options, ct))!;
+    }
+
     public async Task<TaskInfo> CheckSpectraAsync(bool again = false, CancellationToken ct = default)
     {
         using var response = await http.PostAsJsonAsync($"{Api}/library/spectrum", new CheckSpectra(again), MelodexJson.Options, ct);
@@ -369,6 +382,42 @@ public sealed class MelodexClient(HttpClient http)
     public async Task SaveQualityProfileAsync(QualityProfile profile, CancellationToken ct = default)
     {
         using var response = await http.PutAsJsonAsync($"{Api}/settings/quality", profile, MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+    }
+
+    /// <summary>Upgrades' settings, how many songs are below their cutoff, held files, and any warning about the media server.</summary>
+    public async Task<UpgradeStatus> GetUpgradesAsync(CancellationToken ct = default) =>
+        (await http.GetFromJsonAsync<UpgradeStatus>($"{Api}/upgrades", MelodexJson.Options, ct))!;
+
+    public async Task SaveUpgradeSettingsAsync(UpgradeSettings settings, CancellationToken ct = default)
+    {
+        using var response = await http.PutAsJsonAsync($"{Api}/upgrades/settings", settings, MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+    }
+
+    /// <summary>Asks for upgrades of a song's, album's or artist's files below their cutoff, or the whole library's.</summary>
+    public async Task<UpgradeSearch> SearchUpgradesAsync(FormatScope scope, CancellationToken ct = default)
+    {
+        using var response = await http.PostAsJsonAsync($"{Api}/upgrades/search", scope, MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<UpgradeSearch>(MelodexJson.Options, ct))!;
+    }
+
+    /// <summary>Files replaced by better copies that can be put back, of one song or all.</summary>
+    public async Task<IReadOnlyList<HeldFileInfo>> GetHeldFilesAsync(Guid? trackId = null, CancellationToken ct = default) =>
+        (await http.GetFromJsonAsync<List<HeldFileInfo>>($"{Api}/upgrades/held{(trackId is { } id ? $"?trackId={id}" : "")}", MelodexJson.Options, ct))!;
+
+    /// <summary>Puts a replaced file back, deleting the copy that replaced it; its song is set never to be upgraded.</summary>
+    /// <summary>Rolls an upgrade back; with never, its song is never upgraded again.</summary>
+    public async Task RestoreHeldFileAsync(Guid id, bool never = false, CancellationToken ct = default)
+    {
+        using var response = await http.PostAsync($"{Api}/upgrades/held/{id}/restore{(never ? "?never=true" : "")}", null, ct);
+        await EnsureAsync(response, ct);
+    }
+
+    public async Task DeleteHeldFileAsync(Guid id, CancellationToken ct = default)
+    {
+        using var response = await http.DeleteAsync($"{Api}/upgrades/held/{id}", ct);
         await EnsureAsync(response, ct);
     }
 

@@ -195,7 +195,12 @@ public sealed record QualityOverride(QualityOverrideKind Kind, string? Cutoff = 
 public sealed record SpectrumStatus(int Lossless, int Checked, IReadOnlyList<SuspectFile> Suspects);
 
 /// <param name="Path">Relative to the music folder.</param>
-public sealed record SuspectFile(Guid Id, string Path, Guid? TrackId, FileQuality Quality);
+/// <param name="Replacing">An upgrade is looking for a better copy of it.</param>
+public sealed record SuspectFile(Guid Id, string Path, Guid? TrackId, FileQuality Quality, string? Title = null, string? Artist = null,
+    string? CoverUrl = null, double? DurationSeconds = null, DateTime? ModifiedAt = null, bool Replacing = false);
+
+/// <summary>Body of trusting lossless files that seem lossy to be what they say.</summary>
+public sealed record TrustLossless(IReadOnlyList<Guid> FileIds);
 
 /// <summary>Body of checking the library's lossless files.</summary>
 /// <param name="Again">Check every one again, not only those not yet checked.</param>
