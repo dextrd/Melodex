@@ -4,14 +4,21 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-11
+
+Everything about quality: what each file is, what you want, catching lossless that isn't, and upgrading what's
+below your cutoff. Update the beets worker's image with the core's. Scheduled upgrades are on from the start and
+replace files in your music folder: turn them off under **Settings → Quality → Upgrades** after updating if you'd
+rather look first.
+
 ### Added
 
 - **The library knows each file's quality** (#17): its codec, bitrate, and for lossless files its bit depth and sample
   rate, read as files are scanned (files already in the library are read for it once, at the next scan, without being
-  matched again). Song and album pages show it as a chip ("FLAC 16/44.1", "MP3 320"), coloured red, amber or green (gold
-  for hi-res) by how good it is, and lists as a dot of the same colour; an album shows its worst song's, marked "and up" when they
-  differ. A song's file details are now plain rows of its list: format, length, size and when it was last formatted. The Library's Albums and Tracks views can be sorted by quality, and
-  filtered to hi-res, lossless, lossy, or below good (under about MP3 V0, with Opus, AAC and Vorbis counted by what
+  matched again). Song and album pages show it as a chip ("FLAC 16/44.1", "MP3 320"), coloured red, amber or green
+  (gold for hi-res) by how good it is, and lists as a dot of the same colour; an album shows its worst song's, marked
+  "and up" when they differ. A song's file details are now plain rows of its list: format, length, size and when it
+  was last formatted. The Library's Albums and Tracks views can be sorted by quality, and filtered to hi-res, lossless, lossy, or below good (under about MP3 V0, with Opus, AAC and Vorbis counted by what
   their bitrates sound like).
 - **Quality profiles** (#18), under **Settings → Quality**: every codec at every level (FLAC hi-res, FLAC CD, Opus
   high, MP3 high and so on) in the order you'd rather have them, any turned off, and a cutoff that's good enough.
@@ -27,28 +34,27 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   says **Seems lossy**), or it can be kept as that. The library's lossless files are checked after each scan, suspect
   ones are marked on their quality, count as below the cutoff, and wait under **Review → Seems lossy** to be replaced
   (looked for as an upgrade) or trusted (lossless after all, and not checked again). A refused copy can be kept anyway
-  under **Review → Couldn't fetch**. Lossless
-  vouched for, straight from Qobuz, Tidal or Bandcamp, or a torrent with its rip's log and cue or from a tracker set
+  under **Review → Couldn't fetch**. Lossless vouched for, straight from Qobuz, Tidal or Bandcamp, or a torrent with its rip's log and cue or from a tracker set
   as known for lossless (a new Prowlarr setting), is tried before others alike. The beets worker does the checking,
   with a new `POST /v1/spectrum`, so update its image with the core's.
 - **Upgrades** (#20): a song below its cutoff is replaced by a better copy once one is found. Look for upgrades from
   **Quality** on a song's, album's or artist's page, or for the whole library under **Settings → Quality**, where a
   scheduled look through the library is on by default: on the days and between the times you pick, as many at once
-  as fetches run, up to a limit (25 to start with) or none. Sources are asked only for copies
-  that may be better, and a copy is kept only if it is, by its quality as read and its spectrum. It takes the old
+  as fetches run, up to a limit (25 to start with) or none. Sources are asked only for copies that may be better, and a copy is kept only if it is, by its quality as read and its spectrum. It takes the old
   file's place and exactly its tags, so Navidrome 0.55 or later keeps the song's stars, ratings, plays and playlists;
   with another media server, an older Navidrome or none, Settings and a dialog when the web app starts say they may be
-  lost. The old file is held outside the music folder for 14 days (a setting), and until then the upgrade waits under the
-  new **Upgraded** tab of Review (and on the song's page) to be approved or rolled back, approved by itself once its time
-  is up; or the old file can be deleted straight away. Review is now in tabs, Matching, Seems lossy, Couldn't fetch and Upgraded, each with a filter, a sort and buttons for everything shown. An upgrade can be rolled back, or rolled back and never upgraded. The beets worker does the replacing, with
-  new `POST /v1/replace` and `POST /v1/restore`, so update its image with the core's. Media-server connectors can say
+  lost. The old file is held outside the music folder for 14 days (a setting), and until then the upgrade waits under
+  the new **Upgraded** tab of Review (and on the song's page) to be approved, rolled back, or rolled back and never
+  upgraded, and is auto-approved once its time is up; or the old file can be deleted straight away. The beets worker
+  does the replacing, with new `POST /v1/replace` and `POST /v1/restore`, so update its image with the core's. Media-server connectors can say
   which server and version they talk to (contract 1.3).
 
 ### Changed
 
+- **Review is in tabs**: Matching, Seems lossy, Couldn't fetch and Upgraded, each with a filter, a sort and buttons
+  for everything shown, and songs shown alike. Requests that ended without a copy are under Couldn't fetch.
 - **Every source is searched at once**, rather than one after another in an order you set: the quality profile
   chooses between what they find, so sources have no order any more.
-
 - **Melodex's home is now [dextrd/Melodex](https://github.com/dextrd/Melodex)**, and its images are published as
   `ghcr.io/dextrd/melodex…`. An install from 1.0.2 or earlier names the old images, which get no new releases: change
   `joeatethebeans` to `dextrd` in its compose file's `image:` lines, as [upgrading](docs/guide/upgrading.md) says.

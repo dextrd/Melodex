@@ -24,6 +24,17 @@ OpenMediaVault's, edit the stack's compose there), or take the new
 [`docker-compose.yml`](https://github.com/dextrd/Melodex/blob/main/docker-compose.yml) and keep your `.env`. Then pull
 and start it as above. Nothing else changes: your settings, library and data carry on.
 
+## To 1.1.0: upgrades replace files
+
+1.1.0 upgrades songs below your quality cutoff, replacing their files in your music folder with better copies, and a
+scheduled look for them is on from the start (Mondays, 01:00 to 06:00). If you'd rather look before anything is
+replaced, turn **Look through the whole library for upgrades on a schedule** off under **Settings → Quality →
+Upgrades** once it's running; **Look for upgrades** on a song, album or artist still works by hand. A replaced file is
+held for 14 days, and can be put back under **Review → Upgraded** until then.
+
+Your player keeps a song's stars, plays and playlists through an upgrade with Navidrome 0.55 or later; Melodex warns if
+yours is older. The beets worker does the replacing, so pull both images, as `docker compose pull` does.
+
 ## From a source build
 
 If you ran Melodex from a checkout of the repository with `docker-compose.build.yml`, switch to the released images:
