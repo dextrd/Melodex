@@ -110,6 +110,26 @@ public sealed record SpectrumResult(IReadOnlyList<SpectrumFound> Files);
 /// <param name="Error">Why it couldn't be told: unreadable, too short or too quiet.</param>
 public sealed record SpectrumFound(string Root, string Path, int? CutoffHz, string? Error);
 
+/// <summary>Body of <c>POST /v1/replace</c>.</summary>
+/// <param name="Staged">The better copy, relative to staging.</param>
+/// <param name="Path">The file it replaces, relative to the library.</param>
+/// <param name="Hold">A folder in staging to hold the old file in; null to delete it.</param>
+public sealed record ReplaceRequest(string Staged, string Path, string? Hold);
+
+/// <summary>Answer to <c>POST /v1/replace</c>.</summary>
+/// <param name="Path">Where the better copy is, relative to the library.</param>
+/// <param name="Held">Where the old file is held, relative to staging; null when it was deleted.</param>
+public sealed record ReplaceResult(string Path, long Size, double? DurationSeconds, string? Format, string? Held);
+
+/// <summary>Body of <c>POST /v1/restore</c>.</summary>
+/// <param name="Held">The held file, relative to staging.</param>
+/// <param name="Path">Where it goes back to, relative to the library.</param>
+/// <param name="Remove">The file that replaced it, deleted first.</param>
+public sealed record RestoreRequest(string Held, string Path, string? Remove);
+
+/// <summary>Answer to <c>POST /v1/restore</c>.</summary>
+public sealed record RestoreResult(string Path, long Size);
+
 /// <summary>Imports staged files into the library.</summary>
 public interface IImportWorker
 {
@@ -126,6 +146,12 @@ public interface IImportWorker
 
     /// <summary>Where lossless files' highs are cut off, as lossy encoders cut them, to catch lossy music passed off as lossless.</summary>
     Task<SpectrumResult> SpectrumAsync(SpectrumRequest request, CancellationToken ct);
+
+    /// <summary>Replaces a library file with a better copy, tagged as it was, at its path with the copy's extension.</summary>
+    Task<ReplaceResult> ReplaceAsync(ReplaceRequest request, CancellationToken ct);
+
+    /// <summary>Puts a file an upgrade replaced back, deleting the copy that replaced it.</summary>
+    Task<RestoreResult> RestoreAsync(RestoreRequest request, CancellationToken ct);
 
     Task<HealthReport> CheckHealthAsync(CancellationToken ct);
 
@@ -196,6 +222,22 @@ public sealed class HttpImportWorker(HttpClient http) : IImportWorker
         if (!response.IsSuccessStatusCode)
             throw new ImportException(await ErrorAsync(response, ct));
         return (await response.Content.ReadFromJsonAsync<SpectrumResult>(RetrievalJson.Options, ct))!;
+    }
+
+    public async Task<ReplaceResult> ReplaceAsync(ReplaceRequest request, CancellationToken ct)
+    {
+        using var response = await http.PostAsJsonAsync("v1/replace", request, RetrievalJson.Options, ct);
+        if (!response.IsSuccessStatusCode)
+            throw new ImportException(await ErrorAsync(response, ct));
+        return (await response.Content.ReadFromJsonAsync<ReplaceResult>(RetrievalJson.Options, ct))!;
+    }
+
+    public async Task<RestoreResult> RestoreAsync(RestoreRequest request, CancellationToken ct)
+    {
+        using var response = await http.PostAsJsonAsync("v1/restore", request, RetrievalJson.Options, ct);
+        if (!response.IsSuccessStatusCode)
+            throw new ImportException(await ErrorAsync(response, ct));
+        return (await response.Content.ReadFromJsonAsync<RestoreResult>(RetrievalJson.Options, ct))!;
     }
 
     public async Task<ReflinkCheck> CheckReflinksAsync(CancellationToken ct)

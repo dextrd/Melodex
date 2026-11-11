@@ -69,7 +69,8 @@ public sealed record RequestInfo(
     IReadOnlyList<JobInfo>? Jobs = null,
     bool ListenNow = false,
     bool Paused = false,
-    double QueueOrder = 0)
+    double QueueOrder = 0,
+    bool Upgrade = false)
 {
     /// <summary>Whether it can still change: not in the library, failed, needing review or cancelled.</summary>
     public bool Active => State is not (RequestState.InLibrary or RequestState.NeedsReview or RequestState.Failed or RequestState.Cancelled or RequestState.Playable);
@@ -100,6 +101,9 @@ public enum Verification
 
     /// <summary>Lossless whose highs stop as a lossy file's do: it seems to be lossy music passed off as lossless.</summary>
     SuspectLossless,
+
+    /// <summary>An upgrade's copy that's no better than the file it would replace.</summary>
+    NotBetter,
 }
 
 /// <summary>One attempt to fetch a request through one retrieval plugin.</summary>

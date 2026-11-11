@@ -106,6 +106,8 @@ builder.Services.AddSingleton<RequestCancellations>();
 builder.Services.AddScoped<RequestService>();
 builder.Services.AddScoped<RequestPlanner>();
 builder.Services.AddScoped<RequestPipeline>();
+builder.Services.AddScoped<Upgrades>();
+builder.Services.AddHostedService<UpgradeScheduler>();
 builder.Services.AddSingleton<StreamSigner>();
 builder.Services.AddScoped<ListenNowService>();
 builder.Services.AddHostedService<ListenNowSweeper>();
@@ -197,6 +199,7 @@ api.MapPluginEndpoints();
 api.MapAccessEndpoints();
 api.MapWebhookEndpoints();
 api.MapPlaylistEndpoints();
+api.MapUpgradeEndpoints();
 
 // The web app: Blazor WebAssembly, served from the same origin and talking only to the public API.
 app.MapStaticAssets();

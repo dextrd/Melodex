@@ -1,4 +1,4 @@
-# Media-server connectors (contract v1.2)
+# Media-server connectors (contract v1.3)
 
 Connectors tell a media server about new music and confirm it's there. They are the last step of the import
 pipeline: once beets has filed a track, the connector triggers a scan, the core polls until the server has the
@@ -26,6 +26,7 @@ the MusicBrainz recording ID or ISRC, then title, artist, album and duration.
 | `favourites` | `IFavouritesManager` | Star and unstar tracks |
 | `library-read` | `ILibraryReader` | Stream every track the server knows, to cross-check with the library scan |
 | `user-playlists` | `IPlaylistSync` | Each user's own playlists, kept the same in Melodex and on the server (1.1) |
+| `server-identity` | `IServerIdentity` | Which server it is and its version, so the core can tell whether upgrades keep what's in it (1.3) |
 
 The core and the API only offer actions the active connector declares. A listen-now track can't be starred or added
 to a playlist until it's in the library and has a server track ID, whatever the connector supports.

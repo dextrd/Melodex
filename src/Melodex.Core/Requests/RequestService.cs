@@ -258,7 +258,7 @@ public sealed class RequestService(MelodexDbContext db, RequestSignal signal, Re
         var parts = r.TargetKind == EntityKind.Track ? null : await PartsAsync(r.Id, ct);
         return new RequestInfo(r.Id, ToKind(r.TargetKind), r.TargetId, r.EditionId, r.Title, (RequestState)(int)r.Status, r.Detail,
             r.ParentRequestId, r.CreatedAt, r.UpdatedAt, parts is { Total: > 0 } ? parts : null, ListenNow: r.Mode == RequestMode.ListenNow,
-            Paused: r.Paused, QueueOrder: r.QueueOrder);
+            Paused: r.Paused, QueueOrder: r.QueueOrder, Upgrade: r.UpgradesFileId != null);
     }
 
     public static RequestKind ToKind(EntityKind kind) => kind switch

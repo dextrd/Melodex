@@ -7,7 +7,7 @@ go with the catalogue and the words of the songs. Each has its own contract:
 | --- | --- | --- | --- | --- |
 | [Index plugin](index-plugins.md) | What exists | In process (.NET assembly) | `IIndexPlugin` v1.0 | MusicBrainz |
 | [Retrieval plugin](retrieval-plugins.md) | How music is fetched | Own container, over HTTP | [`retrieval-v1.openapi.yaml`](retrieval-v1.openapi.yaml) v1.0 | yt-dlp |
-| [Media-server connector](media-server-connectors.md) | Where music ends up | In process (.NET assembly) | `IMediaServerConnector` v1.2 | Navidrome (Subsonic API) |
+| [Media-server connector](media-server-connectors.md) | Where music ends up | In process (.NET assembly) | `IMediaServerConnector` v1.3 | Navidrome (Subsonic API) |
 | [Artwork plugin](artwork-plugins.md) | What it looks like | In process (.NET assembly) | `IArtworkPlugin` v1.0 | Cover Art Archive, Wikimedia Commons, Deezer |
 | [Lyrics plugin](lyrics-plugins.md) | What the words are | In process (.NET assembly) | `ILyricsPlugin` v1.1 | LRCLIB |
 

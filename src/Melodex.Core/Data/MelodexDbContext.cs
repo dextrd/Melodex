@@ -77,6 +77,7 @@ public partial class MelodexDbContext(DbContextOptions<MelodexDbContext> options
     public DbSet<LibraryFile> LibraryFiles => Set<LibraryFile>();
     public DbSet<Request> Requests => Set<Request>();
     public DbSet<Job> Jobs => Set<Job>();
+    public DbSet<HeldFile> HeldFiles => Set<HeldFile>();
     public DbSet<ListenNowItem> ListenNowItems => Set<ListenNowItem>();
     public DbSet<PluginInstance> PluginInstances => Set<PluginInstance>();
     public DbSet<Setting> Settings => Set<Setting>();
@@ -153,6 +154,14 @@ public partial class MelodexDbContext(DbContextOptions<MelodexDbContext> options
             e.HasIndex(r => new { r.TargetKind, r.TargetId, r.Mode });
             e.HasIndex(r => r.Status);
             e.HasOne<Request>().WithMany().HasForeignKey(r => r.ParentRequestId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(r => r.UpgradesFileId);
+        });
+
+        modelBuilder.Entity<HeldFile>(e =>
+        {
+            e.HasIndex(h => h.TrackId);
+            e.HasIndex(h => h.LibraryFileId);
+            e.HasIndex(h => h.DeleteAt);
         });
 
         modelBuilder.Entity<Job>(e =>

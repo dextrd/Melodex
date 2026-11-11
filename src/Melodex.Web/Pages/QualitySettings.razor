@@ -99,6 +99,88 @@ else
         @if (_saveError is not null) { <span class="error small" title="@_saveError">@_saveError</span> }
     </div>
 
+    <h2 id="upgrades">Upgrades</h2>
+    <p class="muted small">
+        A song below its cutoff is upgraded when a better copy is found: one whose quality, read once it's here and checked for lossy music passed off
+        as lossless, is higher in the list above. It takes the old file's place, at its path with its own extension and with exactly the old file's tags,
+        so the app you listen with sees the same song in a better file. Songs are upgraded one at a time, so an album can be of mixed quality for a while.
+        Only matched files are, not deferred, excluded or hidden ones.
+    </p>
+    @if (_upgrades is { } upgrades)
+    {
+        @if (upgrades.Warning is { } warning)
+        {
+            <div class="notice warning" role="status">⚠ @warning</div>
+        }
+        <div class="card settings-card">
+            <label class="setting-line">
+                <input type="checkbox" checked="@_upgradeSettings!.Weekly" @onchange="e => SetUpgrades(_upgradeSettings with { Weekly = (bool)e.Value! })" />
+                Look through the whole library once a week, for at most
+                <NumberField Value="_upgradeSettings.PerRun" Min="1" Max="500" Label="Songs each week"
+                             ValueChanged="n => SetUpgrades(_upgradeSettings with { PerRun = n })" />
+                songs
+            </label>
+            <div class="muted small">
+                Those looked for longest ago come first, and the worst of those. Each is a request on the Activity page; one that finds nothing better
+                just stays as it is, and is looked for again another week.
+                @if (upgrades.NextRun is { } next && _upgradeSettings.Weekly)
+                {
+                    <span>Next: @next.ToLocalTime().ToString("d MMMM").</span>
+                }
+            </div>
+            @foreach (var (value, label) in OldFileOptions)
+            {
+                <label class="dialog-choice">
+                    <input type="radio" name="old-files" checked="@(_upgradeSettings.OldFiles == value)"
+                           @onchange="() => SetUpgrades(_upgradeSettings with { OldFiles = value })" />
+                    @if (value == OldFiles.Hold)
+                    {
+                        <span>
+                            <strong>Hold the old file for
+                                <NumberField Value="_upgradeSettings.HoldDays" Min="1" Max="365" Label="Days to hold"
+                                             ValueChanged="n => SetUpgrades(_upgradeSettings with { HoldDays = n })" />
+                                days, then delete it</strong>
+                            <span class="muted small">@label</span>
+                        </span>
+                    }
+                    else
+                    {
+                        <span><strong>Delete the old file straight away</strong><span class="muted small">@label</span></span>
+                    }
+                </label>
+            }
+            <div class="toolbar">
+                <button class="primary" @onclick="SaveUpgradesAsync">Save</button>
+                @if (_upgradesSaved) { <span class="muted small">Saved.</span> }
+                @if (_upgradeError is not null) { <span class="error small" title="@_upgradeError">@_upgradeError</span> }
+            </div>
+            <div class="setting-line">
+                <span>
+                    @(upgrades.Upgradable == 1 ? "1 song is below its cutoff." : $"{upgrades.Upgradable} songs are below their cutoff.")
+                </span>
+                <span class="spacer"></span>
+                <button @onclick="SearchUpgradesAsync" disabled="@(_searching || upgrades.Upgradable == 0)">Look for upgrades now</button>
+            </div>
+            <div class="muted small">
+                As many as a week's look, starting now. A song, album or artist can be looked for on its own page.
+                @if (_searched is { } found)
+                {
+                    <span>@(found.Queued == 0 ? "Nothing new to look for: the rest are being looked for already." : $"Looking for {found.Queued}: they're in Activity.")</span>
+                }
+            </div>
+        </div>
+
+        @if (upgrades.Held.Count > 0)
+        {
+            <h2>Replaced files</h2>
+            <p class="muted small">
+                Held outside the music folder, so the app you listen with never sees two copies. Putting one back deletes the copy that replaced it,
+                and sets its song never to be upgraded.
+            </p>
+            <HeldFiles Files="upgrades.Held" Changed="LoadUpgradesAsync" />
+        }
+    }
+
     <h2>The library's lossless files</h2>
     @if (_spectra is { } spectra)
     {
@@ -161,6 +243,18 @@ else
     private string? _saveError;
 
     private SpectrumStatus? _spectra;
+
+    private UpgradeStatus? _upgrades;
+    private UpgradeSettings? _upgradeSettings;
+    private UpgradeSearch? _searched;
+    private bool _upgradesSaved, _searching;
+    private string? _upgradeError;
+
+    private static readonly (OldFiles Value, string Help)[] OldFileOptions =
+    [
+        (OldFiles.Hold, "It can be put back from here, the Activity page or the song's page until then."),
+        (OldFiles.Delete, "Nothing can be put back."),
+    ];
     private bool _checking, _checkQueued, _showAll;
 
     private static readonly (SuspectLossless Value, string Label, string Help)[] SuspectOptions =
@@ -180,6 +274,59 @@ else
         catch (HttpRequestException)
         {
             // Shown without it.
+        }
+        await LoadUpgradesAsync();
+    }
+
+    private async Task LoadUpgradesAsync()
+    {
+        try
+        {
+            _upgrades = await Api.GetUpgradesAsync();
+            _upgradeSettings ??= _upgrades.Settings;
+        }
+        catch (HttpRequestException)
+        {
+            // Shown without it.
+        }
+    }
+
+    private void SetUpgrades(UpgradeSettings value)
+    {
+        _upgradeSettings = value;
+        _upgradesSaved = false;
+    }
+
+    private async Task SaveUpgradesAsync()
+    {
+        _upgradeError = null;
+        try
+        {
+            await Api.SaveUpgradeSettingsAsync(_upgradeSettings!);
+            _upgradesSaved = true;
+            _upgradeSettings = null;
+            await LoadUpgradesAsync();
+        }
+        catch (MelodexApiException e)
+        {
+            _upgradeError = e.Message;
+        }
+    }
+
+    private async Task SearchUpgradesAsync()
+    {
+        _searching = true;
+        try
+        {
+            _searched = await Api.SearchUpgradesAsync(new FormatScope(FormatScopeKind.Library));
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            _upgradeError = e.Message;
+        }
+        finally
+        {
+            _searching = false;
         }
     }
 

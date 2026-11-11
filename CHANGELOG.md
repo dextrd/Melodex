@@ -29,6 +29,16 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   vouched for, straight from Qobuz, Tidal or Bandcamp, or a torrent with its rip's log and cue or from a tracker set
   as known for lossless (a new Prowlarr setting), is tried before others alike. The beets worker does the checking,
   with a new `POST /v1/spectrum`, so update its image with the core's.
+- **Upgrades** (#20): a song below its cutoff is replaced by a better copy once one is found. Look for upgrades from
+  **Quality** on a song's, album's or artist's page, or for the whole library under **Settings → Quality**, where a
+  weekly look through the library is on by default, for up to 25 songs at a time. Sources are asked only for copies
+  that may be better, and a copy is kept only if it is, by its quality as read and its spectrum. It takes the old
+  file's place and exactly its tags, so Navidrome 0.55 or later keeps the song's stars, ratings, plays and playlists;
+  with another media server, an older Navidrome or none, Settings and a dialog when the web app starts say they may be
+  lost. The old file is held outside the music folder for 14 days (a setting), and can be put back from Activity, the
+  song's page or Settings until then; or it can be deleted straight away. The beets worker does the replacing, with
+  new `POST /v1/replace` and `POST /v1/restore`, so update its image with the core's. Media-server connectors can say
+  which server and version they talk to (contract 1.3).
 
 ### Changed
 

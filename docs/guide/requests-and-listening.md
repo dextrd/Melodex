@@ -60,6 +60,46 @@ It's a suspicion, not proof. A master can be cut off on purpose, an old recordin
 an encode that keeps them (MP3 V0, AAC at 256) can't be told this way. FLAC, WAV and AIFF can be checked; ALAC, APE
 and WavPack can't.
 
+### Upgrades
+
+A song below its cutoff is **upgraded** when a better copy is found. Like Sonarr, Melodex keeps looking until the
+cutoff is met.
+
+- **Only matched songs are upgraded**, never deferred, excluded or hidden files, nor a song set never to be upgraded.
+  A suspect lossless file counts as what it seems, so it's below the cutoff too.
+- **Look for upgrades** from **Quality** on a song's, album's or artist's page, or for the whole library under
+  **Settings → Quality**. Each song is its own request on the Activity page, marked **Upgrade**; an album is upgraded a
+  song at a time, so it can be of mixed quality for a while.
+- **Once a week** the whole library is looked through, for up to 25 songs (a setting), those looked for longest ago
+  first and the worst of those. It's on from the start, and can be turned off. Upgrades go after anything you ask for.
+- **Only a better copy is kept.** Sources are only asked for copies that may be better than what you have, and a
+  copy's quality is read and its spectrum checked once it's here: one no better is refused (Activity says **No
+  better**). A song nothing better is found for is left as it is (**Unchanged**), and looked for again another week.
+- **The better copy takes the old file's place**: the same path with its own extension (`10 Voyager.mp3` becomes
+  `10 Voyager.flac`), and exactly the old file's tags, MusicBrainz IDs and embedded cover included. Its lyrics file
+  stays with it. Only its loudness (ReplayGain) is its own.
+- **The old file is held for 14 days** (a setting), outside the music folder in the staging volume, then deleted; or it
+  can be deleted straight away. While it's held, **Put back** on the Activity page, the song's page or under
+  **Settings → Quality** deletes the better copy, puts the old file back, and sets the song never to be upgraded, so it
+  isn't replaced again.
+
+#### What your player keeps
+
+An upgrade is a new file, so whether the app you listen with keeps a song's stars, ratings, play counts, playlists and
+shares depends on how it tells songs apart.
+
+- **Navidrome 0.55 or later keeps them all.** It gives each song an ID from its tags, so a file with the same tags at
+  the same path less the extension is the same song. Tested on 0.55.0 and 0.64.2: an MP3 replaced by a FLAC kept its
+  star, rating, plays and playlists, with or without MusicBrainz tags, and even when the path changed. A file tagged
+  differently became a new song, which is why the better copy takes the old file's tags rather than its own.
+- **Navidrome before 0.55 loses them**: it gives the upgraded song a new ID. Tested on 0.54.5.
+- **Other players** may treat an upgraded song as new, or match it by path or tags as Navidrome does. Melodex can't
+  tell which.
+
+When the media server isn't Navidrome 0.55 or later, or none is connected, **Settings → Quality** says so above the
+upgrade settings, and while weekly upgrades are on the web app says so once each time it starts, until you tick
+**Don't show this again**. Upgrades still run: whether that matters is yours to decide.
+
 ## Listen now
 
 Press **Listen** to hear something before deciding. It's fetched to a separate store, never your music folder, plays

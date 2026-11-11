@@ -119,6 +119,41 @@ public sealed class FakeImporter(string stagingRoot, string libraryRoot) : IImpo
         return Task.FromResult(new FormatResult(results, removed));
     }
 
+    public ConcurrentQueue<ReplaceRequest> Replaces { get; } = new();
+
+    // As the worker does, less the tags: the old file goes to its hold folder or is deleted, and the copy takes its path less the extension.
+    public Task<ReplaceResult> ReplaceAsync(ReplaceRequest request, CancellationToken ct)
+    {
+        Replaces.Enqueue(request);
+        var old = Path.Combine(libraryRoot, request.Path);
+        if (!File.Exists(old))
+            throw new ImportException($"{request.Path} isn't in the library any more.");
+        var path = Path.ChangeExtension(request.Path, Path.GetExtension(request.Staged).ToLowerInvariant());
+        string? held = null;
+        if (request.Hold is { } hold)
+        {
+            held = $"{hold}/{Path.GetFileName(request.Path)}";
+            Directory.CreateDirectory(Path.Combine(stagingRoot, hold));
+            File.Move(old, Path.Combine(stagingRoot, held));
+        }
+        else
+            File.Delete(old);
+        File.Move(Path.Combine(stagingRoot, request.Staged), Path.Combine(libraryRoot, path));
+        return Task.FromResult(new ReplaceResult(path, new FileInfo(Path.Combine(libraryRoot, path)).Length, null, "FLAC", held));
+    }
+
+    public Task<RestoreResult> RestoreAsync(RestoreRequest request, CancellationToken ct)
+    {
+        var held = Path.Combine(stagingRoot, request.Held);
+        if (!File.Exists(held))
+            throw new ImportException("The old file isn't held any more.");
+        if (request.Remove is { } remove)
+            File.Delete(Path.Combine(libraryRoot, remove));
+        File.Move(held, Path.Combine(libraryRoot, request.Path));
+        Directory.Delete(Path.GetDirectoryName(held)!);
+        return Task.FromResult(new RestoreResult(request.Path, new FileInfo(Path.Combine(libraryRoot, request.Path)).Length));
+    }
+
     public ConcurrentQueue<MusiclessRequest> Sweeps { get; } = new();
 
     // Folders with no files anywhere in them, the topmost of each.

@@ -18,6 +18,8 @@ public sealed class SettingsService(MelodexDbContext db)
     private const string LogKey = "log";
     private const string ArtistShowingKey = "artistShowing";
     private const string QualityKey = "quality";
+    private const string UpgradesKey = "upgrades";
+    private const string UpgradeRunKey = "upgrades.lastRun";
 
     /// <summary>The library's settings, with the artists that have their own choices for the missing view.</summary>
     public async Task<LibrarySettings> GetLibraryAsync(CancellationToken ct)
@@ -51,6 +53,20 @@ public sealed class SettingsService(MelodexDbContext db)
     /// <summary>Saves the profile with every step in it, in order.</summary>
     public Task SaveQualityAsync(QualityProfile value, CancellationToken ct) =>
         SaveAsync(QualityKey, value with { Steps = value.Ordered().Select(s => new ProfileStep(s.Step.Key, s.Allowed)).ToList() }, ct);
+
+    public Task<UpgradeSettings> GetUpgradesAsync(CancellationToken ct) => GetAsync<UpgradeSettings>(UpgradesKey, ct);
+
+    public Task SaveUpgradesAsync(UpgradeSettings value, CancellationToken ct) => SaveAsync(UpgradesKey, value, ct);
+
+    /// <summary>When the weekly look for upgrades last ran, or was first seen on.</summary>
+    public async Task<DateTime?> GetUpgradeRunAsync(CancellationToken ct) => (await GetAsync<UpgradeRun>(UpgradeRunKey, ct)).At;
+
+    public Task SaveUpgradeRunAsync(DateTime at, CancellationToken ct) => SaveAsync(UpgradeRunKey, new UpgradeRun { At = at }, ct);
+
+    private sealed record UpgradeRun
+    {
+        public DateTime? At { get; init; }
+    }
 
     public Task<LogSettings> GetLogAsync(CancellationToken ct) => GetAsync<LogSettings>(LogKey, ct);
 

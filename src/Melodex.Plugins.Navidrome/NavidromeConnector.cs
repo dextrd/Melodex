@@ -14,7 +14,7 @@ namespace Melodex.Plugins.Navidrome;
 /// scan can't be limited to the new files, and its song paths are made up from tags unless configured otherwise, so
 /// tracks are found by MusicBrainz recording ID, then ISRC, then title, artist, album and length.
 /// </summary>
-public sealed class NavidromeConnector : IMediaServerConnector, IFullScan, IPlaylistManager, IFavouritesManager, ILibraryReader, IPlaylistSync
+public sealed class NavidromeConnector : IMediaServerConnector, IFullScan, IPlaylistManager, IFavouritesManager, ILibraryReader, IPlaylistSync, IServerIdentity
 {
     private readonly SubsonicClient _client;
 
@@ -32,6 +32,16 @@ public sealed class NavidromeConnector : IMediaServerConnector, IFullScan, IPlay
         if (response is { } reply && (!reply.TryGetProperty("openSubsonic", out var open) || !open.GetBoolean()))
             return new HealthReport(HealthStatus.Degraded, report.Message + ", but it doesn't support OpenSubsonic, so tracks can't be found by MusicBrainz ID.");
         return report;
+    }
+
+    public async Task<ServerIdentity?> GetServerAsync(CancellationToken cancellationToken)
+    {
+        var (_, response) = await _client.PingAsync(cancellationToken);
+        if (response is not { } reply)
+            return null;
+        var kind = reply.TryGetProperty("type", out var type) ? type.GetString() : null;
+        var version = reply.TryGetProperty("serverVersion", out var v) ? v.GetString() : null;
+        return new ServerIdentity(kind?.ToLowerInvariant() ?? "subsonic", version);
     }
 
     private Task<JsonElement> CallAsync(string endpoint, IEnumerable<(string Name, string Value)> parameters, CancellationToken ct) =>

@@ -21,6 +21,8 @@ namespace Melodex.Core.Requests;
 /// to the media server. When every plugin has had its turn, the request goes to the review list.
 /// </summary>
 /// <remarks>
+/// An upgrade only tries copies better than the file it upgrades, and puts the one it keeps in that file's place,
+/// tagged as it was, instead of filing it with beets (see <see cref="Upgrades"/>).
 /// A listen-now request stops after the checks: its file goes to the listen-now store instead of to beets. Adding it
 /// to the library later runs the request again as an ordinary one, which files that same file without fetching.
 /// </remarks>
@@ -32,6 +34,7 @@ public sealed class RequestPipeline(
     SettingsService settings,
     RequestService requests,
     ListenNowService listen,
+    Upgrades upgrades,
     IOptions<MelodexOptions> options,
     IOptions<RequestPipelineOptions> pipelineOptions,
     ILogger<RequestPipeline> logger)
@@ -48,6 +51,23 @@ public sealed class RequestPipeline(
         {
             await AddListenedAsync(request, adding, kept, fetch, ct);
             return;
+        }
+
+        // An upgrade whose file has gone, or become good enough meanwhile, has nothing to do.
+        FileQuality? upgrading = null;
+        if (request.UpgradesFileId is { } fileId)
+        {
+            if (await db.LibraryFiles.FindAsync([fileId], ct) is not { } old)
+            {
+                await SetAsync(request, RequestStatus.Failed, "The file it would upgrade isn't in the library any more", ct);
+                return;
+            }
+            if ((await upgrades.UpgradableAsync(db.LibraryFiles.Where(f => f.Id == fileId), ct)).Count == 0)
+            {
+                await SetAsync(request, RequestStatus.InLibrary, $"It's {old.Quality.Label} now, which is good enough", ct);
+                return;
+            }
+            upgrading = old.Quality;
         }
 
         var whole = request.TargetKind == EntityKind.Album;
@@ -130,10 +150,13 @@ public sealed class RequestPipeline(
                 continue;
             }
             var fitting = Rank(candidates, target, fetch).Select(c => (plugin, c)).ToList();
-            var wanted = CandidateRanking.Order(fitting, profile, listenNow, c => LengthOff(c, target)).Take(fetch.CandidatesPerPlugin).ToList();
+            // An upgrade only fetches what may be better: said to be, or not saying.
+            var better = upgrading is null ? fitting : fitting.Where(f => Better(profile, CandidateRanking.QualityOf(f.c), upgrading) != false).ToList();
+            var wanted = CandidateRanking.Order(better, profile, listenNow, c => LengthOff(c, target)).Take(fetch.CandidatesPerPlugin).ToList();
             if (wanted.Count == 0)
             {
-                var why = fitting.Count > 0 ? "found nothing in a quality the profile allows" : "found nothing that fits";
+                var why = better.Count < fitting.Count ? $"found nothing better than the {upgrading!.Label} you have"
+                    : fitting.Count > 0 ? "found nothing in a quality the profile allows" : "found nothing that fits";
                 logger.LogInformation("[{Request}] {Plugin} {Why}", request.Title, plugin.Instance.Name, why);
                 tried.Add($"{plugin.Instance.Name} {why}");
                 continue;
@@ -153,6 +176,13 @@ public sealed class RequestPipeline(
         if (whole)
         {
             await SplitIntoTracksAsync(request, target, "No plugin could fetch the whole album, so it's fetched track by track", ct);
+            return;
+        }
+        // The song is still in the library, as it was: it's looked for again another time.
+        if (upgrading is not null)
+        {
+            await SetAsync(request, RequestStatus.InLibrary, $"Nothing better found: {Summary(tried)}", ct);
+            logger.LogInformation("[{Request}] No upgrade found: {Reason}", request.Title, Summary(tried));
             return;
         }
         await SetAsync(request, RequestStatus.NeedsReview, Summary(tried), ct);
@@ -313,6 +343,31 @@ public sealed class RequestPipeline(
             }
         }
 
+        // An upgrade keeps a copy only if it's better than the file it upgrades, by what it is, not what it was said to be.
+        if (request.UpgradesFileId is { } upgradesId)
+        {
+            var old = await db.LibraryFiles.FindAsync([upgradesId], ct);
+            if (old is null)
+            {
+                await FinishJobAsync(job, JobStatus.Failed, "The file it would upgrade isn't in the library any more", ct);
+                DeleteStaging(job);
+                await SetAsync(request, RequestStatus.Failed, "The file it would upgrade isn't in the library any more", ct);
+                return Outcome.Stop;
+            }
+            var profile = await settings.GetQualityAsync(ct);
+            if (verified.Files.Count != 1 || Better(profile, actual, old.Quality) != true)
+            {
+                job.Verification = VerificationResult.NotBetter;
+                job.VerificationDetail = actual is null
+                    ? $"Its quality couldn't be told, so it may be no better than the {old.Quality.Label} you have"
+                    : $"It's {actual.Label}, no better than the {old.Quality.Label} you have";
+                await FinishJobAsync(job, JobStatus.Failed, $"Didn't pass: {job.VerificationDetail}", ct);
+                DeleteStaging(job);
+                return Outcome.NextCandidate;
+            }
+            return await UpgradeAsync(request, job, old, verified.Files[0], actual!, cutoffs, ct);
+        }
+
         if (request.Mode == RequestMode.ListenNow)
         {
             await StoreForListeningAsync(request, job, directory, verified.Files[0], reported, ct);
@@ -351,6 +406,42 @@ public sealed class RequestPipeline(
         var detail = await NotifyAsync(request, files, ct);
         await SetAsync(request, RequestStatus.InLibrary, detail, ct);
         logger.LogInformation(Diagnostics.LogEvents.Success, "[{Request}] In the library: {Detail}", request.Title, detail);
+        return Outcome.Imported;
+    }
+
+    /// <summary>Whether a quality is better than another by the profile; null when it isn't known.</summary>
+    private static bool? Better(QualityProfile profile, FileQuality? quality, FileQuality than) =>
+        profile.Position(quality) is { } at && profile.Position(than) is { } old ? at < old : null;
+
+    /// <summary>Puts a checked better copy in place of the file it upgrades, then tells the media server.</summary>
+    private async Task<Outcome> UpgradeAsync(Request request, Job job, LibraryFile old, Verifier.Matched file, FileQuality actual,
+        IReadOnlyDictionary<string, int?> cutoffs, CancellationToken ct)
+    {
+        await SetAsync(request, RequestStatus.Importing, "Putting it in place of the old file", ct);
+        var was = old.Quality;
+        var path = old.Path;
+        LibraryFile upgraded;
+        try
+        {
+            Log(job, $"Replacing {path} ({was.Label}), keeping its tags");
+            upgraded = await upgrades.ReplaceAsync(request, old, $"{job.StagingDirectory}/{file.Path}",
+                (cutoffs.ContainsKey(file.Path), cutoffs.GetValueOrDefault(file.Path)), ct);
+        }
+        catch (Exception e) when (e is ImportException or HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            await FinishJobAsync(job, JobStatus.Failed, $"Couldn't replace the old file: {e.Message}", ct);
+            await SetAsync(request, RequestStatus.Failed, $"Couldn't replace the old file: {e.Message}", ct);
+            logger.LogError("[{Request}] Couldn't replace the old file: {Reason}", request.Title, e.Message);
+            return Outcome.Stop;
+        }
+        await FinishJobAsync(job, JobStatus.Succeeded, $"Upgraded {path} to {upgraded.Path}", ct);
+        DeleteStaging(job);
+        await DeleteOtherStagingAsync(request.Id, job.Id, ct);
+
+        var detail = await NotifyAsync(request, [upgraded], ct);
+        detail = $"Upgraded from {was.Label} to {upgraded.Quality.Label}. {detail}";
+        await SetAsync(request, RequestStatus.InLibrary, detail, ct);
+        logger.LogInformation(Diagnostics.LogEvents.Success, "[{Request}] {Detail}", request.Title, detail);
         return Outcome.Imported;
     }
 

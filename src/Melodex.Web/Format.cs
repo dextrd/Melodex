@@ -54,7 +54,10 @@ public static class Format
         Client.RequestState.Searching => "Searching",
         Client.RequestState.Fetching => "Fetching",
         Client.RequestState.Verifying => "Checking",
+        Client.RequestState.Importing or Client.RequestState.Notifying when r.Upgrade => "Upgrading",
         Client.RequestState.Importing or Client.RequestState.Notifying => "Filing",
+        // An upgrade that found nothing better leaves the song as it was, in the library.
+        Client.RequestState.InLibrary when r.Upgrade => r.Detail?.StartsWith("Upgraded") == true ? "Upgraded" : "Unchanged",
         Client.RequestState.InLibrary => "In library",
         Client.RequestState.Playable => "Ready to play",
         Client.RequestState.NeedsReview => "Needs review",

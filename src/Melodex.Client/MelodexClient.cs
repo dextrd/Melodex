@@ -372,6 +372,41 @@ public sealed class MelodexClient(HttpClient http)
         await EnsureAsync(response, ct);
     }
 
+    /// <summary>Upgrades' settings, how many songs are below their cutoff, held files, and any warning about the media server.</summary>
+    public async Task<UpgradeStatus> GetUpgradesAsync(CancellationToken ct = default) =>
+        (await http.GetFromJsonAsync<UpgradeStatus>($"{Api}/upgrades", MelodexJson.Options, ct))!;
+
+    public async Task SaveUpgradeSettingsAsync(UpgradeSettings settings, CancellationToken ct = default)
+    {
+        using var response = await http.PutAsJsonAsync($"{Api}/upgrades/settings", settings, MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+    }
+
+    /// <summary>Asks for upgrades of a song's, album's or artist's files below their cutoff, or the whole library's.</summary>
+    public async Task<UpgradeSearch> SearchUpgradesAsync(FormatScope scope, CancellationToken ct = default)
+    {
+        using var response = await http.PostAsJsonAsync($"{Api}/upgrades/search", scope, MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<UpgradeSearch>(MelodexJson.Options, ct))!;
+    }
+
+    /// <summary>Files replaced by better copies that can be put back, of one song or all.</summary>
+    public async Task<IReadOnlyList<HeldFileInfo>> GetHeldFilesAsync(Guid? trackId = null, CancellationToken ct = default) =>
+        (await http.GetFromJsonAsync<List<HeldFileInfo>>($"{Api}/upgrades/held{(trackId is { } id ? $"?trackId={id}" : "")}", MelodexJson.Options, ct))!;
+
+    /// <summary>Puts a replaced file back, deleting the copy that replaced it; its song is set never to be upgraded.</summary>
+    public async Task RestoreHeldFileAsync(Guid id, CancellationToken ct = default)
+    {
+        using var response = await http.PostAsync($"{Api}/upgrades/held/{id}/restore", null, ct);
+        await EnsureAsync(response, ct);
+    }
+
+    public async Task DeleteHeldFileAsync(Guid id, CancellationToken ct = default)
+    {
+        using var response = await http.DeleteAsync($"{Api}/upgrades/held/{id}", ct);
+        await EnsureAsync(response, ct);
+    }
+
     /// <summary>An artist's, album's or track's quality setting and where it comes from.</summary>
     /// <param name="kind">"artists", "albums" or "tracks".</param>
     /// <param name="albumId">For a track, the album it's seen on.</param>

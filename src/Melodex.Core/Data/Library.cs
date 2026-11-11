@@ -214,6 +214,12 @@ public class Request
     /// </summary>
     public double QueueOrder { get; set; } = QueueOrders.Now();
 
+    /// <summary>
+    /// For an upgrade, the library file it replaces with a better copy: only a copy better than it is kept, and it goes
+    /// where the file is, tagged as it was.
+    /// </summary>
+    public Guid? UpgradesFileId { get; set; }
+
     /// <summary>Held back by the user: it isn't started until resumed. A request paused mid-fetch starts that fetch again.</summary>
     public bool Paused { get; set; }
 
@@ -221,6 +227,47 @@ public class Request
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public List<Job> Jobs { get; set; } = [];
+}
+
+/// <summary>A file an upgrade replaced, held in staging so it can be put back, until it's deleted.</summary>
+public class HeldFile
+{
+    public Guid Id { get; set; } = Guid.CreateVersion7();
+
+    /// <summary>The library file now at its place, the better copy.</summary>
+    public Guid? LibraryFileId { get; set; }
+
+    public Guid? TrackId { get; set; }
+
+    public Guid? RequestId { get; set; }
+
+    /// <summary>The song, for example <c>Glory Box · Portishead</c>.</summary>
+    public string Title { get; set; } = "";
+
+    /// <summary>Where it was, relative to the library.</summary>
+    public required string Path { get; set; }
+
+    /// <summary>Where it's held, relative to staging.</summary>
+    public required string HeldPath { get; set; }
+
+    /// <summary>The better copy's path, relative to the library.</summary>
+    public required string ReplacedBy { get; set; }
+
+    public string? Codec { get; set; }
+    public int? BitrateKbps { get; set; }
+    public int? BitDepth { get; set; }
+    public int? SampleRate { get; set; }
+    public int? CutoffHz { get; set; }
+
+    /// <summary>Its tags, as the library file had them, for putting it back.</summary>
+    public string TagsJson { get; set; } = "{}";
+
+    public long Size { get; set; }
+    public TimeSpan? Duration { get; set; }
+    public DateTime HeldAt { get; set; } = DateTime.UtcNow;
+    public DateTime DeleteAt { get; set; }
+
+    public FileQuality Quality => LibraryFile.QualityOf(Codec, BitrateKbps, BitDepth, SampleRate, CutoffHz);
 }
 
 public enum JobStatus
@@ -244,6 +291,9 @@ public enum VerificationResult
 
     /// <summary>Its highs stop as a lossy file's do: it seems to be lossy music passed off as lossless.</summary>
     SuspectLossless,
+
+    /// <summary>An upgrade's copy that's no better than the file it would replace.</summary>
+    NotBetter,
 }
 
 /// <summary>One attempt to fulfil a request through one retrieval plugin.</summary>

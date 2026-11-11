@@ -32,7 +32,7 @@ public static class ContractVersions
     public static readonly ContractVersion Retrieval = new(1, 0);
 
     /// <summary>Media-server connectors: where music ends up.</summary>
-    public static readonly ContractVersion Connector = new(1, 2);
+    public static readonly ContractVersion Connector = new(1, 3);
 
     /// <summary>Artwork plugins: pictures of artists and albums.</summary>
     public static readonly ContractVersion Artwork = new(1, 0);

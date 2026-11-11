@@ -1,0 +1,65 @@
+@* Files upgrades replaced, held outside the music folder: each can be put back, or deleted now. *@
+@inject MelodexClient Api
+
+<ul class="held-files small">
+    @foreach (var file in Files)
+    {
+        <li>
+            <span class="held-was">
+                <QualityBadge Quality="file.Was" Dot="true" />
+                @if (ShowTitle && file.TrackId is { } track)
+                {
+                    <a href="/tracks/@track">@file.Title</a>
+                }
+                else if (ShowTitle)
+                {
+                    <span>@file.Title</span>
+                }
+                <span class="muted">@file.Was.Label, upgraded to @(file.Now?.Label ?? "a better copy") @Format.Ago(file.HeldAt); held until @file.DeleteAt.ToLocalTime().ToString("d MMMM")</span>
+            </span>
+            <span class="spacer"></span>
+            <button @onclick="() => RestoreAsync(file)" disabled="@_busy" title="Delete the better copy and put this back. The song won't be upgraded again.">Put back</button>
+            <button @onclick="() => DeleteAsync(file)" disabled="@_busy">Delete now</button>
+        </li>
+    }
+</ul>
+@if (_error is not null)
+{
+    <div class="notice error">@_error</div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<HeldFileInfo> Files { get; set; } = [];
+
+    /// <summary>Called once one's put back or deleted.</summary>
+    [Parameter] public EventCallback Changed { get; set; }
+
+    /// <summary>Name each song, where they're of more than one.</summary>
+    [Parameter] public bool ShowTitle { get; set; } = true;
+
+    private bool _busy;
+    private string? _error;
+
+    private Task RestoreAsync(HeldFileInfo file) => RunAsync(() => Api.RestoreHeldFileAsync(file.Id));
+
+    private Task DeleteAsync(HeldFileInfo file) => RunAsync(() => Api.DeleteHeldFileAsync(file.Id));
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await action();
+            await Changed.InvokeAsync();
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

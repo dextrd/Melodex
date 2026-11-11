@@ -19,7 +19,7 @@ public sealed class NavidromeConnectorFactory : IPluginFactory
         Description = "Tells Navidrome to scan when new music is filed, finds it there, and can keep each user's playlists the same in both.",
         Homepage = "https://www.navidrome.org",
         Capabilities = [ConnectorCapabilities.FullScan, ConnectorCapabilities.Playlists, ConnectorCapabilities.Favourites, ConnectorCapabilities.LibraryRead,
-            ConnectorCapabilities.UserPlaylists],
+            ConnectorCapabilities.UserPlaylists, ConnectorCapabilities.ServerIdentity],
         Access = new PluginAccess { Network = ["Your Navidrome server"] },
         SettingsSchema = JsonDocument.Parse("""
             {

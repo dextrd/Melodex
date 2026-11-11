@@ -294,6 +294,79 @@ namespace Melodex.Core.Data.Migrations
                     b.ToTable("EditionTracks");
                 });
 
+            modelBuilder.Entity("Melodex.Core.Data.HeldFile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("BitDepth")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("BitrateKbps")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Codec")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("CutoffHz")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("DeleteAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<TimeSpan?>("Duration")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("HeldAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HeldPath")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("LibraryFileId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReplacedBy")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("RequestId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("SampleRate")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TagsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("TrackId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeleteAt");
+
+                    b.HasIndex("LibraryFileId");
+
+                    b.HasIndex("TrackId");
+
+                    b.ToTable("HeldFiles");
+                });
+
             modelBuilder.Entity("Melodex.Core.Data.Job", b =>
                 {
                     b.Property<Guid>("Id")
@@ -827,11 +900,16 @@ namespace Melodex.Core.Data.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("UpgradesFileId")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ParentRequestId");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("UpgradesFileId");
 
                     b.HasIndex("TargetKind", "TargetId", "Mode");
 
