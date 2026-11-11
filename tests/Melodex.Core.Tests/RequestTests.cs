@@ -387,6 +387,40 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
     }
 
     [TestLibraryFact]
+    public async Task A_copy_turned_away_for_seeming_lossy_can_be_kept_anyway()
+    {
+        await fixture.AddSourceAsync(new FakeSource("onlyfake") { Format = "flac", BitrateKbps = null, Candidates = 1, FileName = "onlyfake.wav" });
+        fixture.Importer.Cutoffs["onlyfake.wav"] = 16570;
+        try
+        {
+            var track = await MissingTrackAsync("Daft Punk", "Homework");
+            var done = await fixture.WaitAsync((await Api.CreateRequestAsync(new CreateRequest(RequestKind.Track, track))).Id);
+            Assert.Equal(RequestState.NeedsReview, done.State);
+            var refused = Assert.Single(done.Jobs!);
+            Assert.Equal(Verification.SuspectLossless, refused.Verification);
+
+            // Kept as it is, without fetching again, and counted as what it seems.
+            await Api.KeepRequestAsync(done.Id, refused.Id);
+            var kept = await fixture.WaitAsync(done.Id);
+            Dump(kept);
+            Assert.Equal(RequestState.InLibrary, kept.State);
+            Assert.Single(kept.Jobs!);
+            Assert.Contains("Keeping it anyway", kept.Jobs![0].Log);
+            using var scope = fixture.Factory.Services.CreateScope();
+            var file = await scope.ServiceProvider.GetRequiredService<Melodex.Core.Data.MelodexDbContext>().LibraryFiles.SingleAsync(f => f.TrackId == track);
+            Assert.Equal(16570, file.CutoffHz);
+            Assert.True(file.Quality.Suspect);
+
+            // Once kept, there's nothing left to keep.
+            await Assert.ThrowsAnyAsync<Exception>(() => Api.KeepRequestAsync(done.Id, refused.Id));
+        }
+        finally
+        {
+            fixture.Importer.Cutoffs.TryRemove("onlyfake.wav", out _);
+        }
+    }
+
+    [TestLibraryFact]
     public async Task Lossless_that_seems_lossy_can_be_kept_as_what_it_seems()
     {
         var profile = await Api.GetQualityProfileAsync();
@@ -435,10 +469,21 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
             // Only the library was read, and only its lossless files.
             Assert.All(fixture.Importer.Spectra.SelectMany(r => r.Files).Where(f => f.Root == SpectrumFile.Library),
                 f => Assert.True(f.Path.EndsWith(".flac") || f.Path.EndsWith(".wav"), f.Path));
+
+            // Trusted, it's lossless again, and checking everything again leaves it so.
+            await Api.TrustLosslessAsync([suspect.Id]);
+            Assert.Empty((await Api.GetSpectrumStatusAsync()).Suspects);
+            task = await Api.CheckSpectraAsync(again: true);
+            for (var deadline = DateTime.UtcNow.AddMinutes(1); task.Active && DateTime.UtcNow < deadline; task = (await Api.GetTaskAsync(task.Id))!)
+                await Task.Delay(50);
+            Assert.Empty((await Api.GetSpectrumStatusAsync()).Suspects);
         }
         finally
         {
             fixture.Importer.Cutoffs.TryRemove("04. Da Funk.flac", out _);
+            using var scope = fixture.Factory.Services.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<Melodex.Core.Data.MelodexDbContext>().LibraryFiles
+                .ExecuteUpdateAsync(u => u.SetProperty(f => f.TrustedAt, (DateTime?)null));
         }
     }
 
@@ -606,7 +651,7 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
             Assert.Contains(await Api.GetHeldFilesAsync(), h => h.Id == held.Id);
 
             // Put back, the better copy goes, and the song isn't upgraded again.
-            await Api.RestoreHeldFileAsync(held.Id);
+            await Api.RestoreHeldFileAsync(held.Id, never: true);
             var restored = await db.LibraryFiles.AsNoTracking().SingleAsync(f => f.Id == fileId);
             Assert.Equal((oldPath, "mp3"), (restored.Path, restored.Codec));
             Assert.True(File.Exists(Path.Combine(fixture.Music, oldPath)));

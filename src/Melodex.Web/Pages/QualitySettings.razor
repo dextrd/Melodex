@@ -137,27 +137,9 @@ else
             </div>
             @if (spectra.Suspects.Count > 0)
             {
-                <ul class="suspect-files small">
-                    @foreach (var file in spectra.Suspects.Take(_showAll ? int.MaxValue : 20))
-                    {
-                        <li>
-                            <QualityBadge Quality="file.Quality" Dot="true" />
-                            @if (file.TrackId is { } track)
-                            {
-                                <a href="/tracks/@track">@file.Path</a>
-                            }
-                            else
-                            {
-                                <span>@file.Path</span>
-                            }
-                            <span class="muted">· @file.Quality.Details</span>
-                        </li>
-                    }
-                </ul>
-                @if (!_showAll && spectra.Suspects.Count > 20)
-                {
-                    <button class="link" @onclick="() => _showAll = true">Show all @spectra.Suspects.Count</button>
-                }
+                <div class="small">
+                    @(spectra.Suspects.Count == 1 ? "It's" : "They're") under <a href="review/seems-lossy">Review → Seems lossy</a>, to replace or trust.
+                </div>
             }
         </div>
     }
@@ -310,11 +292,11 @@ else
         (OldFiles.Hold, "Until then the upgrade can be rolled back, under Review → Upgraded or on the song's page; approving it deletes the old file sooner."),
         (OldFiles.Delete, "Nothing can be rolled back."),
     ];
-    private bool _checking, _checkQueued, _showAll;
+    private bool _checking, _checkQueued;
 
     private static readonly (SuspectLossless Value, string Label, string Help)[] SuspectOptions =
     [
-        (SuspectLossless.Refuse, "Refuse it", "It's left in staging, for the review list, and the next candidate is tried."),
+        (SuspectLossless.Refuse, "Refuse it", "The next candidate is tried. It's left in staging, so if nothing better is found it can be kept anyway under Review → Couldn't fetch."),
         (SuspectLossless.Keep, "Keep it as what it seems", "It's filed if the profile allows the quality it seems to be, and counts as that, below the cutoff, for upgrades."),
     ];
 

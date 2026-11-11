@@ -356,6 +356,19 @@ public sealed class MelodexClient(HttpClient http)
         (await http.GetFromJsonAsync<SpectrumStatus>($"{Api}/library/spectrum", MelodexJson.Options, ct))!;
 
     /// <summary>Queues checking the library's lossless files: those not yet checked, or with again, all of them.</summary>
+    public async Task TrustLosslessAsync(IReadOnlyList<Guid> fileIds, CancellationToken ct = default)
+    {
+        using var response = await http.PostAsJsonAsync($"{Api}/library/spectrum/trust", new TrustLossless(fileIds), MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+    }
+
+    public async Task<RequestInfo> KeepRequestAsync(Guid id, Guid jobId, CancellationToken ct = default)
+    {
+        using var response = await http.PostAsJsonAsync($"{Api}/requests/{id}/keep", new KeepCopy(jobId), MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<RequestInfo>(MelodexJson.Options, ct))!;
+    }
+
     public async Task<TaskInfo> CheckSpectraAsync(bool again = false, CancellationToken ct = default)
     {
         using var response = await http.PostAsJsonAsync($"{Api}/library/spectrum", new CheckSpectra(again), MelodexJson.Options, ct);
@@ -395,9 +408,10 @@ public sealed class MelodexClient(HttpClient http)
         (await http.GetFromJsonAsync<List<HeldFileInfo>>($"{Api}/upgrades/held{(trackId is { } id ? $"?trackId={id}" : "")}", MelodexJson.Options, ct))!;
 
     /// <summary>Puts a replaced file back, deleting the copy that replaced it; its song is set never to be upgraded.</summary>
-    public async Task RestoreHeldFileAsync(Guid id, CancellationToken ct = default)
+    /// <summary>Rolls an upgrade back; with never, its song is never upgraded again.</summary>
+    public async Task RestoreHeldFileAsync(Guid id, bool never = false, CancellationToken ct = default)
     {
-        using var response = await http.PostAsync($"{Api}/upgrades/held/{id}/restore", null, ct);
+        using var response = await http.PostAsync($"{Api}/upgrades/held/{id}/restore{(never ? "?never=true" : "")}", null, ct);
         await EnsureAsync(response, ct);
     }
 

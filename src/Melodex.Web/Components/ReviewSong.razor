@@ -1,4 +1,5 @@
-@* A file or song as Review shows it, on each of its tabs: its cover, its title and artist, and lines about it below. *@
+@* A file or song as Review shows it, on each of its tabs, as its suggestions are: its cover, its title, its artist below
+   (linked when the library has an artist of that name), and lines about it below that. *@
 <div class="suggestion-row">
     @if (Href is not null)
     {
@@ -9,9 +10,13 @@
         <Cover Url="@CoverUrl" />
     }
     <div class="suggestion-text">
-        <div>
-            @if (Href is not null) { <a href="@Href">@Title</a> } else { @Title }
-            @if (Artist is not null) { <span class="muted"> · @Artist</span> }
+        <div class="suggestion">
+            <span class="suggestion-title" title="@Title">@if (Href is not null) { <a href="@Href">@Title</a> } else { @Title }</span>
+        </div>
+        <div class="muted small">
+            @if (Artist is null) { <span>unknown artist</span> }
+            else if (ArtistHref is not null) { <a href="@ArtistHref">@Artist</a> }
+            else { @Artist }
         </div>
         @ChildContent
     </div>
@@ -21,6 +26,9 @@
     [Parameter] public string? CoverUrl { get; set; }
     [Parameter, EditorRequired] public string Title { get; set; } = "";
     [Parameter] public string? Artist { get; set; }
+
+    /// <summary>The artist's page, when the library has one by that name.</summary>
+    [Parameter] public string? ArtistHref { get; set; }
 
     /// <summary>The song's, album's or artist's page, when it has one.</summary>
     [Parameter] public string? Href { get; set; }

@@ -291,8 +291,6 @@ label { display: inline-flex; align-items: center; gap: .4rem; }
 .quality-dot.suspect.good { box-shadow: inset 0 0 0 1.5px var(--partial-fill); }
 .quality-dot.suspect.lossless { box-shadow: inset 0 0 0 1.5px var(--owned-fill); }
 
-.suspect-files { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: .25rem; }
-.suspect-files li { overflow-wrap: anywhere; }
 .day-toggles { display: inline-flex; gap: .25rem; flex-wrap: wrap; }
 .day-toggle { padding: .15rem .55rem; border-radius: 999px; font-size: .85rem; }
 .day-toggle.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text, #fff); }
@@ -468,9 +466,9 @@ td.actions > * + * { margin-left: .6rem; }
 .suggestion-row { display: grid; grid-template-columns: 3rem minmax(0, 1fr); gap: .6rem; align-items: start; }
 .suggestion-row > a { display: block; }
 .suggestion-row .cover { width: 3rem; }
-/* A song's title links to its page, but reads like the file titles beside it. */
-.suggestion-text > div:first-child > a { color: inherit; }
-.suggestion-text > div:first-child > a:hover { text-decoration: underline; }
+/* A song's title links to its page, but reads like the titles beside it. */
+.suggestion-title a { color: inherit; }
+.suggestion-title a:hover { text-decoration: underline; }
 .suggestion-text { min-width: 0; }
 .suggestion-text .suggestion { display: flex; gap: .5rem; align-items: baseline; min-width: 0; flex-wrap: nowrap; }
 /* A long title wraps to two lines, then ends with an ellipsis, rather than running under the buttons. */

@@ -15,11 +15,12 @@
                 {
                     <span>@file.Title</span>
                 }
-                <span class="muted">@file.Was.Label, upgraded to @(file.Now?.Label ?? "a better copy") @Format.Ago(file.HeldAt); approved by itself on @file.DeleteAt.ToLocalTime().ToString("d MMMM")</span>
+                <span class="muted">@file.Was.Label, upgraded to @(file.Now?.Label ?? "a better copy") @Format.Ago(file.HeldAt); will be auto-approved on @file.DeleteAt.ToLocalTime().ToString("d MMMM")</span>
             </span>
             <span class="spacer"></span>
             <button class="primary" @onclick="() => DeleteAsync(file)" disabled="@_busy" title="Keep the better copy, and delete the old file now">Approve</button>
-            <button @onclick="() => RestoreAsync(file)" disabled="@_busy" title="Delete the better copy and put the old file back. The song won't be upgraded again.">Roll back</button>
+            <button @onclick="() => RestoreAsync(file, false)" disabled="@_busy" title="Delete the better copy and put the old file back. A later upgrade may replace it again.">Roll back</button>
+            <button @onclick="() => RestoreAsync(file, true)" disabled="@_busy" title="Delete the better copy, put the old file back, and never upgrade this song">Roll back, never upgrade</button>
         </li>
     }
 </ul>
@@ -40,7 +41,7 @@
     private bool _busy;
     private string? _error;
 
-    private Task RestoreAsync(HeldFileInfo file) => RunAsync(() => Api.RestoreHeldFileAsync(file.Id));
+    private Task RestoreAsync(HeldFileInfo file, bool never) => RunAsync(() => Api.RestoreHeldFileAsync(file.Id, never));
 
     private Task DeleteAsync(HeldFileInfo file) => RunAsync(() => Api.DeleteHeldFileAsync(file.Id));
 

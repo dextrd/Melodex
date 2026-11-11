@@ -52,11 +52,11 @@ public static class UpgradeEndpoints
         upgrades.MapGet("/held", (Guid? trackId, Upgrades service, CancellationToken ct) => service.HeldAsync(trackId, ct))
             .WithName("GetHeldFiles").WithSummary("Files replaced by better copies that can be put back, of one song or all, newest first.");
 
-        upgrades.MapPost("/held/{id:guid}/restore", async (Guid id, Upgrades service, CancellationToken ct) =>
+        upgrades.MapPost("/held/{id:guid}/restore", async (Guid id, bool? never, Upgrades service, CancellationToken ct) =>
             {
                 try
                 {
-                    return await service.RestoreAsync(id, ct) ? Results.NoContent() : Results.NotFound();
+                    return await service.RestoreAsync(id, never ?? false, ct) ? Results.NoContent() : Results.NotFound();
                 }
                 catch (Exception e) when (e is ImportException or HttpRequestException)
                 {
@@ -64,7 +64,7 @@ public static class UpgradeEndpoints
                 }
             })
             .RequireScope(Scopes.Request).WithName("RestoreHeldFile")
-            .WithSummary("Put a replaced file back in place of the copy that replaced it, which is deleted, and set its song never to be upgraded.")
+            .WithSummary("Put a replaced file back in place of the copy that replaced it, which is deleted; with never, set its song never to be upgraded.")
             .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
         upgrades.MapDelete("/held/{id:guid}", async (Guid id, Upgrades service, CancellationToken ct) =>

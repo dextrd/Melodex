@@ -111,6 +111,11 @@ public sealed class RequestPipeline(
             var choice = JsonSerializer.Deserialize<Choice>(chosen, RetrievalJson.Options)!;
             request.ChoiceJson = null;
             await db.SaveChangesAsync(ct);
+            if (choice.Keep is { } keepId)
+            {
+                await KeepAsync(request, target, keepId, fetch, ct);
+                return;
+            }
             if (chain.FirstOrDefault(p => p.Instance.Id == choice.PluginInstanceId) is not { } offeredBy)
             {
                 await SetAsync(request, RequestStatus.NeedsReview, "The plugin that offered the chosen candidate is no longer set up or enabled", ct);
@@ -260,6 +265,25 @@ public sealed class RequestPipeline(
         return await VerifyAndFileAsync(request, target, job, directory, status.Files ?? [], fetch, ct);
     }
 
+    /// <summary>Keeps the copy an attempt fetched but didn't keep for its quality, as it is: it's checked to be the song, and filed.</summary>
+    private async Task KeepAsync(Request request, FetchTarget target, Guid jobId, FetchSettings fetch, CancellationToken ct)
+    {
+        var job = await db.Jobs.FindAsync([jobId], ct);
+        var directory = job?.StagingDirectory is { } staged ? Path.Combine(Path.GetFullPath(options.Value.StagingPath), staged) : null;
+        if (job is null || directory is null || !Directory.Exists(directory))
+        {
+            await SetAsync(request, RequestStatus.NeedsReview, "The copy that wasn't kept isn't in staging any more", ct);
+            return;
+        }
+        job.Status = JobStatus.Running;
+        job.FinishedAt = null;
+        Log(job, "Keeping it anyway, as asked");
+        var files = Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+            .Select(f => new FetchedFile(Path.GetRelativePath(directory, f).Replace('\\', '/'), null, null, null, null)).ToList();
+        if (await VerifyAndFileAsync(request, target, job, directory, files, fetch, ct, keep: true) is Outcome.NextCandidate)
+            await SetAsync(request, RequestStatus.NeedsReview, $"It couldn't be kept: {job.VerificationDetail ?? LastLine(job.Log)}", ct);
+    }
+
     /// <summary>Adds a track fetched for listen now: its file is checked and filed like a fresh fetch, without fetching again.</summary>
     private async Task AddListenedAsync(Request request, ListenNowItem adding, string kept, FetchSettings fetch, CancellationToken ct)
     {
@@ -294,7 +318,7 @@ public sealed class RequestPipeline(
     /// listen-now store for a listen-now one.
     /// </summary>
     private async Task<Outcome> VerifyAndFileAsync(Request request, FetchTarget target, Job job, string directory, IReadOnlyList<FetchedFile> reported,
-        FetchSettings fetch, CancellationToken ct)
+        FetchSettings fetch, CancellationToken ct, bool keep = false)
     {
         // Verify
         await SetAsync(request, RequestStatus.Verifying, "Checking the files", ct);
@@ -323,7 +347,10 @@ public sealed class RequestPipeline(
                 Log(job, $"Said to be {labelled.Label}, but it's {actual.Label} ({actual.Details})");
             else
                 Log(job, $"Quality: {actual.Label} ({actual.Details})");
-            if (request.Mode == RequestMode.Permanent && qualities.Where(q => q.Suspect).MinBy(q => q.Rank) is { } suspect
+            // Kept anyway, as asked, its quality is what it is, and counts as what it seems.
+            if (keep)
+                Log(job, "Kept whatever its quality");
+            else if (request.Mode == RequestMode.Permanent && qualities.Where(q => q.Suspect).MinBy(q => q.Rank) is { } suspect
                 && profile.Suspect == SuspectLossless.Refuse)
             {
                 var seems = suspect.Seems == QualityLevel.Lossless ? "made from a CD" : $"lossy, {FileQuality.Describe(suspect.Level).ToLowerInvariant()} quality";
@@ -333,7 +360,7 @@ public sealed class RequestPipeline(
                 await FinishJobAsync(job, JobStatus.Failed, $"Didn't pass: {job.VerificationDetail}", ct);
                 return Outcome.NextCandidate;
             }
-            if (request.Mode == RequestMode.Permanent && !profile.Allows(actual))
+            if (!keep && request.Mode == RequestMode.Permanent && !profile.Allows(actual))
             {
                 job.Verification = VerificationResult.QualityRefused;
                 job.VerificationDetail = $"It's {actual.Label} ({actual.Details}), which the quality profile turns off";

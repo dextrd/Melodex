@@ -146,6 +146,16 @@ public static class LibraryEndpoints
             .WithName("GetSpectrumStatus")
             .WithSummary("How many of the library's lossless files have been checked for lossy music passed off as lossless, and those that seem to be.");
 
+        library.MapPost("/spectrum/trust", async (TrustLossless body, MelodexDbContext db, LibraryCache cache, CancellationToken ct) =>
+            {
+                await SpectrumTask.TrustAsync(db, body.FileIds, ct);
+                cache.Invalidate();
+                return Results.NoContent();
+            })
+            .RequireScope(Scopes.Review).WithName("TrustLossless")
+            .WithSummary("Say lossless files that seem lossy are what they say: they count as lossless, and aren't checked again until they're replaced.")
+            .Produces(StatusCodes.Status204NoContent);
+
         library.MapPost("/spectrum", async ([FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] CheckSpectra? body, MelodexDbContext db, TaskQueue queue,
                 CancellationToken ct) =>
             {

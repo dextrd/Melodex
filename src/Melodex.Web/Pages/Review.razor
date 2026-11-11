@@ -1,5 +1,6 @@
 @page "/review"
-@page "/review/not-fetched"
+@page "/review/seems-lossy"
+@page "/review/couldnt-fetch"
 @page "/review/upgraded"
 @implements IDisposable
 @inject MelodexClient Api
@@ -7,11 +8,12 @@
 @inject AuthState Auth
 @inject NavigationManager Nav
 @inject Preferences Preferences
+@inject LibraryStore Library
 
 <PageTitle>Review · Melodex</PageTitle>
 
 <h1>Review</h1>
-@* Three things wait for you here: files to match, requests nothing good enough was found for, and upgrades to keep or roll back. *@
+@* Four things wait for you here: files to match, lossless files that seem lossy, requests that ended without a copy, and upgrades to keep or roll back. *@
 <nav class="page-tabs" aria-label="Review">
     @foreach (var (tab, label, count) in Tabs)
     {
@@ -31,19 +33,28 @@
             <strong>Hide</strong> takes it out of the library altogether. Every file stays in your music folder.
         </p>
         break;
-    case "not-fetched":
+    case "seems-lossy":
         <p class="muted">
-            Requests no plugin found a good enough copy for: nothing was found, or nothing found passed the checks, such as a
-            download that wasn't the right song, or lossless that seemed lossy. <strong>Retry</strong> later or after adding another
-            plugin, or open one to see each attempt and pick a candidate yourself.
+            Lossless files in the library whose highs stop where a lossy encoder's do: they seem to be lossy music passed off as
+            lossless, so they count as what they seem. <strong>Replace</strong> looks for a better copy, as an upgrade.
+            <strong>Trust it</strong> if you know it's lossless: it counts as lossless, and isn't checked again. Every file stays in your
+            music folder until it's replaced.
+        </p>
+        break;
+    case "couldnt-fetch":
+        <p class="muted">
+            Requests that ended without a copy to keep: nothing was found, what was found wasn't the right song, or it wasn't a quality
+            you keep, such as lossless that seemed lossy. <strong>Keep it anyway</strong> files a copy turned away only for its quality,
+            as it is. <strong>Look again</strong> searches every plugin again. <strong>Details</strong> shows each attempt, where you can
+            pick another candidate.
         </p>
         break;
     default:
         <p class="muted">
             Songs upgraded to better copies. The file each replaced is held outside your music folder for a while:
             <strong>Approve</strong> keeps the upgrade and deletes the old file now; <strong>Roll back</strong> deletes the better copy,
-            puts the old file back and sets its song never to be upgraded. Any left are approved by themselves once their time is up,
-            which is set under <a href="settings/quality#upgrades">Settings → Quality</a>.
+            puts the old file back, and a later upgrade may replace it again, unless you choose <strong>Roll back, never upgrade</strong>.
+            Any left are auto-approved once their time is up, which is set under <a href="settings/quality#upgrades">Settings → Quality</a>.
         </p>
         break;
 }
@@ -58,7 +69,13 @@ else if (!Loaded)
 }
 else if (Total == 0)
 {
-    <div class="empty card">@(Tab switch { "matching" => "No files to review.", "not-fetched" => "No requests need you: every one found a copy.", _ => "No upgrades to review." })</div>
+    <div class="empty card">@(Tab switch
+    {
+        "matching" => "No files to review.",
+        "seems-lossy" => _spectra is { Lossless: > 0 } ? "No lossless files seem lossy." : "There are no lossless files in the library to check.",
+        "couldnt-fetch" => "No requests need you: every one found a copy.",
+        _ => "No upgrades to review.",
+    })</div>
 }
 else
 {
@@ -89,10 +106,23 @@ else
                                 OnClick="() => _confirm = aside.ToString()" />
                 }
             }
-            else if (Tab == "not-fetched" && Auth.May(UserPermissions.Request))
+            else if (Tab == "seems-lossy")
             {
-                <IconButton Icon="retry" Primary="true" Label="@(some ? "Retry these" : "Retry all")" Disabled="@(_busy || !VisibleRequests.Any())"
-                            Title="@($"Look for every request {(some ? "the filter shows" : "here")} again")" OnClick="RetryShownAsync" />
+                @if (Auth.May(UserPermissions.Review))
+                {
+                    <IconButton Icon="approve" Primary="true" Label="@(some ? "Trust these" : "Trust all")" Disabled="@(_busy || !VisibleSuspects.Any())"
+                                Title="@($"Trust every file {(some ? "the filter shows" : "here")} to be lossless")" OnClick="@(() => _confirm = "trust")" />
+                }
+                @if (Auth.May(UserPermissions.Request))
+                {
+                    <IconButton Icon="quality" Label="@(some ? "Replace these" : "Replace all")" Disabled="@(_busy || !VisibleSuspects.Any(f => f.TrackId is not null && !f.Replacing))"
+                                Title="@($"Look for a better copy of every file {(some ? "the filter shows" : "here")}")" OnClick="ReplaceShownAsync" />
+                }
+            }
+            else if (Tab == "couldnt-fetch" && Auth.May(UserPermissions.Request))
+            {
+                <IconButton Icon="retry" Primary="true" Label="@(some ? "Look again for these" : "Look again for all")" Disabled="@(_busy || !VisibleRequests.Any())"
+                            Title="@($"Search every plugin again for every request {(some ? "the filter shows" : "here")}")" OnClick="RetryShownAsync" />
             }
             else if (Tab == "upgraded")
             {
@@ -152,7 +182,7 @@ else
             <div class="card review-item">
                 <div>
                     <div class="label">File</div>
-                    <ReviewSong CoverUrl="@item.CoverUrl" Title="@(item.Title ?? "(no title)")" Artist="@(item.Artist ?? "unknown artist")">
+                    <ReviewSong CoverUrl="@item.CoverUrl" Title="@(item.Title ?? Path.GetFileNameWithoutExtension(item.Path))" Artist="@item.Artist" ArtistHref="@ArtistHref(item.Artist)">
                         <div class="muted small path">
                             @item.Path · @Format.Duration(item.DurationSeconds)
                             @if (item.ModifiedAt is { } modified) { <span title="When the file last changed"> · @Changed(modified)</span> }
@@ -203,29 +233,81 @@ else
             </div>
         }
     }
-    else if (Tab == "not-fetched")
+    else if (Tab == "seems-lossy")
+    {
+        @if (_confirm == "trust")
+        {
+            <Dialog Title="@($"Trust {Format.Count(VisibleSuspects.Count(), "file", "files")}?")" OnClose="() => _confirm = null" Alert="true">
+                <p>Each counts as the lossless file it says it is, isn't checked again, and isn't upgraded unless it's below the cutoff as lossless.</p>
+                <div class="toolbar dialog-buttons">
+                    <button @onclick="() => _confirm = null">Cancel</button>
+                    <button class="primary" disabled="@_busy" @onclick="TrustShownAsync">@if (_busy) { <span class="spinner"></span> }Trust</button>
+                </div>
+            </Dialog>
+        }
+        @foreach (var file in VisibleSuspects)
+        {
+            <div class="card review-item">
+                <div>
+                    <div class="label">File</div>
+                    <ReviewSong CoverUrl="@file.CoverUrl" Title="@(file.Title ?? Path.GetFileNameWithoutExtension(file.Path))" Artist="@file.Artist"
+                                ArtistHref="@ArtistHref(file.Artist)" Href="@(file.TrackId is { } track ? $"tracks/{track}" : null)">
+                        <div class="muted small path">
+                            @file.Path · @Format.Duration(file.DurationSeconds)
+                            @if (file.ModifiedAt is { } modified) { <span title="When the file last changed"> · @Changed(modified)</span> }
+                        </div>
+                    </ReviewSong>
+                </div>
+                <div>
+                    <div class="label">Seems to be</div>
+                    <div class="small"><QualityBadge Quality="file.Quality" Dot="true" /> @file.Quality.Label</div>
+                    <div class="muted small">@file.Quality.Details</div>
+                    @if (file.Replacing) { <div class="muted small">Looking for a better copy: it's in Activity.</div> }
+                </div>
+                <div class="review-actions">
+                    @if (Auth.May(UserPermissions.Review))
+                    {
+                        <IconButton Icon="approve" Primary="true" Title="Trust it: it's lossless, so it counts as lossless and isn't checked again" Disabled="_busy"
+                                    OnClick="() => TrustAsync([file.Id])" />
+                    }
+                    @if (Auth.May(UserPermissions.Request))
+                    {
+                        <IconButton Icon="quality" Title="@(file.TrackId is null ? "It can't be replaced until it's matched" : file.Replacing ? "A better copy is being looked for" : "Replace: look for a better copy, as an upgrade")"
+                                    Disabled="@(_busy || file.TrackId is null || file.Replacing)" OnClick="() => ReplaceAsync([file])" />
+                    }
+                </div>
+            </div>
+        }
+    }
+    else if (Tab == "couldnt-fetch")
     {
         @foreach (var request in VisibleRequests)
         {
             var (title, artist) = ReviewSong.Split(request.Title);
+            var keepable = Keepable(request);
             <div class="card review-item">
                 <div>
-                    <div class="label">Request</div>
-                    <ReviewSong CoverUrl="@RequestCover(request)" Title="@title" Artist="@artist" Href="@RequestHref(request)">
+                    <div class="label">Asked for</div>
+                    <ReviewSong CoverUrl="@RequestCover(request)" Title="@title" Artist="@artist" ArtistHref="@ArtistHref(artist)" Href="@RequestHref(request)">
                         <div class="muted small">@request.Kind · asked @Format.Ago(request.CreatedAt)</div>
                     </ReviewSong>
                 </div>
                 <div>
-                    <div class="label">Why</div>
-                    <div><span class="badge @Format.RequestBadge(request)">@Format.RequestLabel(request)</span></div>
-                    @if (request.Detail is not null) { <div class="muted small">@request.Detail</div> }
+                    <div class="label">Why it wasn't kept</div>
+                    <div class="small">@(request.Detail ?? "Nothing was found")</div>
+                    @if (keepable?.VerificationDetail is { } why && request.Detail?.Contains(why) != true) { <div class="muted small">@why</div> }
                 </div>
                 <div class="review-actions">
-                    <IconButton Icon="open" Title="Details: each attempt, and the candidates found" OnClick="@(() => Nav.NavigateTo($"activity?open={request.Id}"))" />
                     @if (Auth.May(UserPermissions.Request))
                     {
-                        <IconButton Icon="retry" Primary="true" Title="Retry: look for it again" Disabled="_busy" OnClick="() => RetryAsync(request)" />
+                        @if (keepable is not null)
+                        {
+                            <IconButton Icon="approve" Primary="true" Title="Keep it anyway: file the copy that was turned away for its quality, as it is" Disabled="_busy"
+                                        OnClick="() => KeepAsync(request, keepable)" />
+                        }
+                        <IconButton Icon="retry" Primary="@(keepable is null)" Title="Look again: search every plugin again" Disabled="_busy" OnClick="() => RetryAsync(request)" />
                     }
+                    <IconButton Icon="open" Title="Details: each attempt, where you can pick another candidate" OnClick="@(() => Nav.NavigateTo($"activity?open={request.Id}"))" />
                 </div>
             </div>
         }
@@ -239,13 +321,19 @@ else
             <Dialog Title="@(approving ? $"Approve {count}?" : $"Roll back {count}?")" OnClose="() => _confirm = null" Alert="true">
                 <p>
                     @(approving ? "Each keeps its better copy, and the old file is deleted now; it can't be put back."
-                                : "Each better copy is deleted and the old file put back, and those songs won't be upgraded again.")
+                                : "Each better copy is deleted and the old file put back. A later upgrade may replace them again, unless they're never to be upgraded.")
                 </p>
                 <div class="toolbar dialog-buttons">
                     <button @onclick="() => _confirm = null">Cancel</button>
-                    <button class="@(approving ? "primary" : "danger")" disabled="@_busy" @onclick="() => SettleShownAsync(approving)">
-                        @if (_busy) { <span class="spinner"></span> }@(approving ? "Approve" : "Roll back")
-                    </button>
+                    @if (approving)
+                    {
+                        <button class="primary" disabled="@_busy" @onclick="() => SettleShownAsync(Settle.Approve)">@if (_busy) { <span class="spinner"></span> }Approve</button>
+                    }
+                    else
+                    {
+                        <button class="danger" disabled="@_busy" @onclick="() => SettleShownAsync(Settle.RollBack)">@if (_busy) { <span class="spinner"></span> }Roll back</button>
+                        <button class="danger" disabled="@_busy" @onclick="() => SettleShownAsync(Settle.RollBackNever)">Roll back, never upgrade</button>
+                    }
                 </div>
             </Dialog>
         }
@@ -255,7 +343,7 @@ else
             <div class="card review-item">
                 <div>
                     <div class="label">Replaced</div>
-                    <ReviewSong CoverUrl="@held.CoverUrl" Title="@title" Artist="@artist" Href="@(held.TrackId is { } track ? $"tracks/{track}" : null)">
+                    <ReviewSong CoverUrl="@held.CoverUrl" Title="@title" Artist="@artist" ArtistHref="@ArtistHref(artist)" Href="@(held.TrackId is { } track ? $"tracks/{track}" : null)">
                         <div class="muted small"><QualityBadge Quality="held.Was" Dot="true" /> @held.Was.Label</div>
                         <div class="muted small path">@held.Path · @Format.Duration(held.DurationSeconds)</div>
                     </ReviewSong>
@@ -266,12 +354,14 @@ else
                         @if (held.Now is { } now) { <QualityBadge Quality="now" Dot="true" /> <span>@now.Label</span> } else { <span>A better copy</span> }
                     </div>
                     <div class="muted small path">@held.ReplacedBy</div>
-                    <div class="muted small">Upgraded @Format.Ago(held.HeldAt); approved by itself on @held.DeleteAt.ToLocalTime().ToString("d MMMM")</div>
+                    <div class="muted small">Upgraded @Format.Ago(held.HeldAt); will be auto-approved on @held.DeleteAt.ToLocalTime().ToString("d MMMM")</div>
                 </div>
                 <div class="review-actions">
-                    <IconButton Icon="approve" Primary="true" Title="Approve: keep the better copy, and delete the old file now" Disabled="_busy" OnClick="() => SettleAsync(held, true)" />
-                    <IconButton Icon="putback" Title="Roll back: delete the better copy and put the old file back. The song won't be upgraded again." Disabled="_busy"
-                                OnClick="() => SettleAsync(held, false)" />
+                    <IconButton Icon="approve" Primary="true" Title="Approve: keep the better copy, and delete the old file now" Disabled="_busy" OnClick="() => SettleAsync(held, Settle.Approve)" />
+                    <IconButton Icon="putback" Title="Roll back: delete the better copy and put the old file back. A later upgrade may replace it again." Disabled="_busy"
+                                OnClick="() => SettleAsync(held, Settle.RollBack)" />
+                    <IconButton Icon="ignore" Title="Roll back, never upgrade: put the old file back, and never upgrade this song" Disabled="_busy"
+                                OnClick="() => SettleAsync(held, Settle.RollBackNever)" />
                 </div>
             </div>
         }
@@ -323,10 +413,11 @@ else
     private IReadOnlyList<ReviewItem>? _items;
     private IReadOnlyList<HeldFileInfo>? _held;
 
-    // matching, not-fetched or upgraded, from the address.
+    // matching, seems-lossy, couldnt-fetch or upgraded, from the address.
     private string Tab => new Uri(Nav.Uri).AbsolutePath.TrimEnd('/') switch
     {
-        var path when path.EndsWith("/review/not-fetched") => "not-fetched",
+        var path when path.EndsWith("/review/seems-lossy") => "seems-lossy",
+        var path when path.EndsWith("/review/couldnt-fetch") => "couldnt-fetch",
         var path when path.EndsWith("/review/upgraded") => "upgraded",
         _ => "matching",
     };
@@ -334,7 +425,8 @@ else
     private IEnumerable<(string Tab, string Label, int Count)> Tabs =>
     [
         ("matching", "Matching", _items?.Count ?? 0),
-        ("not-fetched", "Not fetched", Stuck.Count()),
+        ("seems-lossy", "Seems lossy", _spectra?.Suspects.Count ?? 0),
+        ("couldnt-fetch", "Couldn't fetch", Stuck.Count()),
         ("upgraded", "Upgraded", _held?.Count ?? 0),
     ];
 
@@ -342,15 +434,154 @@ else
     private string? Denied => Tab switch
     {
         "matching" when !Auth.May(UserPermissions.Review) => "You can't review files: that needs the Review and match permission, which the admin can give you.",
+        "seems-lossy" when !Auth.May(UserPermissions.Review) && !Auth.May(UserPermissions.Request) =>
+            "You can't review these files: that needs the Review and match or the Request permission, which the admin can give you.",
         "upgraded" when !Auth.May(UserPermissions.Request) => "You can't review upgrades: that needs the Request permission, which the admin can give you.",
         _ => null,
     };
 
-    private bool Loaded => Tab switch { "matching" => _items is not null, "upgraded" => _held is not null, _ => true };
+    private bool Loaded => Tab switch { "matching" => _items is not null, "seems-lossy" => _spectra is not null, "upgraded" => _held is not null, _ => true };
 
-    private int Total => Tab switch { "matching" => _items!.Count, "upgraded" => _held!.Count, _ => Stuck.Count() };
+    private int Total => Tab switch
+    {
+        "matching" => _items!.Count, "seems-lossy" => _spectra!.Suspects.Count, "upgraded" => _held!.Count, _ => Stuck.Count(),
+    };
 
-    private int Shown => Tab switch { "matching" => Visible.Count(), "upgraded" => VisibleHeld.Count(), _ => VisibleRequests.Count() };
+    private int Shown => Tab switch
+    {
+        "matching" => Visible.Count(), "seems-lossy" => VisibleSuspects.Count(), "upgraded" => VisibleHeld.Count(), _ => VisibleRequests.Count(),
+    };
+
+    private IEnumerable<SuspectFile> VisibleSuspects
+    {
+        get
+        {
+            var shown = (_spectra?.Suspects ?? []).Where(f => Matches(f.Path, f.Title, f.Artist));
+            var text = StringComparer.CurrentCultureIgnoreCase;
+            return Sort switch
+            {
+                ("name", var d) => d ? shown.OrderByDescending(f => f.Title ?? f.Path, text) : shown.OrderBy(f => f.Title ?? f.Path, text),
+                ("date", var d) => d ? shown.OrderByDescending(f => f.ModifiedAt) : shown.OrderBy(f => f.ModifiedAt),
+                (_, var d) => d ? shown.OrderByDescending(f => f.Path, text) : shown.OrderBy(f => f.Path, text),
+            };
+        }
+    }
+
+    // The library's artists by name, for linking an artist named in tags or a title.
+    private Dictionary<string, Guid> _artists = new(StringComparer.OrdinalIgnoreCase);
+
+    private string? ArtistHref(string? name) => name is not null && _artists.TryGetValue(name, out var id) ? $"artists/{id}" : null;
+
+    private async Task LoadArtistsAsync()
+    {
+        try
+        {
+            var artists = Library.Artists ?? await Library.LoadArtistsAsync();
+            _artists = artists.GroupBy(a => a.Name, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            // Shown without links.
+        }
+    }
+
+    private SpectrumStatus? _spectra;
+
+    private async Task LoadSuspectsAsync()
+    {
+        try
+        {
+            _spectra = await Api.GetSpectrumStatusAsync();
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            _spectra = new SpectrumStatus(0, 0, []);
+        }
+    }
+
+    private Task TrustShownAsync() => TrustAsync(VisibleSuspects.Select(f => f.Id).ToList());
+
+    private async Task TrustAsync(IReadOnlyList<Guid> ids)
+    {
+        _busy = true;
+        try
+        {
+            await Api.TrustLosslessAsync(ids);
+        }
+        finally
+        {
+            await LoadSuspectsAsync();
+            _busy = false;
+            _confirm = null;
+            ScanStatus.RaiseLibraryChanged();
+        }
+    }
+
+    private Task ReplaceShownAsync() => ReplaceAsync(VisibleSuspects.ToList());
+
+    // Each is looked for as an upgrade: it counts as what it seems, so it's below the cutoff.
+    private async Task ReplaceAsync(IReadOnlyList<SuspectFile> files)
+    {
+        _busy = true;
+        try
+        {
+            foreach (var file in files.Where(f => f.TrackId is not null && !f.Replacing))
+                await Api.SearchUpgradesAsync(new FormatScope(FormatScopeKind.Track, file.TrackId));
+            await Tracker.RefreshAsync();
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            // Those asked for show as being replaced.
+        }
+        finally
+        {
+            await LoadSuspectsAsync();
+            _busy = false;
+        }
+    }
+
+    // Each finished request's attempts, to find a copy turned away only for its quality.
+    private readonly Dictionary<Guid, RequestInfo> _details = [];
+
+    private JobInfo? Keepable(RequestInfo request) =>
+        request.Kind == RequestKind.Track && !request.Upgrade && _details.GetValueOrDefault(request.Id) is { UpdatedAt: var at, Jobs: { } jobs } && at == request.UpdatedAt
+            ? jobs.LastOrDefault(j => j.Verification is Verification.SuspectLossless or Verification.QualityRefused)
+            : null;
+
+    private async Task LoadDetailsAsync()
+    {
+        foreach (var request in Stuck.Where(r => r.Kind == RequestKind.Track && _details.GetValueOrDefault(r.Id)?.UpdatedAt != r.UpdatedAt).ToList())
+        {
+            try
+            {
+                if (await Api.GetRequestAsync(request.Id) is { } details)
+                    _details[request.Id] = details;
+            }
+            catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+            {
+                // Shown without keeping it anyway.
+            }
+        }
+    }
+
+    private async Task KeepAsync(RequestInfo request, JobInfo job)
+    {
+        _busy = true;
+        try
+        {
+            await Api.KeepRequestAsync(request.Id, job.Id);
+            await Tracker.RefreshAsync();
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            // Its copy has gone from staging: looking again is left.
+            _details.Remove(request.Id);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
 
     private bool Matches(params string?[] texts) =>
         _filter.Length == 0 || texts.Any(text => text?.Contains(_filter, StringComparison.OrdinalIgnoreCase) == true);
@@ -413,18 +644,20 @@ else
         }
     }
 
-    // Approve keeps the better copy, deleting the old file; roll back puts the old file back.
-    private Task SettleAsync(HeldFileInfo held, bool approve) => SettleAsync([held], approve);
+    // Approve keeps the better copy, deleting the old file; roll back puts the old file back, and may never upgrade the song.
+    private enum Settle { Approve, RollBack, RollBackNever }
 
-    private Task SettleShownAsync(bool approve) => SettleAsync(VisibleHeld.ToList(), approve);
+    private Task SettleAsync(HeldFileInfo held, Settle how) => SettleAsync([held], how);
 
-    private async Task SettleAsync(IReadOnlyList<HeldFileInfo> held, bool approve)
+    private Task SettleShownAsync(Settle how) => SettleAsync(VisibleHeld.ToList(), how);
+
+    private async Task SettleAsync(IReadOnlyList<HeldFileInfo> held, Settle how)
     {
         _busy = true;
         try
         {
             foreach (var file in held)
-                await (approve ? Api.DeleteHeldFileAsync(file.Id) : Api.RestoreHeldFileAsync(file.Id));
+                await (how == Settle.Approve ? Api.DeleteHeldFileAsync(file.Id) : Api.RestoreHeldFileAsync(file.Id, how == Settle.RollBackNever));
         }
         catch (Exception e) when (e is HttpRequestException or MelodexApiException)
         {
@@ -435,7 +668,7 @@ else
             await LoadHeldAsync();
             _busy = false;
             _confirm = null;
-            if (!approve)
+            if (how != Settle.Approve)
                 ScanStatus.RaiseLibraryChanged();
         }
     }
@@ -493,13 +726,17 @@ else
     private string FilterHint => Tab switch
     {
         "matching" => "Filter, for example a title, artist or folder",
-        "not-fetched" => "Filter, for example a title, artist or reason",
+        "couldnt-fetch" => "Filter, for example a title, artist or reason",
         _ => "Filter, for example a title, artist or folder",
     };
 
-    private IReadOnlyList<(string Key, string Label)> Sorts => Tab == "matching"
-        ? [("match", "How sure the match is"), ("name", "Name"), ("path", "Path"), ("date", "Date changed")]
-        : [("date", Tab == "upgraded" ? "Date upgraded" : "Date"), ("name", "Name")];
+    private IReadOnlyList<(string Key, string Label)> Sorts => Tab switch
+    {
+        "matching" => [("match", "How sure the match is"), ("name", "Name"), ("path", "Path"), ("date", "Date changed")],
+        "seems-lossy" => [("name", "Name"), ("path", "Path"), ("date", "Date changed")],
+        "upgraded" => [("date", "Date upgraded"), ("name", "Name")],
+        _ => [("date", "Date"), ("name", "Name")],
+    };
 
     // How each sort starts out: the surest matches and the newest first, names and paths from A.
     private static bool StartsDescending(string sort) => sort is "match" or "date";
@@ -507,7 +744,7 @@ else
     // Each tab's own, kept between visits.
     private readonly Dictionary<string, (string Key, bool Descending)> _sorts = new()
     {
-        ["matching"] = ("path", false), ["not-fetched"] = ("date", true), ["upgraded"] = ("date", true),
+        ["matching"] = ("path", false), ["seems-lossy"] = ("path", false), ["couldnt-fetch"] = ("date", true), ["upgraded"] = ("date", true),
     };
 
     private (string Key, bool Descending) Sort => _sorts[Tab];
@@ -596,13 +833,13 @@ else
         foreach (var tab in _sorts.Keys.ToList())
         {
             var sort = await Preferences.GetAsync(SortKey(tab), _sorts[tab].Key);
-            if (sort is not ("name" or "date") && !(tab == "matching" && sort is "match" or "path"))
+            if (sort is not ("name" or "date") && !(tab == "matching" && sort is "match" or "path") && !(tab == "seems-lossy" && sort is "path"))
                 sort = _sorts[tab].Key;
             _sorts[tab] = (sort, await Preferences.GetAsync(DescendingKey(tab), StartsDescending(sort)));
         }
         Nav.LocationChanged += OnLocationChanged;
         await Tracker.EnsureLoadedAsync();
-        await Task.WhenAll(LoadAsync(), LoadHeldAsync());
+        await Task.WhenAll(LoadAsync(), LoadHeldAsync(), LoadSuspectsAsync(), LoadArtistsAsync(), LoadDetailsAsync());
     }
 
     private async Task LoadAsync()
@@ -655,9 +892,14 @@ else
     private void Refresh() => InvokeAsync(StateHasChanged);
 
     // A request that finishes may be an upgrade, held for review.
+    private HashSet<Guid> _upgrading = [];
+
     private void OnRequestsChanged() => InvokeAsync(async () =>
     {
-        await LoadHeldAsync();
+        // An upgrade that finishes may have held a file, or replaced one that seemed lossy.
+        var finished = Tracker.Requests.Any(r => r.Upgrade && !r.Active && _upgrading.Contains(r.Id));
+        _upgrading = Tracker.Requests.Where(r => r.Upgrade && r.Active).Select(r => r.Id).ToHashSet();
+        await Task.WhenAll(finished ? LoadHeldAsync() : Task.CompletedTask, finished ? LoadSuspectsAsync() : Task.CompletedTask, LoadDetailsAsync());
         StateHasChanged();
     });
 

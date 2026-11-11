@@ -44,6 +44,9 @@ public sealed record MoveInQueue(Guid? Before);
 /// <summary>Body of <c>POST /requests/{id}/choose</c>: a candidate from one of the request's jobs.</summary>
 public sealed record ChooseCandidate(Guid JobId, string CandidateId);
 
+/// <summary>Body of keeping a copy an attempt fetched but didn't keep, for its quality.</summary>
+public sealed record KeepCopy(Guid JobId);
+
 /// <summary>A request and where it stands.</summary>
 /// <param name="Title">What it's for, for example <c>Get Lucky · Daft Punk</c>.</param>
 /// <param name="Detail">What's happening now, or why it stopped.</param>

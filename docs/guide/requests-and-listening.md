@@ -12,8 +12,9 @@ Press the download button beside a missing track or album, **Get album** or **Ge
 3. The beets worker tags it from the MusicBrainz release Melodex chose and files it in your music folder.
 4. Navidrome is told to scan.
 
-The **Activity** page shows every request and each attempt. A request no plugin could satisfy waits under **Review → Not fetched**:
-retry it later, add another plugin, or pick one of the candidates found.
+The **Activity** page shows every request and each attempt. A request that ended without a copy to keep waits under **Review → Couldn't fetch**:
+**Look again** later or after adding another plugin, open its **Details** to pick one of the candidates found, or, when
+a copy was turned away only for its quality, **Keep it anyway**, as it is.
 
 Requests run one at a time, in order. Move them up and down the queue, pause them or cancel them from Activity.
 
@@ -48,13 +49,16 @@ lossy. A hi-res file that stops where a CD does was made from one, and counts as
 
 - **What happens to a suspect download** is a setting under **Settings → Quality**: refuse it and try the next
   candidate (the default; Activity says **Seems lossy**, and where its highs stop), or keep it as what it seems, if
-  the profile allows that.
+  the profile allows that. A refused copy is left in staging: if nothing better is found, **Keep it anyway** under
+  **Review → Couldn't fetch** files it, counted as what it seems.
 - **Lossless with reason to think it's real is tried first**, of candidates otherwise alike: straight from a store
   such as Qobuz or Tidal, a torrent with its rip's log and cue, or one from a tracker you've set as known for lossless
   in the Prowlarr plugin's settings.
 - **The library's lossless files are checked too**, after each scan, for any new or changed. Suspect ones show their
-  quality with a ⚠ and a dashed edge, count as what they seem, below the cutoff, for upgrades, and are listed under
-  **Settings → Quality**, which can check them all again. Files are only read.
+  quality with a ⚠ and a dashed edge, count as what they seem, below the cutoff, for upgrades, and wait under
+  **Review → Seems lossy**: **Replace** looks for a better copy, as an upgrade, and **Trust it** says it's lossless,
+  so it counts as that and isn't checked again (until an upgrade replaces it). **Settings → Quality** can check them
+  all again. Files are only read.
 
 It's a suspicion, not proof. A master can be cut off on purpose, an old recording may have little in the highs, and
 an encode that keeps them (MP3 V0, AAC at 256) can't be told this way. FLAC, WAV and AIFF can be checked; ALAC, APE
@@ -85,9 +89,9 @@ cutoff is met.
   stays with it. Only its loudness (ReplayGain) is its own.
 - **The old file is held for 14 days** (a setting), outside the music folder in the staging volume; or it can be
   deleted straight away. While it's held the upgrade waits under **Review → Upgraded** (and on the song's page):
-  **Approve** keeps it and deletes the old file now, and **Roll back** deletes the better copy, puts the old file back,
-  and sets the song never to be upgraded, so it isn't replaced again. An upgrade left alone is approved by itself once
-  its time is up.
+  **Approve** keeps it and deletes the old file now, and **Roll back** deletes the better copy and puts the old file
+  back, where a later upgrade may replace it again; **Roll back, never upgrade** also sets the song never to be
+  upgraded. An upgrade left alone is auto-approved once its time is up.
 
 #### What your player keeps
 

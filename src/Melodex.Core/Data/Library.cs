@@ -48,6 +48,12 @@ public class LibraryFile
     /// <summary>When a lossless file's spectrum was checked; null until it is, and again once the file changes.</summary>
     public DateTime? SpectrumCheckedAt { get; set; }
 
+    /// <summary>
+    /// When someone said a lossless file that seemed lossy is what it says: its cutoff is ignored, and it isn't checked
+    /// again. A better copy replacing it isn't trusted.
+    /// </summary>
+    public DateTime? TrustedAt { get; set; }
+
     public const string UnknownCodec = "unknown";
 
     /// <summary>The file's quality, as the web app shows it.</summary>
@@ -63,8 +69,9 @@ public class LibraryFile
         BitrateKbps = quality.BitrateKbps;
         BitDepth = quality.BitDepth;
         SampleRate = quality.SampleRateHz;
-        CutoffHz = quality.CutoffHz;
-        SpectrumCheckedAt = null;
+        // A file trusted to be lossless stays trusted when its tags are rewritten.
+        CutoffHz = TrustedAt is null ? quality.CutoffHz : null;
+        SpectrumCheckedAt = TrustedAt is null ? null : SpectrumCheckedAt;
     }
 
     /// <summary>Tags as read from the file, as a JSON object of tag name to value.</summary>

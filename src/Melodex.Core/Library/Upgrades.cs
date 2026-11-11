@@ -260,6 +260,7 @@ public sealed class Upgrades(
             {
                 var (tags, duration, lyrics, read) = LibraryScanner.ReadTags(full);
                 old.TagsJson = tags.ToJson();
+                old.TrustedAt = null;
                 old.SetQuality(read);
                 old.Duration = duration ?? old.Duration;
                 old.Lyrics = lyrics;
@@ -285,10 +286,10 @@ public sealed class Upgrades(
     }
 
     /// <summary>
-    /// Puts a held file back in place of the copy that replaced it, which is deleted, and sets its song never to be
-    /// upgraded, so it isn't replaced again. False when it isn't held.
+    /// Puts a held file back in place of the copy that replaced it, which is deleted; with never, sets its song never to
+    /// be upgraded, so it isn't replaced again. False when it isn't held.
     /// </summary>
-    public async Task<bool> RestoreAsync(Guid id, CancellationToken ct)
+    public async Task<bool> RestoreAsync(Guid id, bool never, CancellationToken ct)
     {
         if (await db.HeldFiles.FindAsync([id], ct) is not { } held)
             return false;
@@ -311,7 +312,7 @@ public sealed class Upgrades(
         }
         db.HeldFiles.Remove(held);
         await db.SaveChangesAsync(ct);
-        if (held.TrackId is { } trackId)
+        if (never && held.TrackId is { } trackId)
             await quality.SaveAsync(EntityKind.Track, trackId, new QualityOverride(QualityOverrideKind.NeverUpgrade), ct);
         logger.LogInformation("Put back {Path}, which an upgrade had replaced", held.Path);
 

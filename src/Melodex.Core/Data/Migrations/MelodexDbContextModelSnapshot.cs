@@ -529,6 +529,9 @@ namespace Melodex.Core.Data.Migrations
                     b.Property<Guid?>("TrackId")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("TrustedAt")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ArtistId");
