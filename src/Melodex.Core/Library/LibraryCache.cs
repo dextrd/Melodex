@@ -17,9 +17,11 @@ namespace Melodex.Core.Library;
 /// for a moment, so it's usually fresh by the time a page asks. The caller waits a moment for a computation and
 /// otherwise gets the last answer, so pages load at once even during a scan and catch up on their next refresh.
 /// Each answer is saved under <c>data/cache</c> too, so after a restart the last one is served at once while it's
-/// worked out again, and carries an ETag, so a client that has it already isn't sent it again.
+/// worked out again, and carries an ETag, so a client that has it already isn't sent it again. When the app stops, the
+/// work in the background stops too, and a save under way is finished first.
 /// </remarks>
-public sealed class LibraryCache(IServiceScopeFactory scopes, IOptions<MelodexOptions> options, ILogger<LibraryCache> logger) : DbCommandInterceptor
+public sealed class LibraryCache(IServiceScopeFactory scopes, IOptions<MelodexOptions> options, ILogger<LibraryCache> logger)
+    : DbCommandInterceptor, IAsyncDisposable, IDisposable
 {
     private static readonly string[] LibraryTables =
         ["\"Artists\"", "\"Albums\"", "\"Editions\"", "\"Tracks\"", "\"EditionTracks\"", "\"Crosswalk\"", "\"LibraryFiles\"", "\"Settings\"",
@@ -50,6 +52,8 @@ public sealed class LibraryCache(IServiceScopeFactory scopes, IOptions<MelodexOp
     private long _lastWrite;
     private int _warming;
     private int _refreshing;
+    private Task _warmingStale = Task.CompletedTask;
+    private readonly CancellationTokenSource _stopping = new();
 
     // Working out a view reads much of the catalogue into memory for a moment: one at a time, so they don't all hold
     // theirs at once.
@@ -167,7 +171,7 @@ public sealed class LibraryCache(IServiceScopeFactory scopes, IOptions<MelodexOp
         Interlocked.Exchange(ref _lastWrite, Environment.TickCount64);
         Changed?.Invoke();
         if (Interlocked.Exchange(ref _warming, 1) == 0)
-            _ = WarmStaleAsync();
+            _warmingStale = WarmStaleAsync();
     }
 
     // Once writes pause, recomputes the stale views.
@@ -177,7 +181,11 @@ public sealed class LibraryCache(IServiceScopeFactory scopes, IOptions<MelodexOp
         {
             long wait;
             while ((wait = (long)Quiet.TotalMilliseconds - (Environment.TickCount64 - Interlocked.Read(ref _lastWrite))) > 0)
-                await Task.Delay(TimeSpan.FromMilliseconds(wait));
+                await Task.Delay(TimeSpan.FromMilliseconds(wait), _stopping.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
         }
         finally
         {
@@ -229,7 +237,7 @@ public sealed class LibraryCache(IServiceScopeFactory scopes, IOptions<MelodexOp
         Interlocked.Increment(ref _refreshing);
         try
         {
-            await _computing.WaitAsync();
+            await _computing.WaitAsync(_stopping.Token);
             long generation;
             object value;
             byte[] json;
@@ -239,7 +247,7 @@ public sealed class LibraryCache(IServiceScopeFactory scopes, IOptions<MelodexOp
                 // Read before computing, so a write while it runs leaves the answer stale.
                 generation = Interlocked.Read(ref _generation);
                 using var scope = scopes.CreateScope();
-                value = await Views[entry.Name].Compute(scope.ServiceProvider.GetRequiredService<LibraryView>(), CancellationToken.None);
+                value = await Views[entry.Name].Compute(scope.ServiceProvider.GetRequiredService<LibraryView>(), _stopping.Token);
                 json = JsonSerializer.SerializeToUtf8Bytes(value, Views[entry.Name].Type, MelodexJson.Options);
             }
             finally
@@ -258,8 +266,12 @@ public sealed class LibraryCache(IServiceScopeFactory scopes, IOptions<MelodexOp
                 entry.ETag = tag;
                 entry.Generation = generation;
             }
-            if (changed)
+            if (changed && !_stopping.IsCancellationRequested)
                 await SaveAsync(entry, json);
+        }
+        catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception e)
         {
@@ -275,6 +287,25 @@ public sealed class LibraryCache(IServiceScopeFactory scopes, IOptions<MelodexOp
                 GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
         }
     }
+
+    /// <summary>Stops working views out in the background, once a save under way is finished.</summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (_stopping.IsCancellationRequested)
+            return;
+        await _stopping.CancelAsync();
+        Task?[] running = [_warmingStale, .. _entries.Values.Select(e => { lock (e.Gate) return e.Refresh; })];
+        try
+        {
+            await Task.WhenAll(running.OfType<Task>());
+        }
+        catch (Exception)
+        {
+            // Stopped, or failed and logged; either way nothing is left writing.
+        }
+    }
+
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
     // ---- Watching for writes ----
 
