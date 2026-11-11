@@ -34,8 +34,21 @@ public enum QualityLevel
 /// <summary>A file's encoding: its codec, bitrate, and for lossless, its bit depth and sample rate.</summary>
 /// <param name="Codec">The codec, lower case: flac, alac, mp3, aac, opus, vorbis, wav and so on.</param>
 /// <param name="SampleRateHz">Samples a second, such as 44100.</param>
-public sealed record FileQuality(string? Codec, int? BitrateKbps, int? BitDepth, int? SampleRateHz)
+/// <param name="CutoffHz">
+/// For a lossless file checked for it, where its highs are cut off sharply, as a lossy encoder's are, if they are (#19).
+/// A file cut off low enough is <see cref="Suspect"/>: it seems to be lossy music passed off as lossless.
+/// </param>
+public sealed record FileQuality(string? Codec, int? BitrateKbps, int? BitDepth, int? SampleRateHz, int? CutoffHz = null)
 {
+    /// <summary>
+    /// Below this, a CD-quality file's highs were cut by a lossy encoder: MP3 at 320 kbps stops at about 20 kHz, while a
+    /// CD goes on to 22. Some masters are cut at 20 kHz on purpose, which is why it's suspect, not fake.
+    /// </summary>
+    public const int LossyCutoffHz = 20700;
+
+    /// <summary>Below this, a file sampled faster than a CD stops where a CD does: it was made from one.</summary>
+    public const int CdCutoffHz = 23000;
+
     private static readonly HashSet<string> LosslessCodecs = ["flac", "alac", "wav", "aiff", "ape", "wavpack", "dsd", "pcm"];
 
     // How much each lossy codec makes of a bitrate, against MP3's. Rough, as listening tests are; enough to rank them.
@@ -49,7 +62,24 @@ public sealed record FileQuality(string? Codec, int? BitrateKbps, int? BitDepth,
     /// <summary>A lossy file's bitrate as MP3's that sounds about as good; null for lossless or unknown files.</summary>
     public double? EquivalentKbps => !Lossless && Codec is not null && BitrateKbps is { } kbps ? kbps * Efficiency.GetValueOrDefault(Codec, 1.0) : null;
 
+    /// <summary>Whether it's lossless but its highs stop where a lossy encoder's or, for hi-res, a CD's do.</summary>
+    public bool Suspect => Lossless && CutoffHz is { } hz && (hz < LossyCutoffHz || SampleRateHz > 48000 && hz < CdCutoffHz);
+
+    /// <summary>
+    /// What a suspect file seems really to be, by where its highs stop: lossless at CD quality, or lossy at the level of
+    /// the MP3 that stops there (128 kbps at about 16.5 kHz, 160 at 17.5, 192 at 18.5, 256 at 19.5, 320 at 20).
+    /// </summary>
+    public QualityLevel? Seems => !Suspect ? null : CutoffHz switch
+    {
+        >= LossyCutoffHz => QualityLevel.Lossless,
+        >= 19900 => QualityLevel.High,
+        >= 19000 => QualityLevel.Good,
+        >= 17100 => QualityLevel.Fair,
+        _ => QualityLevel.Low,
+    };
+
     public QualityLevel Level => Codec is null ? QualityLevel.Unknown
+        : Seems is { } seems ? seems
         : Lossless ? Codec == "dsd" || BitDepth > 16 || SampleRateHz > 48000 ? QualityLevel.HiRes : QualityLevel.Lossless
         : EquivalentKbps switch
         {
@@ -73,7 +103,8 @@ public sealed record FileQuality(string? Codec, int? BitrateKbps, int? BitDepth,
     }
 
     /// <summary>What the label doesn't say: how good it is, and a lossy file's sample rate. "Good · 48 kHz".</summary>
-    public string Details => Describe(Level) + (SampleRateHz is { } rate && !Lossless ? $" · {Kilohertz(rate)} kHz" : "");
+    public string Details => Describe(Level) + (SampleRateHz is { } rate && !Lossless ? $" · {Kilohertz(rate)} kHz" : "")
+        + (Suspect ? $" · seems {(Seems == QualityLevel.Lossless ? "made from a CD" : "lossy")}: its highs stop at {CutoffKilohertz(CutoffHz!.Value)} kHz" : "");
 
     public static string Name(string? codec) => codec switch
     {
@@ -106,9 +137,12 @@ public sealed record FileQuality(string? Codec, int? BitrateKbps, int? BitDepth,
         .MinBy(q => q.Rank);
 
     /// <summary>Whether several files aren't all of one quality, as their labels say.</summary>
-    public static bool Mixed(IEnumerable<FileQuality> qualities) => qualities.Select(q => q.Label).Distinct().Skip(1).Any();
+    public static bool Mixed(IEnumerable<FileQuality> qualities) => qualities.Select(q => (q.Label, q.Suspect)).Distinct().Skip(1).Any();
 
     private static string Kilohertz(int hz) => (hz / 1000.0).ToString("0.##", CultureInfo.InvariantCulture);
+
+    /// <summary>To a tenth of a kHz, as a cutoff is only that sure: "16.6 kHz".</summary>
+    public static string CutoffKilohertz(int hz) => (hz / 1000.0).ToString("0.0", CultureInfo.InvariantCulture);
 }
 
 /// <summary>Which qualities a list of songs or albums shows; an album by its worst song.</summary>

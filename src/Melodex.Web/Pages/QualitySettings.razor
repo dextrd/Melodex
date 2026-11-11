@@ -46,6 +46,23 @@ else
         </div>
     </div>
 
+    <h2>Lossless that seems lossy</h2>
+    <p class="muted small">
+        Lossy music is sometimes passed off as lossless: an MP3 saved as FLAC, labelled FLAC, but no better than the MP3. Lossy encoders cut off the highs
+        where they give themselves away, about 16.5 kHz for an MP3 at 128 kbps and 20 kHz at 320, so each lossless download, and the library's lossless
+        files, are checked for that. One that's cut off counts as what it seems to be. It's a suspicion, not proof: a master can be cut off on purpose, and an
+        encode that keeps the highs can't be told.
+    </p>
+    <div class="card settings-card">
+        @foreach (var (value, label, help) in SuspectOptions)
+        {
+            <label class="dialog-choice">
+                <input type="radio" name="suspect" checked="@(_profile.Suspect == value)" @onchange="() => { _profile = _profile with { Suspect = value }; _saved = false; }" />
+                <span><strong>@label</strong><span class="muted small">@help</span></span>
+            </label>
+        }
+    </div>
+
     <ol class="quality-steps card" aria-label="Qualities, best first">
         @for (var i = 0; i < _steps.Count; i++)
         {
@@ -81,6 +98,60 @@ else
         @if (_saved) { <span class="muted small">Saved.</span> }
         @if (_saveError is not null) { <span class="error small" title="@_saveError">@_saveError</span> }
     </div>
+
+    <h2>The library's lossless files</h2>
+    @if (_spectra is { } spectra)
+    {
+        <div class="card settings-card">
+            <div class="setting-line">
+                @if (spectra.Lossless == 0)
+                {
+                    <span>There are no FLAC, WAV or AIFF files in the library to check.</span>
+                }
+                else
+                {
+                    <span>
+                        @spectra.Checked of @spectra.Lossless checked;
+                        @(spectra.Suspects.Count == 0 ? "none seem lossy" : spectra.Suspects.Count == 1 ? "1 seems lossy" : $"{spectra.Suspects.Count} seem lossy").
+                    </span>
+                    <span class="spacer"></span>
+                    @if (spectra.Checked < spectra.Lossless)
+                    {
+                        <button @onclick="() => CheckAsync(false)" disabled="@_checking">Check the rest</button>
+                    }
+                    <button @onclick="() => CheckAsync(true)" disabled="@_checking">Check them all again</button>
+                }
+            </div>
+            <div class="muted small">
+                Files are only read. New and changed ones are checked after each scan; ALAC, APE and WavPack can't be.
+                @if (_checkQueued) { <span>Queued: it's under Tasks in Activity.</span> }
+            </div>
+            @if (spectra.Suspects.Count > 0)
+            {
+                <ul class="suspect-files small">
+                    @foreach (var file in spectra.Suspects.Take(_showAll ? int.MaxValue : 20))
+                    {
+                        <li>
+                            <QualityBadge Quality="file.Quality" Dot="true" />
+                            @if (file.TrackId is { } track)
+                            {
+                                <a href="/tracks/@track">@file.Path</a>
+                            }
+                            else
+                            {
+                                <span>@file.Path</span>
+                            }
+                            <span class="muted">· @file.Quality.Details</span>
+                        </li>
+                    }
+                </ul>
+                @if (!_showAll && spectra.Suspects.Count > 20)
+                {
+                    <button class="link" @onclick="() => _showAll = true">Show all @spectra.Suspects.Count</button>
+                }
+            }
+        </div>
+    }
 }
 
 @code {
@@ -89,10 +160,46 @@ else
     private bool _saved;
     private string? _saveError;
 
+    private SpectrumStatus? _spectra;
+    private bool _checking, _checkQueued, _showAll;
+
+    private static readonly (SuspectLossless Value, string Label, string Help)[] SuspectOptions =
+    [
+        (SuspectLossless.Refuse, "Refuse it", "It's left in staging, for the review list, and the next candidate is tried."),
+        (SuspectLossless.Keep, "Keep it as what it seems", "It's filed if the profile allows the quality it seems to be, and counts as that, below the cutoff, for upgrades."),
+    ];
+
     protected override async Task OnInitializedAsync()
     {
         _profile = await Api.GetQualityProfileAsync();
         _steps = _profile.Ordered().ToList();
+        try
+        {
+            _spectra = await Api.GetSpectrumStatusAsync();
+        }
+        catch (HttpRequestException)
+        {
+            // Shown without it.
+        }
+    }
+
+    private async Task CheckAsync(bool again)
+    {
+        _checking = true;
+        try
+        {
+            await Api.CheckSpectraAsync(again);
+            _checkQueued = true;
+            _spectra = await Api.GetSpectrumStatusAsync();
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            _saveError = e.Message;
+        }
+        finally
+        {
+            _checking = false;
+        }
     }
 
     private string Cutoff

@@ -31,6 +31,12 @@ plugin is a separate service that speaks a small HTTP contract, so anyone can wr
 Qobuz and Tidal offer each quality they have up to their **Best quality** setting, and Prowlarr reads a release's name
 ("FLAC 24bit", "MP3 V0") for what its files don't say yet, so the profile can choose.
 
+Lossless that comes with reason to think it's real is tried first, of candidates otherwise alike: Qobuz's, Tidal's and
+Bandcamp's, straight from the store, and Prowlarr's with a rip's log and cue, or from a tracker you name under its
+**Trackers known for lossless** setting (by their names in Prowlarr, separated by commas). Whatever it's said to be, a
+lossless download is checked by its spectrum before it's kept; see
+[lossless that seems lossy](requests-and-listening.md#lossless-that-seems-lossy).
+
 ## The inbox
 
 The inbox plugin fetches nothing itself: it offers whatever you drop into its folder (`INBOX_PATH`). Drop in the files

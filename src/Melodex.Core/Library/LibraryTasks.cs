@@ -78,6 +78,9 @@ public sealed class LibraryScanTask(
 
         if ((await settings.GetLibraryAsync(ct)).FetchLyrics && await lyrics.HaveSourcesAsync(ct) && await lyrics.Wanting().AnyAsync(ct))
             await queue.EnqueueAsync(LyricsTask.TaskKind, null, ct);
+        // New and changed lossless files are checked for lossy music passed off as lossless.
+        if (await SpectrumTask.Unchecked(db).AnyAsync(ct))
+            await queue.EnqueueAsync(SpectrumTask.TaskKind, null, ct);
     }
 
     private static string Count(int n, string one, string many) => LibraryMatcher.Plural(n, one, many);

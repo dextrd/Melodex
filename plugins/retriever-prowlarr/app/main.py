@@ -40,6 +40,10 @@ SETTINGS_SCHEMA: dict[str, Any] = {
                                   "lossless files; mp3 only MP3s."},
         "minSeeders": {"type": "integer", "minimum": 0, "default": 1, "title": "Fewest seeders",
                        "description": "Torrents with fewer seeders aren't offered."},
+        "losslessTrackers": {"type": "string", "default": "", "title": "Trackers known for lossless",
+                             "description": "Indexers, by their names in Prowlarr and separated by commas, that check "
+                                            "lossless uploads are really lossless. Their lossless releases are tried "
+                                            "before others alike, as are those with a rip's log and cue."},
         "minScore": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.6, "title": "Lowest match score",
                      "description": "Torrents that match the request less well than this aren't offered."},
         "afterwards": {"type": "string", "enum": retrieve.AFTER, "default": "keep", "title": "Once copied",

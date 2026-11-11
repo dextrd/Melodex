@@ -78,6 +78,43 @@ public sealed class QualityProfileTests
     }
 
     [Theory]
+    [InlineData(44100, 16570, QualityLevel.Low)]
+    [InlineData(44100, 17400, QualityLevel.Fair)]
+    [InlineData(44100, 18700, QualityLevel.Fair)]
+    [InlineData(44100, 19400, QualityLevel.Good)]
+    [InlineData(44100, 20150, QualityLevel.High)]
+    [InlineData(96000, 22050, QualityLevel.Lossless)]
+    public void Lossless_cut_off_low_is_suspect_and_counts_as_what_it_seems(int rate, int cutoff, QualityLevel seems)
+    {
+        var quality = new FileQuality("flac", null, rate > 48000 ? 24 : 16, rate, cutoff);
+        Assert.True(quality.Suspect);
+        Assert.Equal(seems, quality.Level);
+        Assert.Equal(seems == QualityLevel.Lossless ? new QualityStep(CodecFamily.Flac, QualityLevel.Lossless) : new QualityStep(CodecFamily.Mp3, seems),
+            QualityStep.Of(quality));
+        Assert.False(new QualityProfile().Meets(quality) && seems < QualityLevel.Lossless);
+    }
+
+    [Fact]
+    public void A_cd_cut_off_where_a_cd_is_and_lossy_files_are_never_suspect()
+    {
+        Assert.False(new FileQuality("flac", null, 16, 44100, 21500).Suspect);
+        Assert.Equal(QualityLevel.Lossless, new FileQuality("flac", null, 16, 44100, 21500).Level);
+        Assert.False(new FileQuality("flac", null, 24, 96000, 40000).Suspect);
+        Assert.False(new FileQuality("mp3", 320, null, 44100, 16000).Suspect);
+        Assert.True(FileQuality.Mixed([new FileQuality("flac", null, 16, 44100), new FileQuality("flac", null, 16, 44100, 16000)]));
+    }
+
+    [Fact]
+    public void Of_candidates_otherwise_alike_one_vouched_for_comes_first()
+    {
+        var plain = Of("plain", "flac", null, 0.95);
+        var vouched = Of("vouched", "flac", null, 0.9) with { Vouched = true };
+        var order = CandidateRanking.Order(new[] { plain, vouched, Of("mp3", "mp3", 320, 0.99) with { Vouched = true } }.Select(c => (c.Title, c)),
+            new QualityProfile(), false, _ => 0).Select(x => x.Plugin);
+        Assert.Equal(["vouched", "plain", "mp3"], order);
+    }
+
+    [Theory]
     [InlineData("m4a", "aac")]
     [InlineData("ogg", "vorbis")]
     [InlineData("FLAC", "flac")]

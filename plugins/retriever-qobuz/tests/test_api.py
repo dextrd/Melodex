@@ -176,6 +176,8 @@ def test_each_quality_up_to_the_settings_is_offered_and_fetched_as_chosen(client
     assert [(c["source"], c["format"], c.get("bitDepth"), c.get("sampleRateHz"), c.get("bitrateKbps")) for c in found] == [
         ("Qobuz (24-bit/96 kHz)", "flac", 24, 96000, None), ("Qobuz (16-bit/44.1 kHz)", "flac", 16, 44100, None),
         ("Qobuz (MP3 320)", "mp3", None, None, 320)]
+    # Its lossless is straight from the store, so vouched for.
+    assert [c.get("vouched") for c in found] == [True, True, None]
     client.post("/v1/fetch", json={"settings": SETTINGS, "jobId": "cd", "target": album_target(), "candidate": found[1],
                                    "stagingDirectory": "cd"})
     assert wait(client, "cd")["state"] == "completed"

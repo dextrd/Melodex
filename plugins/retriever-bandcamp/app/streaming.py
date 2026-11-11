@@ -86,6 +86,8 @@ class Service(Protocol):
 
 # ---- Search ----
 
+_LOSSLESS = {"flac", "alac", "wav", "aiff"}
+
 def _upc(value: str | None) -> str:
     return (value or "").strip().lstrip("0")
 
@@ -203,6 +205,8 @@ def _candidates(service: Service, kind: Kind, title: str, artist: str | None, al
         bitrate_kbps=offer.bitrate if offer else None,
         bit_depth=offer.bit_depth if offer else None,
         sample_rate_hz=offer.sample_rate if offer else None,
+        # Lossless straight from the store, not from someone's copy.
+        vouched=True if (offer.format if offer else service.format) in _LOSSLESS else None,
         score=round(score, 3),
     ) for offer in offers or [None]]
 

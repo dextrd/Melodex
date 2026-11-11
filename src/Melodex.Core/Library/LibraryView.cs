@@ -96,9 +96,9 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
         // A page about an artist or a few albums needs only their songs' files and those filed under their editions.
         var files = scoped
             ? await db.LibraryFiles.Where(f => f.TrackId != null && (listingTracks.Contains(f.TrackId.Value) || f.EditionId != null && editionIds.Contains(f.EditionId.Value)))
-                .Select(f => new OwnedFile(f.Id, f.Path, f.TrackId!.Value, f.EditionId, LibraryFile.QualityOf(f.Codec, f.BitrateKbps, f.BitDepth, f.SampleRate))).ToListAsync(ct)
+                .Select(f => new OwnedFile(f.Id, f.Path, f.TrackId!.Value, f.EditionId, LibraryFile.QualityOf(f.Codec, f.BitrateKbps, f.BitDepth, f.SampleRate, f.CutoffHz))).ToListAsync(ct)
             : await db.LibraryFiles.Where(f => f.TrackId != null)
-                .Select(f => new OwnedFile(f.Id, f.Path, f.TrackId!.Value, f.EditionId, LibraryFile.QualityOf(f.Codec, f.BitrateKbps, f.BitDepth, f.SampleRate))).ToListAsync(ct);
+                .Select(f => new OwnedFile(f.Id, f.Path, f.TrackId!.Value, f.EditionId, LibraryFile.QualityOf(f.Codec, f.BitrateKbps, f.BitDepth, f.SampleRate, f.CutoffHz))).ToListAsync(ct);
         var owned = files.Select(f => f.TrackId).ToHashSet();
 
         // Different recordings sharing an ISRC are the same song as far as owning it goes: a song here is owned when
@@ -352,7 +352,7 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
             .Select(f => new
             {
                 f.Id, f.Path, f.Format, f.Duration, f.EditionId, TrackId = f.TrackId!.Value, f.TagsJson,
-                f.Codec, f.BitrateKbps, f.BitDepth, f.SampleRate,
+                f.Codec, f.BitrateKbps, f.BitDepth, f.SampleRate, f.CutoffHz,
                 f.Track!.Title, f.Track.ArtistCredit, f.Track.ArtistId, TrackDuration = f.Track.Duration,
                 AlbumId = (Guid?)f.Edition!.AlbumId, AlbumTitle = f.Edition.Album.Title,
             })
@@ -380,7 +380,7 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
                 return new LibraryTrack(r.Id, r.TrackId, tags?.Title ?? r.Title, tags?.Artist ?? r.ArtistCredit, r.ArtistId, albumId, tags?.Album ?? r.AlbumTitle ?? place?.AlbumTitle ?? FileTags.Parse(r.TagsJson).Album,
                     listing?.Disc, listing?.Number, (r.Duration ?? r.TrackDuration)?.TotalSeconds, r.Path, r.Format,
                     settings.PreferFileCovers ? LocalMusic.CoverUrl(r.Id) : albumId is { } album ? CoverUrl(album, r.EditionId ?? place?.EditionId) : null,
-                    Quality: LibraryFile.QualityOf(r.Codec, r.BitrateKbps, r.BitDepth, r.SampleRate));
+                    Quality: LibraryFile.QualityOf(r.Codec, r.BitrateKbps, r.BitDepth, r.SampleRate, r.CutoffHz));
             })
             .Concat(own.Albums.SelectMany(a => a.Songs.Select(song => new LibraryTrack(song.File.Id, song.File.Id, song.Title, song.Artist,
                 a.ArtistLocal ? null : a.ArtistId, a.Id, a.Title, song.Tags.Disc, song.Tags.Track?.ToString(), song.File.Duration?.TotalSeconds,
@@ -418,7 +418,7 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
     {
         var rows = await db.LibraryFiles.Where(f => f.TrackId != null && f.EditionId == null && f.ExcludedAt == null && f.HiddenAt == null
                                                     && (f.Track!.ArtistId == artistId || f.ArtistId == artistId))
-            .Select(f => new { f.Id, TrackId = f.TrackId!.Value, f.Path, f.Format, f.Duration, f.Codec, f.BitrateKbps, f.BitDepth, f.SampleRate, f.Track!.Title, f.Track.ArtistCredit, f.Track.ArtistId, TrackDuration = f.Track.Duration, f.TagsJson })
+            .Select(f => new { f.Id, TrackId = f.TrackId!.Value, f.Path, f.Format, f.Duration, f.Codec, f.BitrateKbps, f.BitDepth, f.SampleRate, f.CutoffHz, f.Track!.Title, f.Track.ArtistCredit, f.Track.ArtistId, TrackDuration = f.Track.Duration, f.TagsJson })
             .ToListAsync(ct);
         if (rows.Count == 0)
             return [];
@@ -426,7 +426,7 @@ public sealed partial class LibraryView(MelodexDbContext db, SettingsService set
         return rows.Where(r => !places.ContainsKey(r.TrackId))
             .Select(r => new LibraryTrack(r.Id, r.TrackId, r.Title, r.ArtistCredit, r.ArtistId, null, FileTags.Parse(r.TagsJson).Album, null, null,
                 (r.Duration ?? r.TrackDuration)?.TotalSeconds, r.Path, r.Format, LocalMusic.CoverUrl(r.Id),
-                Quality: LibraryFile.QualityOf(r.Codec, r.BitrateKbps, r.BitDepth, r.SampleRate)))
+                Quality: LibraryFile.QualityOf(r.Codec, r.BitrateKbps, r.BitDepth, r.SampleRate, r.CutoffHz)))
             .OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
     }

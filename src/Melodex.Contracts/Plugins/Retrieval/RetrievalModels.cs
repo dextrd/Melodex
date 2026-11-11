@@ -84,6 +84,11 @@ public sealed record SearchResponse(IReadOnlyList<Candidate> Candidates);
 /// <param name="Score">The plugin's own confidence from 0 to 1 that this matches the target.</param>
 /// <param name="BitDepth">For lossless, the bits per sample the file will have (16, 24), if known.</param>
 /// <param name="SampleRateHz">The sample rate the file will have (44100, 96000), if known.</param>
+/// <param name="Vouched">
+/// For lossless, whether there's reason to think it's really lossless, not lossy music passed off as it: it's straight
+/// from a store, or comes with a rip's log and cue, or from a tracker known for checking. Of candidates otherwise alike,
+/// one vouched for is tried first.
+/// </param>
 /// <remarks>
 /// The core ranks candidates by the user's quality profile from <see cref="Format"/>, <see cref="BitrateKbps"/>,
 /// <see cref="BitDepth"/> and <see cref="SampleRateHz"/>. A source with several qualities offers a candidate for each.
@@ -101,7 +106,8 @@ public sealed record Candidate(
     int? BitrateKbps,
     double? Score,
     int? BitDepth = null,
-    int? SampleRateHz = null);
+    int? SampleRateHz = null,
+    bool? Vouched = null);
 
 /// <summary>Body of <c>POST /v1/fetch</c>.</summary>
 /// <param name="Settings">The plugin instance's settings.</param>

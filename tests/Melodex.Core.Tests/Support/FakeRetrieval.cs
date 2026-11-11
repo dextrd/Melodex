@@ -43,7 +43,7 @@ public sealed class FakeRetrieval(string stagingRoot) : HttpMessageHandler
             var target = search.Target;
             var candidates = Enumerable.Range(0, source.Candidates).Select(i => new Candidate(
                 $"{i}|{JsonSerializer.Serialize(target, RetrievalJson.Options)}", target.Kind, target.Title, target.Artist, target.Album,
-                target.DurationSeconds, source.Name, null, source.Format, source.BitrateKbps, 0.9 - i * 0.1)).ToList();
+                target.DurationSeconds, source.Name, null, source.Format, source.BitrateKbps, 0.9 - i * 0.1, Vouched: source.Vouched)).ToList();
             return Json(request, new SearchResponse(candidates));
         }
         if (path == "/v1/fetch" && request.Method == HttpMethod.Post)
@@ -65,8 +65,8 @@ public sealed class FakeRetrieval(string stagingRoot) : HttpMessageHandler
             else
             {
                 var seconds = (fetch.Target.DurationSeconds ?? 60) + off;
-                Wav.Write(Path.Combine(directory, "track.wav"), seconds);
-                files.Add(new FetchedFile("track.wav", "pcm", "wav", 64, seconds));
+                Wav.Write(Path.Combine(directory, source.FileName), seconds);
+                files.Add(new FetchedFile(source.FileName, "pcm", "wav", 64, seconds));
             }
             var status = new FetchStatus(fetch.JobId, FetchState.Completed, 1, files);
             _jobs[fetch.JobId] = status;
@@ -112,6 +112,12 @@ public sealed class FakeSource(string name, bool albums = false)
     public string Format { get; set; } = "wav";
 
     public int? BitrateKbps { get; set; } = 64;
+
+    /// <summary>Whether its candidates say they're vouched for as really lossless.</summary>
+    public bool? Vouched { get; set; }
+
+    /// <summary>What a song it fetches is called.</summary>
+    public string FileName { get; set; } = "track.wav";
 
     /// <summary>How many candidates search offers.</summary>
     public int Candidates { get; set; } = 3;

@@ -40,10 +40,11 @@ Errors use any 4xx or 5xx status with a body of `{ "error": "message", "code": "
    for albums the expected track listing, and every ID it knows (MusicBrainz, ISRC, UPC). The plugin returns
    candidates with its own `score` from 0 to 1, and what each will be: `format`, `bitrateKbps`, and for lossless
    `bitDepth` and `sampleRateHz` where known. A source with several qualities offers a candidate for each, with the
-   quality in its `candidateId`, so the core can choose.
+   quality in its `candidateId`, so the core can choose. For lossless, `vouched` says there's reason to think it
+   really is: it's straight from a store, comes with a rip's log and cue, or is from a tracker known for checking.
 2. **Choose.** The core searches every plugin at once and picks among all their candidates: those it's sure are the
-   right song (a score of 0.8 or more) first, by the user's quality profile, then the plugin's score; then less sure
-   ones by score. Qualities the profile turns off aren't fetched. Or the user picks one on the Activity page.
+   right song (a score of 0.8 or more) first, by the user's quality profile, then those vouched for, then the
+   plugin's score; then less sure ones by score. Qualities the profile turns off aren't fetched. Or the user picks one on the Activity page.
 3. **Fetch.** The core creates `staging/<stagingDirectory>/` and calls `POST /v1/fetch`. The plugin writes only
    inside that directory, in the output format chosen in its settings.
 4. **Follow.** The core polls `GET /v1/fetch/{jobId}` until the state is `completed`, `failed` or `cancelled`.
@@ -51,7 +52,8 @@ Errors use any 4xx or 5xx status with a body of `{ "error": "message", "code": "
    bitrate and duration; for albums, with disc and position where the plugin knows them.
 5. **Verify and import.** These belong to the core, not the plugin. The core checks duration (and, when enabled, an
    AcoustID fingerprint) and reads the files' quality: one the profile turns off is refused, and one worse than its
-   candidate said is noted. If verification fails, the next candidate, from whichever plugin, is tried. When they run
+   candidate said is noted. Lossless files are checked by their spectrum, through the beets worker, for highs cut
+   off as a lossy encoder cuts them; one that is is refused by default. If verification fails, the next candidate, from whichever plugin, is tried. When they run
    out, the job goes to the review list.
 
 ## Capabilities and output

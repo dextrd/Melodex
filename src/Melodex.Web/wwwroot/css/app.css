@@ -284,6 +284,16 @@ label { display: inline-flex; align-items: center; gap: .4rem; }
     background: radial-gradient(circle at 32% 30%, #fffbe0 0%, #f7d65a 30%, #c9961a 70%, #8a6408 100%);
     box-shadow: 0 0 0 .5px rgba(122, 82, 0, .6), 0 0 3px rgba(242, 201, 76, .7); }
 
+/* Lossless that seems to be lossy: what it seems, marked with a warning and a dashed edge. */
+.badge.quality-chip.suspect { outline: 1px dashed currentColor; outline-offset: -1px; }
+.badge.quality-chip.suspect::before { content: "⚠ "; }
+.quality-dot.suspect { background: transparent; box-shadow: inset 0 0 0 1.5px var(--missing); }
+.quality-dot.suspect.good { box-shadow: inset 0 0 0 1.5px var(--partial-fill); }
+.quality-dot.suspect.lossless { box-shadow: inset 0 0 0 1.5px var(--owned-fill); }
+
+.suspect-files { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: .25rem; }
+.suspect-files li { overflow-wrap: anywhere; }
+
 .meter { height: 6px; background: var(--missing-fill); border-radius: 999px; overflow: hidden; min-width: 80px; }
 .meter > span { display: block; height: 100%; background: var(--owned-fill); }
 

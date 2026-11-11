@@ -18,6 +18,7 @@ from pydantic.alias_generators import to_camel
 from .formatter import FormatFile
 from .importer import Importer, ImportFailed, Release, StagedFile
 from .removal import delete
+from .spectrum import analyse
 
 STAGING = os.environ.get("STAGING_ROOT") or "/staging"
 LIBRARY = os.environ.get("LIBRARY_ROOT") or "/music"
@@ -80,6 +81,15 @@ class DeleteRequest(Model):
 
 class MusiclessRequest(Model):
     remove: bool = False
+
+
+class SpectrumFile(Model):
+    root: str = "staging"
+    path: str
+
+
+class SpectrumRequest(Model):
+    files: list[SpectrumFile]
 
 
 app = FastAPI(title="Melodex beets worker", version="0.1.0")
@@ -158,3 +168,22 @@ async def musicless_folders(body: MusiclessRequest) -> dict[str, Any]:
 async def run_delete(body: DeleteRequest) -> dict[str, Any]:
     deleted, failed = await run_in_threadpool(delete, LIBRARY, body.paths)
     return {"deleted": deleted, "failed": failed}
+
+
+@app.post("/v1/spectrum")
+async def run_spectrum(body: SpectrumRequest) -> dict[str, Any]:
+    """Where each lossless file's highs are cut off sharply, if they are, so the core can tell lossy music passed off as
+    lossless (see spectrum.py). Files are read, never changed."""
+    def check(file: SpectrumFile) -> dict[str, Any]:
+        roots = {"staging": STAGING, "library": LIBRARY}
+        if file.root not in roots:
+            return {"path": file.path, "root": file.root, "error": "The root is staging or library."}
+        root = os.path.realpath(roots[file.root])
+        full = os.path.realpath(os.path.join(root, file.path))
+        if not full.startswith(root + os.sep):
+            return {"path": file.path, "root": file.root, "error": f"It isn't inside the {file.root}."}
+        found = analyse(full)
+        result = {"path": file.path, "root": file.root, "cutoffHz": found.cutoff_hz, "error": found.error}
+        return {k: v for k, v in result.items() if v is not None}
+
+    return {"files": await run_in_threadpool(lambda: [check(f) for f in body.files])}

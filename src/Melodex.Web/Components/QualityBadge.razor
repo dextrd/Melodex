@@ -1,7 +1,8 @@
 @*
     A file's quality, coloured by how good it is: red below good, amber for good lossy, green for lossless, and shiny
     gold for hi-res. As a chip in a page's heading, written as it usually is ("FLAC 16/44.1", "MP3 320"); or in lists,
-    as a dot that says it when pointed at. For an album, its worst song's, marked when its songs aren't all alike.
+    as a dot that says it when pointed at. For an album, its worst song's, marked when its songs aren't all alike. A
+    lossless file that seems to be lossy is coloured as what it seems, and marked as suspect.
 *@
 @* Nothing, where nothing's known: a file not yet read for it, or that couldn't be. *@
 @if (Quality is { Codec: not null } quality)
@@ -10,11 +11,11 @@
     var details = Mixed ? $"Mixed quality, at worst {quality.Details.ToLowerInvariant()}" : quality.Details;
     if (Dot)
     {
-        <span class="quality-dot @Class(quality.Level)" title="@label · @details" role="img" aria-label="@label, @details"></span>
+        <span class="quality-dot @Class(quality)" title="@label · @details" role="img" aria-label="@label, @details"></span>
     }
     else
     {
-        <span class="badge quality-chip @Class(quality.Level)" title="@details">@label</span>
+        <span class="badge quality-chip @Class(quality)" title="@details">@label</span>
     }
 }
 
@@ -27,12 +28,12 @@
     /// <summary>Several files' worst quality, of files not all alike.</summary>
     [Parameter] public bool Mixed { get; set; }
 
-    private static string Class(QualityLevel level) => level switch
+    private static string Class(FileQuality quality) => (quality.Level switch
     {
         QualityLevel.HiRes => "hires",
         QualityLevel.Lossless => "lossless",
         QualityLevel.High or QualityLevel.Good => "good",
         QualityLevel.Fair or QualityLevel.Low => "low",
         _ => "unknown",
-    };
+    }) + (quality.Suspect ? " suspect" : "");
 }

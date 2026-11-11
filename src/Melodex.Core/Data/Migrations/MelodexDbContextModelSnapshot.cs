@@ -371,6 +371,9 @@ namespace Melodex.Core.Data.Migrations
                     b.Property<string>("Codec")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("CutoffHz")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime?>("DeferredAt")
                         .HasColumnType("TEXT");
 
@@ -436,6 +439,9 @@ namespace Melodex.Core.Data.Migrations
 
                     b.Property<long>("Size")
                         .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("SpectrumCheckedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid?>("SuggestedEditionId")
                         .HasColumnType("TEXT");

@@ -281,6 +281,9 @@ public sealed class RequestPipeline(
 
         // The quality is what the files are, not what they were said to be: a FLAC that's really an MP3 is an MP3.
         var qualities = verified.Files.Select(f => MediaTypes.ReadQuality(Path.Combine(directory, f.Path))).ToList();
+        // Lossless music to keep is checked for being lossy music passed off as it.
+        var cutoffs = request.Mode == RequestMode.Permanent ? await CheckSpectraAsync(job, verified.Files, qualities, ct) : [];
+        qualities = qualities.Select((q, i) => cutoffs.GetValueOrDefault(verified.Files[i].Path) is { } hz ? q with { CutoffHz = hz } : q).ToList();
         var actual = FileQuality.Lowest(qualities.Where(q => q.Codec is not null));
         if (actual is not null)
         {
@@ -290,6 +293,16 @@ public sealed class RequestPipeline(
                 Log(job, $"Said to be {labelled.Label}, but it's {actual.Label} ({actual.Details})");
             else
                 Log(job, $"Quality: {actual.Label} ({actual.Details})");
+            if (request.Mode == RequestMode.Permanent && qualities.Where(q => q.Suspect).MinBy(q => q.Rank) is { } suspect
+                && profile.Suspect == SuspectLossless.Refuse)
+            {
+                var seems = suspect.Seems == QualityLevel.Lossless ? "made from a CD" : $"lossy, {FileQuality.Describe(suspect.Level).ToLowerInvariant()} quality";
+                job.Verification = VerificationResult.SuspectLossless;
+                job.VerificationDetail = $"It's {suspect.Label}, but its highs stop at {FileQuality.CutoffKilohertz(suspect.CutoffHz!.Value)} kHz: it seems to be {seems}";
+                // Kept in staging, so the review list can still accept it.
+                await FinishJobAsync(job, JobStatus.Failed, $"Didn't pass: {job.VerificationDetail}", ct);
+                return Outcome.NextCandidate;
+            }
             if (request.Mode == RequestMode.Permanent && !profile.Allows(actual))
             {
                 job.Verification = VerificationResult.QualityRefused;
@@ -321,7 +334,7 @@ public sealed class RequestPipeline(
             logger.LogError("[{Request}] Beets couldn't import it: {Reason}", request.Title, e.Message);
             return Outcome.Stop;
         }
-        var files = await RecordAsync(target, imported, verified.Files, ct);
+        var files = await RecordAsync(target, imported, verified.Files, cutoffs, ct);
         await FinishJobAsync(job, JobStatus.Succeeded, $"Filed {string.Join(", ", files.Select(f => f.Path))}", ct);
         DeleteStaging(job);
         await DeleteOtherStagingAsync(request.Id, job.Id, ct);
@@ -412,8 +425,33 @@ public sealed class RequestPipeline(
         return await importer.ImportAsync(request, ct);
     }
 
+    /// <summary>
+    /// Where each lossless file's highs stop, by its path in staging: a file in it was checked, and its value is null
+    /// when its highs aren't cut off. Files that couldn't be checked aren't in it.
+    /// </summary>
+    private async Task<Dictionary<string, int?>> CheckSpectraAsync(Job job, IReadOnlyList<Verifier.Matched> files, IReadOnlyList<FileQuality> qualities,
+        CancellationToken ct)
+    {
+        var lossless = files.Where((_, i) => qualities[i].Lossless).ToList();
+        if (lossless.Count == 0 || job.StagingDirectory is not { } staging)
+            return [];
+        try
+        {
+            var found = await importer.SpectrumAsync(new SpectrumRequest(lossless.Select(f => new SpectrumFile(SpectrumFile.Staging, $"{staging}/{f.Path}")).ToList()), ct);
+            return found.Files.Where(f => f.Error is null)
+                .ToDictionary(f => f.Path[(staging.Length + 1)..], f => f.CutoffHz);
+        }
+        catch (Exception e) when (e is ImportException or HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            // An older worker can't tell; the files are taken as they say they are.
+            Log(job, $"Couldn't check whether it's really lossless: {e.Message}");
+            return [];
+        }
+    }
+
     /// <summary>Records the imported files as owned straight away, so the library shows them without a rescan.</summary>
-    private async Task<List<LibraryFile>> RecordAsync(FetchTarget target, ImportResult imported, IReadOnlyList<Verifier.Matched> sent, CancellationToken ct)
+    private async Task<List<LibraryFile>> RecordAsync(FetchTarget target, ImportResult imported, IReadOnlyList<Verifier.Matched> sent,
+        IReadOnlyDictionary<string, int?> cutoffs, CancellationToken ct)
     {
         var root = Path.GetFullPath(options.Value.LibraryPath);
         var recorded = new List<LibraryFile>();
@@ -440,6 +478,12 @@ public sealed class RequestPipeline(
                     var (tags, duration, lyrics, quality) = LibraryScanner.ReadTags(full);
                     row.TagsJson = tags.ToJson();
                     row.SetQuality(quality);
+                    // Its spectrum, as checked in staging: the music is the same, whatever beets did to its tags.
+                    if (cutoffs.TryGetValue(file.Source, out var cutoff))
+                    {
+                        row.CutoffHz = cutoff;
+                        row.SpectrumCheckedAt = DateTime.UtcNow;
+                    }
                     row.Duration = duration;
                     row.Lyrics = lyrics;
                 }
