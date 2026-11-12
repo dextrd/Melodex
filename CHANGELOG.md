@@ -22,6 +22,8 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 - Playing a track on an album page plays the album on from it with the tracks you don't have too, fetched to listen
   to, as **Listen now** does for the whole album, even on an album you have none of. The tracks from it on are fetched
   first. Before, only the tracks you have were queued, and a track you don't have played on its own (#63).
+- Album pages no longer zoom out on iPhones: Safari counted the Edition list's longest option as overflow even with the
+  list shrunk to fit (#42).
 
 ### Removed
 
