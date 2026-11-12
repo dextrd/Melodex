@@ -1,0 +1,377 @@
+@inject MelodexClient Api
+@inject AuthState Auth
+
+@*
+    Someone's account in three tabs: their login, what they may do, and their login on each media server that syncs
+    playlists. One Save keeps it all. Under Settings → Users it's a dialog for anyone; on Your account it's the page,
+    for yourself.
+*@
+@if (_accounts is null)
+{
+    <Loading Inline="true" />
+}
+else
+{
+    <nav class="page-tabs editor-tabs" role="tablist" aria-label="@(Self ? "Your account" : "User")">
+        @Tab(EditorTab.Login, "Login", _loginError is not null)
+        @Tab(EditorTab.Permissions, "Permissions", false)
+        @if (_accounts.Count > 0)
+        {
+            @Tab(EditorTab.Servers, "Media server accounts", _accounts.Any(a => a.Error is not null))
+        }
+    </nav>
+
+    <div role="tabpanel">
+        @switch (_tab)
+        {
+            case EditorTab.Login:
+                <label class="field">
+                    <span class="field-label">Username</span>
+                    <input type="text" autocomplete="@(Self ? "username" : "off")" @bind="_username" @bind:event="oninput" />
+                </label>
+                <label class="field">
+                    <span class="field-label">@(New ? "Password" : "New password")</span>
+                    <input type="password" autocomplete="new-password" placeholder="@(New ? "" : "Leave empty to keep it")" @bind="_password" @bind:event="oninput" />
+                    <span class="muted small">
+                        At least 8 characters.@(New ? " Tell them it, and they can change it under their account." : Self ? " Changing it signs out your other browsers." : " A new one signs them out everywhere.")
+                    </span>
+                </label>
+                @if (Self)
+                {
+                    <label class="field">
+                        <span class="field-label">Current password</span>
+                        <input type="password" autocomplete="current-password" @bind="_current" @bind:event="oninput" />
+                        <span class="muted small">Needed to change your username or password.</span>
+                    </label>
+                }
+                @if (_loginError is not null) { <p class="error small">@_loginError</p> }
+                break;
+
+            case EditorTab.Permissions:
+                @if (Admin)
+                {
+                    <p class="muted small">@(Self ? "You're the admin, who may do everything." : "The admin may do everything; that can't change.")</p>
+                }
+                else if (Self)
+                {
+                    <p class="muted small">What you may do. To do more, ask the admin.</p>
+                    @foreach (var permission in UserPermissions.All)
+                    {
+                        <label class="dialog-choice dim">
+                            <input type="checkbox" disabled checked="@_permissions.Contains(permission.Id)" />
+                            <span><strong>@permission.Name</strong><span class="muted small">@permission.Hint</span></span>
+                        </label>
+                    }
+                }
+                else
+                {
+                    @foreach (var permission in UserPermissions.All)
+                    {
+                        var allowed = Auth.May(permission.Id);
+                        <label class="dialog-choice @(allowed ? "" : "dim")" title="@(allowed ? "" : "You can only give permissions you have yourself")">
+                            <input type="checkbox" disabled="@(!allowed)" checked="@_permissions.Contains(permission.Id)" @onchange="e => Toggle(permission.Id, (bool)e.Value!)" />
+                            <span><strong>@permission.Name</strong><span class="muted small">@permission.Hint</span></span>
+                        </label>
+                    }
+                }
+                break;
+
+            case EditorTab.Servers:
+                <p class="muted small">
+                    @(Self ? "Your login" : "Their login") on each media server that syncs playlists, the one you sign in to it with. Playlists sync with the
+                    one in use; the others' logins are kept for switching to them. Each is checked when you save, and kept encrypted.
+                </p>
+                @foreach (var account in _accounts)
+                {
+                    <div class="server-account">
+                        <div class="row">
+                            <strong>@account.Account.Server</strong>
+                            @if (account.Account.InUse) { <span class="badge owned">In use</span> }
+                        </div>
+                        @if (account.Account.Linked && !account.Changing)
+                        {
+                            <p class="small @(account.Unlink ? "muted" : "")">
+                                @if (account.Unlink)
+                                {
+                                    <span>Unlinked when you save.</span>
+                                }
+                                else
+                                {
+                                    <span>Linked as <strong>@account.Account.Username</strong>@(Self && account.Account.InUse && _sync?.SyncedAt is { } at ? $", last synced {Format.Ago(at)}" : "").</span>
+                                }
+                            </p>
+                            @if (Self && account.Account.InUse && !account.Unlink && _sync?.Error is { } failed)
+                            {
+                                <p class="error small">The last sync failed: @failed</p>
+                            }
+                            <div class="toolbar">
+                                @if (account.Unlink)
+                                {
+                                    <button class="small" @onclick="() => account.Unlink = false">Keep it</button>
+                                }
+                                else
+                                {
+                                    <button class="small" @onclick="() => Change(account)">Change</button>
+                                    <button class="small" @onclick="() => account.Unlink = true">Unlink</button>
+                                    @if (Self && account.Account.InUse)
+                                    {
+                                        <button class="small" disabled="@_busy" @onclick="SyncNowAsync">Sync now</button>
+                                    }
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <label class="field">
+                                <span class="field-label">@account.Account.Server username</span>
+                                <input type="text" autocomplete="off" @bind="account.Username" @bind:event="oninput" />
+                            </label>
+                            <label class="field">
+                                <span class="field-label">@account.Account.Server password</span>
+                                <input type="password" autocomplete="off" @bind="account.Password" @bind:event="oninput" />
+                            </label>
+                            @if (account.Changing)
+                            {
+                                <button class="small" @onclick="() => KeepLinked(account)">Keep the linked login</button>
+                            }
+                        }
+                        @if (account.Error is not null) { <p class="error small">@account.Error</p> }
+                    </div>
+                }
+                break;
+        }
+    </div>
+
+    <div class="toolbar @(Self ? "" : "dialog-buttons")">
+        @if (Self)
+        {
+            <button class="primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_username))" @onclick="SaveAsync">
+                @if (_busy) { <span class="spinner"></span> }Save
+            </button>
+            @if (_saved) { <span class="muted small">Saved.</span> }
+            <span class="spacer"></span>
+            <button @onclick="SignOutAsync">Sign out</button>
+        }
+        else
+        {
+            <button @onclick="OnCancel">Cancel</button>
+            <button class="primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_username) || New && _password.Length == 0)" @onclick="SaveAsync">
+                @if (_busy) { <span class="spinner"></span> }@(New ? "Add" : "Save")
+            </button>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>Your own account, on Your account. Otherwise someone else's, or a new user's when <see cref="User"/> is null.</summary>
+    [Parameter] public bool Self { get; set; }
+
+    /// <summary>The user being changed; null to add one.</summary>
+    [Parameter] public UserInfo? User { get; set; }
+
+    [Parameter] public EventCallback OnSaved { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private enum EditorTab { Login, Permissions, Servers }
+
+    private sealed class ServerLogin(MediaServerAccount account)
+    {
+        public MediaServerAccount Account { get; set; } = account;
+        public string Username { get; set; } = account.Username ?? "";
+        public string Password { get; set; } = "";
+        public bool Changing { get; set; }
+        public bool Unlink { get; set; }
+        public string? Error { get; set; }
+    }
+
+    private EditorTab _tab;
+    private Guid? _id;
+    private string _username = "";
+    private string _password = "";
+    private string _current = "";
+    private HashSet<string> _permissions = [];
+    private List<ServerLogin>? _accounts;
+    private PlaylistSyncStatus? _sync;
+    private string? _loginError;
+    private bool _busy;
+    private bool _saved;
+
+    private bool New => !Self && _id is null;
+    private bool Admin => Self ? Auth.Status?.IsAdmin == true : User?.IsAdmin == true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _id = Self ? Auth.Status?.UserId : User?.Id;
+        _username = Self ? Auth.Status?.Username ?? "" : User?.Username ?? "";
+        _permissions = (Self ? UserPermissions.All.Select(p => p.Id).Where(p => Auth.May(p)) : User?.Permissions ?? [UserPermissions.Read, UserPermissions.Listen]).ToHashSet();
+        try
+        {
+            // A new user has no logins yet, but the servers are the same for everyone.
+            var accounts = Self && !Auth.May(UserPermissions.Listen) ? []
+                : New ? (await Api.ListMediaServerAccountsAsync()).Select(a => a with { Username = null })
+                : await Api.ListMediaServerAccountsAsync(Self ? null : _id);
+            _accounts = accounts.Select(a => new ServerLogin(a)).ToList();
+            if (Self && _accounts.Any(a => a.Account.InUse))
+                _sync = await Api.GetPlaylistSyncAsync();
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            _accounts = [];
+            _loginError = e.Message;
+        }
+    }
+
+    private RenderFragment Tab(EditorTab tab, string label, bool problem) =>
+        @<button type="button" role="tab" class="@(_tab == tab ? "active" : null) @(problem ? "tab-problem" : null)" aria-selected="@(_tab == tab ? "true" : "false")"
+                 @onclick="() => _tab = tab">@label</button>;
+
+    private static void KeepLinked(ServerLogin account)
+    {
+        account.Changing = false;
+        account.Password = "";
+        account.Error = null;
+    }
+
+    private static void Change(ServerLogin account)
+    {
+        account.Changing = true;
+        account.Username = account.Account.Username ?? "";
+        account.Password = "";
+    }
+
+    private void Toggle(string permission, bool on)
+    {
+        if (on)
+            _permissions.Add(permission);
+        else
+            _permissions.Remove(permission);
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        _saved = false;
+        _loginError = null;
+        try
+        {
+            if (!await SaveLoginAsync())
+            {
+                _tab = EditorTab.Login;
+                return;
+            }
+            if (!await SaveAccountsAsync())
+            {
+                _tab = EditorTab.Servers;
+                return;
+            }
+            _saved = true;
+            await OnSaved.InvokeAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // The username, password and permissions; for a new user, making them.
+    private async Task<bool> SaveLoginAsync()
+    {
+        var permissions = UserPermissions.All.Select(p => p.Id).Where(_permissions.Contains).ToList();
+        try
+        {
+            if (Self)
+            {
+                var username = _username.Trim();
+                if (username == Auth.Status?.Username && _password.Length == 0)
+                    return true;
+                if (_current.Length == 0)
+                {
+                    _loginError = "Give your current password to change your username or password.";
+                    return false;
+                }
+                await Api.UpdateLoginAsync(new UpdateLogin(_current, username, _password.Length > 0 ? _password : null));
+                _current = _password = "";
+                Auth.Set(await Api.GetAuthStatusAsync());
+            }
+            else if (_id is null)
+            {
+                // Made before its logins are linked, so a login that fails leaves them made, to save again.
+                _id = (await Api.CreateUserAsync(new CreateUser(_username.Trim(), _password, permissions))).Id;
+                _password = "";
+            }
+            else
+            {
+                await Api.UpdateUserAsync(_id.Value, new UpdateUser(_username.Trim(), _password.Length > 0 ? _password : null, Admin ? null : permissions));
+                _password = "";
+                // Your own name may have changed.
+                if (_id == Auth.Status?.UserId)
+                    Auth.Set(await Api.GetAuthStatusAsync());
+            }
+            return true;
+        }
+        catch (MelodexApiException e)
+        {
+            _loginError = e.Message;
+            return false;
+        }
+    }
+
+    // Each media server login that was typed in or unlinked; each is tried, and those that fail say why.
+    private async Task<bool> SaveAccountsAsync()
+    {
+        var user = Self ? null : _id;
+        foreach (var account in _accounts!)
+        {
+            account.Error = null;
+            try
+            {
+                if (account.Unlink)
+                {
+                    await Api.UnlinkMediaServerAccountAsync(account.Account.ServerId, user);
+                    account.Account = account.Account with { Username = null };
+                    account.Unlink = false;
+                    account.Username = "";
+                }
+                else if (account.Password.Length > 0 || account.Username.Trim().Length > 0 && (account.Changing || !account.Account.Linked))
+                {
+                    if (account.Username.Trim().Length == 0 || account.Password.Length == 0)
+                    {
+                        account.Error = $"Give both the username and password for {account.Account.Server}.";
+                        continue;
+                    }
+                    account.Account = await Api.LinkMediaServerAccountAsync(account.Account.ServerId, new LinkMediaServer(account.Username.Trim(), account.Password), user);
+                    account.Password = "";
+                    account.Changing = false;
+                }
+            }
+            catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+            {
+                account.Error = e.Message;
+            }
+        }
+        if (Self && _accounts.Any(a => a.Account.InUse))
+            _sync = await Api.GetPlaylistSyncAsync();
+        return _accounts.All(a => a.Error is null);
+    }
+
+    private async Task SyncNowAsync()
+    {
+        _busy = true;
+        try
+        {
+            _sync = await Api.SyncPlaylistsAsync();
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            if (_accounts!.FirstOrDefault(a => a.Account.InUse) is { } inUse)
+                inUse.Error = e.Message;
+        }
+        _busy = false;
+    }
+
+    private async Task SignOutAsync()
+    {
+        await Api.SignOutAsync();
+        Auth.Set(await Api.GetAuthStatusAsync());
+    }
+}

@@ -49,6 +49,15 @@ public sealed class NavidromeConnectorFactory : IPluginFactory
                   "title": "Sync playlists",
                   "description": "Keep each user's playlists the same in Melodex and Navidrome, both ways. Each user links their own Navidrome login on their account page.",
                   "default": false
+                },
+                "playlistFolders": {
+                  "type": "string",
+                  "title": "Playlist folder separator",
+                  "description": "Navidrome has no folders, so a folder is part of a playlist's name: with /, Moods/Calm is a playlist Calm in a folder Moods. Up to 3 characters, or empty for no folders. Used while Navidrome is the media server in use.",
+                  "default": "/",
+                  "maxLength": 3,
+                  "pattern": "^\\S*$",
+                  "patternMessage": "Use up to 3 characters that aren't spaces, or none."
                 }
               }
             }

@@ -481,9 +481,13 @@ else
             _error = e.Message;
         }
         await LoadAsync();
-        // Whether there's a catalogue changes what the rest of the app offers.
-        if (_plugins is not null && Auth.Status is { } status && status.Catalogue != _plugins.Any(p => p.Type == PluginType.Index && p.Enabled))
-            Auth.Set(await Api.GetAuthStatusAsync());
+        // Whether there's a catalogue changes what the rest of the app offers, and the media server sets playlists' folders.
+        if (_plugins is not null && Auth.Status is { } status)
+        {
+            var changed = await Api.GetAuthStatusAsync();
+            if (changed.Catalogue != status.Catalogue || changed.PlaylistFolders != status.PlaylistFolders)
+                Auth.Set(changed);
+        }
         _busy = false;
     }
 

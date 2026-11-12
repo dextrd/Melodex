@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Melodex.Contracts.Plugins;
@@ -166,6 +167,43 @@ public sealed class ConnectorPlugins(MelodexDbContext db, PluginHost host)
         await NoteActiveAsync(instance, cancellationToken);
         return (instance, host.Get<IMediaServerConnector>(instance));
     }
+
+    /// <summary>Every media server that's set up and syncs playlists, on or not: each user can keep a login for each.</summary>
+    public async Task<IReadOnlyList<(PluginInstance Instance, IPlaylistSync Playlists)>> SyncingPlaylistsAsync(CancellationToken ct)
+    {
+        var found = new List<(PluginInstance, IPlaylistSync)>();
+        foreach (var instance in await db.PluginInstances.Where(p => p.Type == PluginType.Connector).OrderByDescending(p => p.Enabled).ThenBy(p => p.Name).ToListAsync(ct))
+        {
+            try
+            {
+                if (host.Get<IMediaServerConnector>(instance) is IPlaylistSync { SyncsPlaylists: true } playlists)
+                    found.Add((instance, playlists));
+            }
+            catch (Exception e) when (e is InvalidOperationException or KeyNotFoundException)
+            {
+                // Its plugin can't be started, for instance after it was removed.
+            }
+        }
+        return found;
+    }
+
+    /// <summary>What separates folders in playlist names: the setting of the media server in use, if it syncs playlists; / otherwise.</summary>
+    public async Task<string> PlaylistFoldersAsync(CancellationToken ct)
+    {
+        var instance = await db.PluginInstances.AsNoTracking().Where(p => p.Type == PluginType.Connector && p.Enabled).OrderBy(p => p.Priority).FirstOrDefaultAsync(ct);
+        try
+        {
+            if (instance is null || host.Get<IMediaServerConnector>(instance) is not IPlaylistSync { SyncsPlaylists: true })
+                return DefaultPlaylistFolders;
+        }
+        catch (Exception e) when (e is InvalidOperationException or KeyNotFoundException)
+        {
+            return DefaultPlaylistFolders;
+        }
+        return JsonNode.Parse(instance.SettingsJson)?["playlistFolders"] is JsonValue value && value.TryGetValue<string>(out var folders) ? folders : DefaultPlaylistFolders;
+    }
+
+    public const string DefaultPlaylistFolders = "/";
 
     private async Task NoteActiveAsync(PluginInstance instance, CancellationToken ct)
     {

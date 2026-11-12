@@ -61,7 +61,9 @@ for Melodex, then add **Jellyfin** under **Media server**, with:
 - **Music library** and **Music folder on the Jellyfin server**, as for [Plex](#plex), when they aren't the first
   music library and its first folder.
 - **Sync playlists**, to keep each user's playlists the same in both, as with Navidrome: each user links their own
-  Jellyfin login on their account page (see [playlists](playlists.md#syncing-with-your-media-server)).
+  Jellyfin login on **Your account** (see [playlists](playlists.md#syncing-with-your-media-server)).
+- **Playlist folder separator**: what separates [folders](playlists.md#folders) in playlists' names, as Navidrome
+  has too.
 
 Jellyfin is told which folders new music went into, and finds each song by its MusicBrainz recording ID, its file or
 its tags. A playlist's description goes both ways too. Jellyfin doesn't keep pictures for playlists as Navidrome

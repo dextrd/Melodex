@@ -40,8 +40,10 @@ square. Folders' pictures stay in Melodex, as media servers have no folders, and
 ## Folders
 
 Media servers have no folders, so a folder is part of a playlist's name: with the separator `/`, a playlist named
-`Moods/Calm` is **Calm** in a folder **Moods**, and `Moods/Evening/Calm` is a folder within that. Change the
-separator, or turn folders off, under **Playlists** on your account page.
+`Moods/Calm` is **Calm** in a folder **Moods**, and `Moods/Evening/Calm` is a folder within that. The separator is
+the media server's: change it, or turn folders off by leaving it empty, with **Playlist folder separator** in the
+settings of the media server in use, under **Settings → Plugins**. It's the same for everyone, as their playlists are
+on the same server. Without a media server that syncs playlists, it's `/`.
 
 In the list, open and close folders, make a playlist in one with its **+**, and rename a folder to rename
 everything in it. Renaming a folder with the separator in the new name moves it into another; leaving the name empty
@@ -55,9 +57,10 @@ Melodex. Plex's accounts are plex.tv's rather than the server's, so playlists do
 
 1. Someone who may change settings ticks **Sync playlists** in the media server plugin's settings, under
    **Settings → Plugins**.
-2. Each user links their own Navidrome or Jellyfin login under **Playlists** on their account page. It's checked first, then
-   kept encrypted with Melodex's data protection keys. Someone who may manage users can link a login for someone else
-   from **Settings → Users**.
+2. Each user links their own Navidrome or Jellyfin login under **Media server accounts** on **Your account**. It's
+   checked first, then kept encrypted with Melodex's data protection keys. Someone who may manage users can link a
+   login for someone else in the same tab of their **Edit** dialog under **Settings → Users**. Each media server that
+   syncs playlists has its own login there, whether or not it's the one in use.
 
 Syncing happens a few seconds after you change a playlist, every 10 minutes for changes made in the media server, and when you
 click the sync button on the Playlists tab. Each user only ever sees and changes their own playlists: Navidrome's

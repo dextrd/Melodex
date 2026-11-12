@@ -2,10 +2,10 @@ using Melodex.Client;
 
 namespace Melodex.Web;
 
-/// <summary>Folders in playlist names, split by the delimiter the user chose under their account.</summary>
+/// <summary>Folders in playlist names, split by the delimiter set for the media server in use.</summary>
 public static class PlaylistNames
 {
-    public static string Delimiter(AuthState auth) => auth.Status?.Appearance?.PlaylistFolders ?? "/";
+    public static string Delimiter(AuthState auth) => auth.Status?.PlaylistFolders ?? "/";
 
     /// <summary>The folders a name is in, outermost first.</summary>
     public static IReadOnlyList<string> Folders(string name, string delimiter) =>
