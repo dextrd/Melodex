@@ -24,6 +24,7 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   first. Before, only the tracks you have were queued, and a track you don't have played on its own (#63).
 - Album pages no longer zoom out on iPhones: Safari counted the Edition list's longest option as overflow even with the
   list shrunk to fit (#42).
+- On a phone, an album with several discs leaves room for numbers like "2-10", which ran into the songs' titles (#78).
 
 ### Removed
 

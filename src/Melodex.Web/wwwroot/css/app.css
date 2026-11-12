@@ -587,11 +587,15 @@ code { font-size: .85em; background: var(--bg); padding: .05rem .3rem; border-ra
 .track-list col.num-col { width: 3.5rem; }
 /* "On another album" is the widest status. */
 .album-tracks col.status-col { width: 9.5rem; }
+/* Over several discs, numbers like "2-10" need more room. */
+.album-tracks.discs col.num-col { width: 4.25rem; }
 /* Tall enough for a title and its file's path, whether there is one or not. */
 .album-tracks td { height: 58px; }
 /* On a phone, two buttons a row, so the title keeps some room. */
 @media (max-width: 640px) {
     .album-tracks col.num-col { width: 2.25rem; }
+    .album-tracks.discs col.num-col { width: 3.4rem; }
+    .album-tracks td.num { padding-right: .5rem; }
     .album-tracks col.wide-action-col { width: 5.5rem; }
     .album-tracks .badge { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
 }
