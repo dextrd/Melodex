@@ -93,6 +93,7 @@ builder.Services.AddScoped<ITaskHandler, ArtistRefreshTask>();
 builder.Services.AddScoped<ITaskHandler, FormatTask>();
 builder.Services.AddScoped<ITaskHandler, LyricsTask>();
 builder.Services.AddScoped<ITaskHandler, SpectrumTask>();
+builder.Services.AddScoped<ITaskHandler, BarsTask>();
 builder.Services.AddHostedService<TaskWorker>();
 
 // Requests: fetch, verify, import with beets, tell the media server
@@ -109,6 +110,7 @@ builder.Services.AddScoped<RequestPipeline>();
 builder.Services.AddScoped<Upgrades>();
 builder.Services.AddHostedService<UpgradeScheduler>();
 builder.Services.AddSingleton<StreamSigner>();
+builder.Services.AddSingleton<BarsMaker>();
 builder.Services.AddScoped<ListenNowService>();
 builder.Services.AddHostedService<ListenNowSweeper>();
 builder.Services.AddHostedService<RequestWorker>();

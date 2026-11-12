@@ -114,7 +114,7 @@ upgrade settings, and while scheduled upgrades are on the web app says so once e
 
 Press **Listen** to hear something before deciding. It's fetched to a separate store, never your music folder, plays
 in the player at the bottom of the page beside the music you have, and is deleted a while after you last play it (an
-hour by default; change it under **Settings → General → Fetching**). **Add to library** files the same file without fetching it
+hour by default; change it under **Settings → Playback**). **Add to library** files the same file without fetching it
 again.
 
 The **Downloads** page lists what you've fetched to listen to.
@@ -148,9 +148,25 @@ blur of itself, with a visualiser that moves with the music, and beside it, eith
   without lyrics can be looked up from here, if you may format; see [lyrics](library.md#lyrics).
 - **The queue**.
 
-The visualiser can be turned off, the browser's own full screen turned on, and playing stopped, from the buttons at the
-top. Escape closes it. The volume and whether the visualiser shows are kept in this browser. While it shows, the
-visualiser downloads the song a second time to work out its bars from, so turn it off to save data on a phone.
+The visualiser can be hidden, the browser's own full screen turned on, and playing stopped, from the buttons at the
+top. Escape closes it. The volume and whether the visualiser shows are kept in this browser.
+
+### The visualiser
+
+The visualiser's bars are worked out from each song by Melodex, not your browser, so the song is downloaded once: they
+come as a small file of their own, about 300 KB for a four-minute song. **Settings → Playback** says when they're made:
+
+- **On demand** (the default): for the song playing while the visualiser shows, and the next in the queue ahead of it,
+  in a second or so. They're kept in Melodex's data folder, up to about 250 MB, the least lately played forgotten
+  first.
+- **When matching**: for every song in the library after each scan, kept beside it in a `.bars` file with the song's
+  name, as [lyrics](library.md#lyrics) can be. Choosing it says about how much room that takes before anything is
+  made, about 1.4 KB for each second of music. They move and go with their songs, and media servers pass them by. A
+  song without one yet has its bars made on demand.
+- **Off**: there's no visualiser, and its button is gone from the full-screen player.
+
+Leaving **When matching** asks whether to delete the `.bars` files; kept, they're still used rather than making bars
+again. The bars aren't written into songs' tags.
 
 The playlist button in the bar, or at the top of the full-screen player, adds what's playing to a playlist.
 

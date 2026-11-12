@@ -136,12 +136,7 @@ else
             <NumberField Min="1" Max="5" Label="Results per source" Value="_fetch.CandidatesPerPlugin" ValueChanged="n => _fetch = _fetch with { CandidatesPerPlugin = n }" />
             of each source's best results, best first whichever source they're from
         </div>
-        <div class="setting-line">
-            Keep listen-now tracks for
-            <NumberField Min="5" Max="10080" Step="5" Label="Minutes" Value="_fetch.ListenNowExpiryMinutes" ValueChanged="n => _fetch = _fetch with { ListenNowExpiryMinutes = n }" />
-            minutes after they were last played
-        </div>
-        <div class="muted small">A track fetched to listen to, and not added to the library, is deleted after this.</div>
+        <div class="muted small">How long listen-now tracks are kept is under <a href="settings/playback">Playback</a>.</div>
     </div>
 
     <h2>Log</h2>

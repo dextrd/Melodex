@@ -499,6 +499,40 @@ public sealed class Player : IAsyncDisposable
 
     // ---- Playing ----
 
+    /// <summary>Whether the full-screen player's visualiser is showing, so the next song's bars are made ahead of it.</summary>
+    public bool Visualising
+    {
+        get => _visualising;
+        set
+        {
+            if (value && !_visualising)
+                _ = WarmNextAsync();
+            _visualising = value;
+        }
+    }
+
+    private bool _visualising;
+
+    /// <summary>Has the server make the visualiser's bars for the song after this one, so they're there when it plays.</summary>
+    private async Task WarmNextAsync()
+    {
+        var next = Repeat == RepeatMode.One ? -1 : Current + 1 < _queue.Count ? Current + 1 : Repeat == RepeatMode.All ? 0 : -1;
+        if (next < 0 || next == Current || _queue[next] is not { Unplayable: false } entry)
+            return;
+        try
+        {
+            var url = entry.ListenId is { } id
+                ? (await _api.GetListeningAsync(id))?.StreamUrl
+                : (await (entry.FileId is { } file ? _api.GetFilePlayInfoAsync(file) : _api.GetPlayInfoAsync(entry.TrackId, entry.EditionId)))?.StreamUrl;
+            if (url is not null)
+                await _api.WarmBarsAsync(url);
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException or TaskCanceledException)
+        {
+            // Made when it plays instead.
+        }
+    }
+
     /// <summary>Plays <see cref="Current"/>, skipping tracks that can't be played, or waits if it's still being fetched.</summary>
     private async Task StartAsync()
     {
@@ -517,6 +551,8 @@ public sealed class Player : IAsyncDisposable
                     Position = 0;
                     Duration = entry.DurationSeconds ?? 0;
                     await audio.InvokeVoidAsync("load", url, new { title = entry.Title, artist = entry.ArtistCredit, album = entry.AlbumTitle, cover = entry.CoverUrl });
+                    if (_visualising)
+                        _ = WarmNextAsync();
                     if (_resumeAt is { } at)
                     {
                         Position = at;

@@ -1,7 +1,7 @@
 """Folders with no music left in them, which formatting and deleting tidy away. See docs/import-worker.md.
 
-A folder has no music in it when all it holds is leftovers (artwork, rip logs, playlists, lyrics and notes), files the
-system leaves (.DS_Store, Thumbs.db), and folders that are like that too. Anything else, a video or a PDF or a file of a
+A folder has no music in it when all it holds is leftovers (artwork, rip logs, playlists, lyrics, the visualiser's bars
+and notes), files the system leaves (.DS_Store, Thumbs.db), and folders that are like that too. Anything else, a video or a PDF or a file of a
 kind not known here, keeps its folder, as does a hidden folder, which may be another program's (.stfolder).
 """
 
@@ -12,9 +12,10 @@ import re
 import shutil
 from pathlib import Path
 
-# What a folder may still hold and be tidied away with its music: artwork, playlists, lyrics, rip logs and notes.
+# What a folder may still hold and be tidied away with its music: artwork, playlists, lyrics, the visualiser's bars,
+# rip logs and notes.
 LEFTOVERS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".cue", ".log", ".m3u", ".m3u8", ".nfo", ".txt",
-             ".sfv", ".accurip", ".md5", ".lrc"}
+             ".sfv", ".accurip", ".md5", ".lrc", ".bars"}
 # Left by the system, and deleted rather than moved: Finder's, Windows Explorer's, and a Synology's thumbnails.
 JUNK_FILES = {".ds_store", "thumbs.db", "ehthumbs.db", "desktop.ini"}
 JUNK_FOLDERS = {"@eadir", ".appledouble", "__macosx"}

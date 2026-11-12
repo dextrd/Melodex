@@ -20,6 +20,7 @@ public sealed class SettingsService(MelodexDbContext db)
     private const string QualityKey = "quality";
     private const string UpgradesKey = "upgrades";
     private const string UpgradeRunKey = "upgrades.lastRun";
+    private const string PlaybackKey = "playback";
 
     /// <summary>The library's settings, with the artists that have their own choices for the missing view.</summary>
     public async Task<LibrarySettings> GetLibraryAsync(CancellationToken ct)
@@ -62,6 +63,10 @@ public sealed class SettingsService(MelodexDbContext db)
     public Task<UpgradeRun> GetUpgradeRunAsync(CancellationToken ct) => GetAsync<UpgradeRun>(UpgradeRunKey, ct);
 
     public Task SaveUpgradeRunAsync(UpgradeRun run, CancellationToken ct) => SaveAsync(UpgradeRunKey, run, ct);
+
+    public Task<PlaybackSettings> GetPlaybackAsync(CancellationToken ct) => GetAsync<PlaybackSettings>(PlaybackKey, ct);
+
+    public Task SavePlaybackAsync(PlaybackSettings value, CancellationToken ct) => SaveAsync(PlaybackKey, value, ct);
 
     public Task<LogSettings> GetLogAsync(CancellationToken ct) => GetAsync<LogSettings>(LogKey, ct);
 

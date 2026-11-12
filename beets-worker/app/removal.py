@@ -29,11 +29,12 @@ def delete(library: str, paths: list[str]) -> tuple[list[str], list[dict[str, st
             continue
         deleted.append(path)
         folders.add(os.path.dirname(full))
-        # Its lyrics go with it.
-        try:
-            os.remove(os.path.splitext(full)[0] + ".lrc")
-        except OSError:
-            pass
+        # Its lyrics and the visualiser's bars go with it.
+        for sidecar in (".lrc", ".bars"):
+            try:
+                os.remove(os.path.splitext(full)[0] + sidecar)
+            except OSError:
+                pass
     for folder in sorted(folders, key=len, reverse=True):
         clear_away(Path(folder), Path(root))
     return deleted, failed

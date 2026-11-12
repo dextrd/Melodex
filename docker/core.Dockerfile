@@ -26,6 +26,32 @@ ARG COMMIT=""
 RUN dotnet publish src/Melodex.Core/Melodex.Core.csproj -c Release -o /app --no-restore \
     ${VERSION:+-p:Version=$VERSION} ${COMMIT:+-p:SourceRevisionId=$COMMIT}
 
+# An ffmpeg that only decodes audio, for the visualiser's bars (#89): about 2 MB, where Debian's is over 400. Like the
+# app, it's built natively, cross-compiled for the image's platform when that's another, and has no GPL parts.
+FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS ffmpeg
+ARG FFMPEG_VERSION=7.1.1
+ARG TARGETARCH
+ARG BUILDARCH
+RUN case "$TARGETARCH" in arm64) triple=aarch64-linux-gnu ;; *) triple=x86_64-linux-gnu ;; esac \
+    && cross=$([ "$TARGETARCH" != "$BUILDARCH" ] && echo "gcc-$(echo $triple | tr _ -) libc6-dev-$TARGETARCH-cross" || true) \
+    && apt-get update && apt-get install -y --no-install-recommends build-essential nasm curl ca-certificates xz-utils $cross \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN curl -fsSL https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz | tar -xJ --strip-components=1
+RUN case "$TARGETARCH" in arm64) arch=aarch64 ;; *) arch=x86_64 ;; esac \
+    && prefix=$([ "$TARGETARCH" != "$BUILDARCH" ] && echo "$arch-linux-gnu-" || true) \
+    && ./configure --prefix=/out ${prefix:+--enable-cross-compile --arch=$arch --target-os=linux --cross-prefix=$prefix} \
+        --disable-everything --disable-autodetect --disable-network --disable-doc --disable-debug \
+        --disable-ffplay --disable-ffprobe --disable-avdevice --disable-swscale --disable-postproc \
+        --enable-small --enable-swresample \
+        --enable-protocol=file,pipe \
+        --enable-demuxer=flac,ogg,mp3,mov,wav,aiff,matroska,aac,w64 \
+        --enable-parser=flac,opus,vorbis,mpegaudio,aac \
+        --enable-decoder=flac,opus,vorbis,mp3,mp3float,aac,aac_fixed,alac,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_s16be,pcm_s24be,pcm_s32be \
+        --enable-encoder=pcm_f32le --enable-muxer=pcm_f32le \
+        --enable-filter=aresample,aformat,anull,amix,pan \
+    && make -j"$(nproc)" && make install && ${prefix}strip /out/bin/ffmpeg
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 LABEL org.opencontainers.image.title="Melodex" \
       org.opencontainers.image.description="Find what's missing from your music library, fetch it, and listen now." \
@@ -38,6 +64,7 @@ RUN mkdir -p /config /music /staging /listen-now /plugins \
     && chown -R $APP_UID /config /listen-now /plugins \
     && chmod 1777 /staging
 COPY --from=build /app .
+COPY --from=ffmpeg /out/bin/ffmpeg /usr/local/bin/ffmpeg
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     Melodex__DataPath=/config \
     Melodex__LibraryPath=/music \

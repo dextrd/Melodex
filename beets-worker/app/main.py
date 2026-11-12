@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import os
+from pathlib import Path
 from typing import Any
 
 import beets
@@ -15,6 +16,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
+from . import bars
 from .formatter import FormatFile
 from .importer import Importer, ImportFailed, Release, StagedFile
 from .removal import delete
@@ -103,6 +105,15 @@ class SpectrumFile(Model):
 
 class SpectrumRequest(Model):
     files: list[SpectrumFile]
+
+
+class BarsFile(Model):
+    path: str
+    data: str | None = None
+
+
+class BarsRequest(Model):
+    files: list[BarsFile]
 
 
 app = FastAPI(title="Melodex beets worker", version="0.1.0")
@@ -200,6 +211,16 @@ async def run_restore(body: RestoreRequest) -> dict[str, Any]:
         return await run_in_threadpool(get_importer().restore, body.held, body.path, body.remove)
     except UpgradeFailed as e:
         raise HTTPException(422, {"error": str(e), "code": "restore-failed"})
+
+
+@app.post("/v1/bars")
+async def write_bars(body: BarsRequest) -> dict[str, Any]:
+    """Writes the visualiser's bars beside each song, base64, or with no data deletes them (see bars.py)."""
+    try:
+        files = [(f.path, base64.b64decode(f.data, validate=True) if f.data is not None else None) for f in body.files]
+    except binascii.Error:
+        raise HTTPException(400, {"error": "Bars must be base64.", "code": "invalid-request"})
+    return {"files": await run_in_threadpool(bars.write, Path(LIBRARY), files)}
 
 
 @app.post("/v1/spectrum")

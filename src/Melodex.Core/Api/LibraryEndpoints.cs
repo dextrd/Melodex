@@ -587,6 +587,25 @@ public static class LibraryEndpoints
             })
             .WithName("SaveLibrarySettings").WithSummary("Takes effect at once for the missing view; a new threshold applies from the next scan.");
 
+        settings.MapGet("/playback", (SettingsService s, MelodexDbContext db, IOptions<MelodexOptions> options, CancellationToken ct) =>
+                BarsTask.StatusAsync(db, s, options.Value.LibraryPath, ct))
+            .WithName("GetPlaybackSettings")
+            .WithSummary("Playback's settings, with how many songs there are, about how much room the visualiser's bars beside all of them would "
+                         + "take, and the .bars files beside them now.");
+        settings.MapPut("/playback", async (SavePlayback value, SettingsService s, TaskQueue queue, CancellationToken ct) =>
+            {
+                var before = (await s.GetPlaybackAsync(ct)).Visualiser;
+                await s.SavePlaybackAsync(new PlaybackSettings { Visualiser = value.Visualiser }, ct);
+                if (value.DeleteBarsFiles)
+                    await queue.EnqueueAsync(BarsTask.TaskKind, BarsTask.Delete, ct);
+                else if (value.Visualiser == VisualiserBars.WhenMatching && before != VisualiserBars.WhenMatching)
+                    await queue.EnqueueAsync(BarsTask.TaskKind, null, ct);
+                return Results.NoContent();
+            })
+            .WithName("SavePlaybackSettings")
+            .WithSummary("Whether there's a visualiser, and when its bars are made. Made when matching, every song gets them in a .bars file beside it, "
+                         + "starting now; with deleteBarsFiles, those files are deleted.");
+
         settings.MapGet("/artists/{id:guid}/showing", async (Guid id, SettingsService s, MelodexDbContext db, CancellationToken ct) =>
             {
                 if (await db.Artists.FindAsync([id], ct) is null)
@@ -733,6 +752,7 @@ public static class LibraryEndpoints
                 FormatTask.TaskKind => FormatTask.Title(t.PayloadJson),
                 LyricsTask.TaskKind => LyricsTask.Title,
                 SpectrumTask.TaskKind => SpectrumTask.Title,
+                BarsTask.TaskKind => BarsTask.Title(t.PayloadJson),
                 _ => t.Kind,
             },
         }).ToList();

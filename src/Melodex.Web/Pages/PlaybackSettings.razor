@@ -1,0 +1,168 @@
+@page "/settings/playback"
+@layout SettingsLayout
+@inject MelodexClient Api
+
+<PageTitle>Playback · Melodex</PageTitle>
+
+@if (_status is null || _fetch is null)
+{
+    <Loading />
+}
+else
+{
+    <h2>Visualiser</h2>
+    <p class="muted small">
+        The bars that move with the music under the cover in the full-screen player. The server works them out from each song, so your browser doesn't
+        download it twice to draw them.
+    </p>
+    <div class="card settings-card">
+        @foreach (var (value, name, hint) in Choices)
+        {
+            <label class="dialog-choice">
+                <input type="radio" name="visualiser" checked="@(_visualiser == value)" @onchange="() => Choose(value)" />
+                <span>
+                    <strong>@name</strong>
+                    <span class="muted small">@hint</span>
+                </span>
+            </label>
+        }
+        @if (_status.BarsFiles > 0)
+        {
+            <div class="muted small">
+                @Plural(_status.BarsFiles, ".bars file", ".bars files") beside your songs take @Size(_status.BarsBytes).
+                @if (_visualiser != VisualiserBars.WhenMatching)
+                {
+                    <button class="link small" @onclick="() => _deleting = true">Delete them</button>
+                }
+            </div>
+        }
+    </div>
+
+    <h2>Listen now</h2>
+    <div class="card settings-card">
+        <div class="setting-line">
+            Keep listen-now tracks for
+            <NumberField Min="5" Max="10080" Step="5" Label="Minutes" Value="_fetch.ListenNowExpiryMinutes" ValueChanged="n => _fetch = _fetch with { ListenNowExpiryMinutes = n }" />
+            minutes after they were last played
+        </div>
+        <div class="muted small">A track fetched to listen to, and not added to the library, is deleted after this.</div>
+    </div>
+
+    <div class="toolbar">
+        <button class="primary" @onclick="() => SaveAsync(false)">Save</button>
+        @if (_saved) { <span class="muted small">Saved.</span> }
+        @if (_saveError is not null) { <span class="error small" title="@_saveError">@_saveError</span> }
+    </div>
+
+    @if (_warning)
+    {
+        <Dialog Title="Keep bars beside every song?" OnClose="() => { _warning = false; _visualiser = _status.Settings.Visualiser; }" Alert="true">
+            <p>
+                Every song in your library gets a .bars file beside it, made after each scan, starting when you save. For your
+                @Plural(_status.Songs, "song", "songs") that's about <strong>@Size(_status.EstimatedBytes)</strong> in your music folder,
+                about 1.4 KB for each second of music.
+            </p>
+            <p class="muted small">
+                Making them takes a second or so a song, one after another, so a large library takes hours the first time. Media servers pass the
+                files by, and they move and go with their songs.
+            </p>
+            <div class="toolbar dialog-buttons">
+                <button @onclick="() => { _warning = false; _visualiser = _status.Settings.Visualiser; }">Cancel</button>
+                <button class="primary" @onclick="() => _warning = false">Keep bars beside songs</button>
+            </div>
+        </Dialog>
+    }
+
+    @if (_deleting)
+    {
+        <Dialog Title="Delete the .bars files?" OnClose="() => _deleting = false" Alert="true">
+            <p>@DeletingText</p>
+            <div class="toolbar dialog-buttons">
+                <button @onclick="() => FinishLeavingAsync(false)">Keep them</button>
+                <button class="danger" @onclick="() => FinishLeavingAsync(true)">Delete them</button>
+            </div>
+        </Dialog>
+    }
+}
+
+@code {
+    private static readonly (VisualiserBars Value, string Name, string Hint)[] Choices =
+    [
+        (VisualiserBars.OnDemand, "On demand",
+            "Made for the song playing when the visualiser shows, and the next in the queue ahead of it. Kept a while in Melodex's data folder, then forgotten."),
+        (VisualiserBars.WhenMatching, "When matching",
+            "Made for every song after each scan and kept beside it in a .bars file, like lyrics, so they're ready when it plays."),
+        (VisualiserBars.Off, "Off", "No visualiser: its button is gone from the full-screen player."),
+    ];
+
+    private PlaybackStatus? _status;
+    private FetchSettings? _fetch;
+    private VisualiserBars _visualiser;
+    private bool _warning, _deleting, _leaving, _saved;
+    private string? _saveError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _status = await Api.GetPlaybackSettingsAsync();
+        _fetch = await Api.GetFetchSettingsAsync();
+        _visualiser = _status.Settings.Visualiser;
+    }
+
+    private void Choose(VisualiserBars value)
+    {
+        _visualiser = value;
+        _saved = false;
+        // Warned of the room they take before they're made.
+        _warning = value == VisualiserBars.WhenMatching && _status!.Settings.Visualiser != VisualiserBars.WhenMatching;
+    }
+
+    private async Task SaveAsync(bool deleteBarsFiles)
+    {
+        // Leaving bars made when matching, there may be files to delete: asked first.
+        if (!_leaving && _status!.Settings.Visualiser == VisualiserBars.WhenMatching && _visualiser != VisualiserBars.WhenMatching)
+        {
+            _leaving = _deleting = true;
+            return;
+        }
+        _saved = false;
+        _saveError = null;
+        try
+        {
+            await Api.SavePlaybackSettingsAsync(new SavePlayback(_visualiser, deleteBarsFiles));
+            await Api.SaveFetchSettingsAsync(_fetch!);
+            _status = await Api.GetPlaybackSettingsAsync();
+            _saved = true;
+        }
+        catch (Exception e) when (e is MelodexApiException or HttpRequestException)
+        {
+            _saveError = e.Message;
+        }
+    }
+
+    // Asked whether to delete them: on leaving bars made when matching, as part of saving; otherwise on their own.
+    private async Task FinishLeavingAsync(bool delete)
+    {
+        _deleting = false;
+        if (_leaving)
+        {
+            await SaveAsync(delete);
+            _leaving = false;
+        }
+        else if (delete)
+            await SaveAsync(true);
+    }
+
+    private string DeletingText =>
+        (_status!.BarsFiles == 0 ? "Any beside your songs are deleted." : $"{Plural(_status.BarsFiles, ".bars file is", ".bars files are")} beside your songs, taking {Size(_status.BarsBytes)}. ")
+        + (_visualiser == VisualiserBars.Off ? "With the visualiser off, they aren't used." : "Kept, they're used instead of making bars when a song plays.");
+
+    private static string Plural(int n, string one, string many) => n == 1 ? $"1 {one}" : $"{n:N0} {many}";
+
+    private static string Size(long bytes)
+    {
+        const double mb = 1024 * 1024, gb = mb * 1024;
+        if (bytes >= gb)
+            return $"{bytes / gb:0.0} GB";
+        return bytes >= mb ? $"{bytes / mb:0} MB" : $"{Math.Max(1, bytes / 1024.0):0} KB";
+    }
+}
