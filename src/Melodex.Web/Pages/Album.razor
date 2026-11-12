@@ -121,7 +121,7 @@ else
             <Loading Inline="true" Text="Fetching its editions and tracks from the catalogue…" />
         }
         <div class="card">
-            <table class="table track-list album-tracks narrow-status" aria-busy="true">
+            <table class="table track-list album-tracks narrow-status @(Slots().Any(s => s.Number.Contains('-')) ? "discs" : "")" aria-busy="true">
                 @TrackHead
                 <tbody>
                     @foreach (var slot in Slots())
@@ -161,7 +161,7 @@ else
     else
     {
         <div class="card">
-            <table class="table track-list album-tracks narrow-status">
+            <table class="table track-list album-tracks narrow-status @(MultiDisc ? "discs" : "")">
                 @TrackHead
                 <tbody>
                     @foreach (var track in _album.Tracks)
