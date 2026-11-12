@@ -120,10 +120,18 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
 
     // ---- Artists ----
 
-    public async Task<Artist> ImportArtistAsync(IndexArtist source, CancellationToken ct)
+    public async Task<Artist> ImportArtistAsync(IndexArtist source, CancellationToken ct) => await ImportArtistAsync(source, [], ct);
+
+    /// <param name="albumTitles">Titles of albums of theirs, which tell apart artists with the same name.</param>
+    private async Task<Artist> ImportArtistAsync(IndexArtist source, IReadOnlyCollection<string> albumTitles, CancellationToken ct)
     {
         var id = await FindTrackedAsync(EntityKind.Artist, source.Id, ct);
         var artist = id is { } existing ? await db.Artists.FindAsync([existing], ct) : null;
+        if (artist is null && await SameArtistAsync(source.Name, source.Id.Provider, albumTitles, ct) is { } same)
+        {
+            await MapAsync(EntityKind.Artist, same.Id, source.Id, ct);
+            return same;
+        }
         if (artist is null)
         {
             artist = new Artist { Name = source.Name };
@@ -161,12 +169,123 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
     }
 
     /// <summary>Gets the artist for a credit inside another entity, creating a stub if the index plugin isn't asked.</summary>
-    private async Task<Artist> ArtistForRefAsync(ArtistRef reference, CancellationToken ct)
+    /// <param name="albumTitle">The album the credit is on, if any, to tell apart artists with the same name.</param>
+    private async Task<Artist> ArtistForRefAsync(ArtistRef reference, string? albumTitle, CancellationToken ct)
     {
         if (await FindTrackedAsync(EntityKind.Artist, reference.Id, ct) is { } known)
             return Tracked(db.Artists).FirstOrDefault(a => a.Id == known) ?? (await db.Artists.FindAsync([known], ct))!;
-        return await ImportArtistAsync(new IndexArtist(reference.Id, reference.Name), ct);
+        return await ImportArtistAsync(new IndexArtist(reference.Id, reference.Name), albumTitle is null ? [] : [albumTitle], ct);
     }
+
+    /// <summary>
+    /// For an artist a gap-filling catalogue names, unknown by its ID: the core catalogue's artist with the same name,
+    /// so there aren't two. Only when it's clear which: the one with an album of one of these titles, else the only one
+    /// of that name, else the only one of that name in the library. Null for the core catalogue's own artists.
+    /// </summary>
+    private async Task<Artist?> SameArtistAsync(string name, string provider, IReadOnlyCollection<string> albumTitles, CancellationToken ct)
+    {
+        var indexes = await IndexesAsync(ct);
+        if (indexes.Count == 0 || indexes[0].Provider == provider || TextMatch.NormaliseArtist(name) is not { Length: > 0 } key)
+            return null;
+        var core = indexes[0].Provider;
+        var candidates = new List<Artist>();
+        foreach (var artist in await NamedAsync(name, key, ct))
+            if (await HasIdAsync(EntityKind.Artist, artist.Id, core, ct) && !await HasIdAsync(EntityKind.Artist, artist.Id, provider, ct))
+                candidates.Add(artist);
+        return await PickAsync(candidates, albumTitles, ct);
+    }
+
+    /// <summary>
+    /// Artists only a gap-filling catalogue knows, made before imports looked for the core catalogue's artist of the same
+    /// name, that are that artist: their IDs, albums, tracks, files and requests move to it, and they're removed. The
+    /// number merged.
+    /// </summary>
+    public async Task<int> MergeDuplicateArtistsAsync(CancellationToken ct)
+    {
+        var indexes = await IndexesAsync(ct);
+        if (indexes.Count == 0)
+            return 0;
+        var core = indexes[0].Provider;
+        var stubs = await db.Artists
+            .Where(a => db.Crosswalk.Any(m => m.EntityKind == EntityKind.Artist && m.EntityId == a.Id)
+                        && !db.Crosswalk.Any(m => m.EntityKind == EntityKind.Artist && m.EntityId == a.Id && m.Provider == core))
+            .ToListAsync(ct);
+        var merged = 0;
+        foreach (var stub in stubs)
+        {
+            if (TextMatch.NormaliseArtist(stub.Name) is not { Length: > 0 } key)
+                continue;
+            var providers = await db.Crosswalk.Where(m => m.EntityKind == EntityKind.Artist && m.EntityId == stub.Id).Select(m => m.Provider).Distinct().ToListAsync(ct);
+            var candidates = new List<Artist>();
+            foreach (var artist in await NamedAsync(stub.Name, key, ct))
+                if (artist.Id != stub.Id && await HasIdAsync(EntityKind.Artist, artist.Id, core, ct)
+                    && !await db.Crosswalk.AnyAsync(m => m.EntityKind == EntityKind.Artist && m.EntityId == artist.Id && providers.Contains(m.Provider), ct))
+                    candidates.Add(artist);
+            var titles = await db.Albums.Where(a => a.ArtistId == stub.Id).Select(a => a.Title).ToListAsync(ct);
+            if (await PickAsync(candidates, titles, ct) is not { } into)
+                continue;
+            await MergeArtistAsync(stub, into, ct);
+            merged++;
+        }
+        if (merged > 0)
+            logger.LogInformation("Merged {Count} artists a gap-filling catalogue had added twice", merged);
+        return merged;
+    }
+
+    private async Task MergeArtistAsync(Artist from, Artist into, CancellationToken ct)
+    {
+        await db.Crosswalk.Where(m => m.EntityKind == EntityKind.Artist && m.EntityId == from.Id).ExecuteUpdateAsync(u => u.SetProperty(m => m.EntityId, into.Id), ct);
+        await db.Albums.Where(a => a.ArtistId == from.Id).ExecuteUpdateAsync(u => u.SetProperty(a => a.ArtistId, into.Id), ct);
+        await db.Tracks.Where(t => t.ArtistId == from.Id).ExecuteUpdateAsync(u => u.SetProperty(t => t.ArtistId, into.Id), ct);
+        await db.LibraryFiles.Where(f => f.ArtistId == from.Id).ExecuteUpdateAsync(u => u.SetProperty(f => f.ArtistId, (Guid?)into.Id), ct);
+        await db.Requests.Where(r => r.TargetKind == EntityKind.Artist && r.TargetId == from.Id).ExecuteUpdateAsync(u => u.SetProperty(r => r.TargetId, into.Id), ct);
+        await db.Artwork.Where(a => a.EntityKind == EntityKind.Artist && a.EntityId == from.Id).ExecuteDeleteAsync(ct);
+        // What the context already holds is moved too, and the artist deleted directly: removed through the context, it
+        // would take with it the albums the context still has as theirs.
+        foreach (var album in Tracked(db.Albums).Where(a => a.ArtistId == from.Id))
+            album.ArtistId = into.Id;
+        foreach (var track in Tracked(db.Tracks).Where(t => t.ArtistId == from.Id))
+            track.ArtistId = into.Id;
+        foreach (var mapping in Tracked(db.Crosswalk).Where(m => m.EntityKind == EntityKind.Artist && m.EntityId == from.Id))
+            mapping.EntityId = into.Id;
+        db.Entry(from).State = EntityState.Detached;
+        await db.Artists.Where(a => a.Id == from.Id).ExecuteDeleteAsync(ct);
+        into.InLibrary |= from.InLibrary;
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Of artists with the same name, the one it's clear an artist with albums of these titles is.</summary>
+    private async Task<Artist?> PickAsync(IReadOnlyList<Artist> candidates, IReadOnlyCollection<string> albumTitles, CancellationToken ct)
+    {
+        if (candidates.Count == 0)
+            return null;
+        var titles = albumTitles.Select(t => TextMatch.NormaliseAlbum(t)).Where(t => t.Length > 0).ToHashSet();
+        if (titles.Count > 0)
+        {
+            var withAlbum = new List<Artist>();
+            foreach (var artist in candidates)
+                if ((await db.Albums.Where(a => a.ArtistId == artist.Id).Select(a => a.Title).ToListAsync(ct)).Any(t => titles.Contains(TextMatch.NormaliseAlbum(t))))
+                    withAlbum.Add(artist);
+            if (withAlbum.Count == 1)
+                return withAlbum[0];
+        }
+        if (candidates.Count == 1)
+            return candidates[0];
+        var inLibrary = candidates.Where(a => a.InLibrary).ToList();
+        return inLibrary.Count == 1 ? inLibrary[0] : null;
+    }
+
+    /// <summary>Artists, saved or about to be, with this name, ignoring case, accents and punctuation.</summary>
+    private async Task<List<Artist>> NamedAsync(string name, string key, CancellationToken ct)
+    {
+        var pattern = name.Trim().Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_");
+        var saved = await db.Artists.Where(a => EF.Functions.Like(a.Name, pattern, @"\")).ToListAsync(ct);
+        return saved.Concat(Tracked(db.Artists)).DistinctBy(a => a.Id).Where(a => TextMatch.NormaliseArtist(a.Name) == key).ToList();
+    }
+
+    private async Task<bool> HasIdAsync(EntityKind kind, Guid entityId, string provider, CancellationToken ct) =>
+        Tracked(db.Crosswalk).Any(m => m.EntityKind == kind && m.EntityId == entityId && m.Provider == provider)
+        || await db.Crosswalk.AnyAsync(m => m.EntityKind == kind && m.EntityId == entityId && m.Provider == provider, ct);
 
     /// <summary>
     /// Finds an artist by name: first among cached artists, then through the index plugin's search, accepting only
@@ -232,7 +351,7 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
             : null;
         if (album is null)
         {
-            artist ??= await ArtistForRefAsync(source.Artist, ct);
+            artist ??= await ArtistForRefAsync(source.Artist, source.Title, ct);
             album = new Album { ArtistId = artist.Id, Title = source.Title, ArtistCredit = source.ArtistCredit };
             db.Albums.Add(album);
         }
@@ -386,7 +505,7 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
             : null;
         if (track is null)
         {
-            var artist = await ArtistForRefAsync(source.Artist, ct);
+            var artist = await ArtistForRefAsync(source.Artist, source.Album?.Title, ct);
             track = new Track { ArtistId = artist.Id, Title = source.Title, ArtistCredit = source.ArtistCredit };
             db.Tracks.Add(track);
         }
