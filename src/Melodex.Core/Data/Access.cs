@@ -28,16 +28,28 @@ public class User
     /// <summary>How the web app looks to them, as JSON: see <c>Appearance</c>. Empty for the default.</summary>
     public string? Appearance { get; set; }
 
-    /// <summary>Their own login on the media server, for syncing their playlists.</summary>
-    public string? MediaServerUsername { get; set; }
-
-    /// <summary>The media server password, encrypted with the data protection keys: it has to be sent, so it can't be hashed.</summary>
-    public string? MediaServerPassword { get; set; }
+    /// <summary>Their own logins on the media servers, for syncing their playlists: one for each server, kept when another takes over.</summary>
+    public List<MediaServerLogin> MediaServerLogins { get; set; } = [];
 
     /// <summary>Why their playlists last failed to sync, if they did.</summary>
     public string? PlaylistSyncError { get; set; }
 
     public DateTime? PlaylistsSyncedAt { get; set; }
+}
+
+/// <summary>Someone's login on one media server, for syncing their playlists with it.</summary>
+public class MediaServerLogin
+{
+    public Guid UserId { get; set; }
+
+    /// <summary>The media-server plugin it's for. Removing the plugin removes its logins.</summary>
+    public Guid PluginInstanceId { get; set; }
+    public PluginInstance PluginInstance { get; set; } = null!;
+
+    public required string Username { get; set; }
+
+    /// <summary>The password, encrypted with the data protection keys: it has to be sent, so it can't be hashed.</summary>
+    public required string Password { get; set; }
 }
 
 /// <summary>

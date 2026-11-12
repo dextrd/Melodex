@@ -83,13 +83,16 @@ public static class PluginEndpoints
                     ManifestJson = endpoint is null ? null : JsonSerializer.Serialize(manifest, RetrievalJson.Options),
                     SettingsJson = settings.ToJsonString(),
                     Priority = last + 1,
+                    // One media server is used at a time: another is added disabled, to be switched to when wanted.
+                    Enabled = manifest.Type != PluginType.Connector || !await db.PluginInstances.AnyAsync(p => p.Type == PluginType.Connector && p.Enabled, ct),
                 };
                 db.PluginInstances.Add(instance);
                 await db.SaveChangesAsync(ct);
                 await ArtworkChangedAsync(db, instance, catalog, artwork, ct);
                 return Results.Created($"/api/v1/plugins/{instance.Id}", ToInfo(instance, catalog));
             })
-            .WithName("AddPlugin").WithSummary("Set up a plugin: one that runs on its own by its address, or a loaded one by ID. It goes last in the order.")
+            .WithName("AddPlugin").WithSummary("Set up a plugin: one that runs on its own by its address, or a loaded one by ID. It goes last in the order. "
+                                               + "A media server is added disabled when another is enabled, as only one is used at a time.")
             .Produces<PluginInfo>(StatusCodes.Status201Created).ProducesValidationProblem();
 
         plugins.MapPut("/{id:guid}", async (Guid id, UpdatePlugin body, MelodexDbContext db, PluginCatalog catalog, ArtworkCache artwork, CancellationToken ct) =>
@@ -109,7 +112,13 @@ public static class PluginEndpoints
                 if (body.Name is { } name && !string.IsNullOrWhiteSpace(name))
                     instance.Name = name.Trim();
                 if (body.Enabled is { } enabled)
+                {
                     instance.Enabled = enabled;
+                    // Only one media server is used: enabling one switches to it.
+                    if (enabled && instance.Type == PluginType.Connector)
+                        foreach (var other in await db.PluginInstances.Where(p => p.Type == PluginType.Connector && p.Enabled && p.Id != instance.Id).ToListAsync(ct))
+                            other.Enabled = false;
+                }
                 if (body.Endpoint is { } endpoint && instance.Endpoint is not null)
                 {
                     if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
@@ -120,7 +129,8 @@ public static class PluginEndpoints
                 await ArtworkChangedAsync(db, instance, catalog, artwork, ct);
                 return Results.Ok(ToInfo(instance, catalog));
             })
-            .WithName("UpdatePlugin").WithSummary("Rename, reconfigure, enable or disable a plugin.")
+            .WithName("UpdatePlugin").WithSummary("Rename, reconfigure, enable or disable a plugin. Enabling a media server disables the one in use: only one is "
+                                                  + "used at a time, and songs and playlists are found again on the new one.")
             .Produces<PluginInfo>().ProducesValidationProblem();
 
         plugins.MapPut("/order", async (PluginOrder body, MelodexDbContext db, PluginCatalog catalog, ArtworkCache artwork, CancellationToken ct) =>

@@ -234,6 +234,22 @@ public sealed class PlaylistTests : IDisposable
     }
 
     [Fact]
+    public async Task A_playlist_not_linked_takes_the_one_of_the_same_name_on_the_server()
+    {
+        // As after switching back to a server used before: its copies are there, but nothing here is linked to them.
+        var server = new FakePlaylistServer();
+        server.Add("Calm", [new ServerTrack("s:Teardrop", null, "Teardrop", null, null, null, null)]);
+        server.Add("Rain", []);
+        await _api.CreatePlaylistAsync(new CreatePlaylist("calm"));
+
+        await SyncAsync(server);
+        // Changed here since, it's sent over the server's copy rather than beside it; the other is brought over.
+        Assert.Equal(["Rain", "calm"], server.Playlists.Values.Select(p => p.Name).Order(StringComparer.Ordinal));
+        Assert.Empty(server.Playlists.Values.Single(p => p.Name == "calm").Songs);
+        Assert.Equal(["Rain", "calm"], (await _api.ListPlaylistsAsync()).Select(p => p.Name).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public async Task Folders_have_pictures_of_their_own_that_follow_them()
     {
         await _api.CreatePlaylistAsync(new CreatePlaylist("Moods/Calm/Evening"));
@@ -303,7 +319,12 @@ public sealed class PlaylistTests : IDisposable
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MelodexDbContext>();
         var user = await db.Users.SingleAsync();
-        user.MediaServerUsername = "someone";
+        if (await db.PluginInstances.FindAsync(FakePlaylistServer.InstanceId) is null)
+        {
+            db.PluginInstances.Add(new PluginInstance { Id = FakePlaylistServer.InstanceId, PluginId = "test.playlists", Type = PluginType.Connector, Name = "Fake", ContractVersion = "1.0" });
+            db.MediaServerLogins.Add(new MediaServerLogin { UserId = user.Id, PluginInstanceId = FakePlaylistServer.InstanceId, Username = "someone", Password = "" });
+            await db.SaveChangesAsync();
+        }
         var problem = await scope.ServiceProvider.GetRequiredService<PlaylistSync>()
             .SyncWithAsync(user, new ServerLogin("someone", "secret"), FakePlaylistServer.InstanceId, server, server, default);
         Assert.Null(problem);

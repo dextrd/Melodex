@@ -1,6 +1,7 @@
 @page "/settings/plugins"
 @layout SettingsLayout
 @using Melodex.Contracts.Plugins
+@using Melodex.Contracts.Plugins.Connectors
 @inject MelodexClient Api
 @inject AuthState Auth
 
@@ -17,14 +18,14 @@
 }
 else
 {
-    @if (_error is not null && _choosing is null && _editing is null && _removing is null) { <div class="notice error">@_error</div> }
+    @if (_error is not null && _choosing is null && _editing is null && _removing is null && _switching is null) { <div class="notice error">@_error</div> }
 
     <div class="plugin-sections">
         @Section(PluginType.Retrieval, "Sources",
             "Retrieval plugins run in their own containers. A request searches them all at once, and fetches the best quality your quality profile allows of the right song, whichever has it.",
             "No sources yet, so nothing can be fetched. Add one to get started.")
         @Section(PluginType.Connector, "Media server",
-            "Told to scan when music is filed, so it shows up there. The first one that's on is used.",
+            "Told to scan when music is filed, so it shows up there. One is used at a time: turning another on switches to it.",
             "No media server yet. Music is still filed, but nothing is told about it.")
         @Section(PluginType.Index, "Catalogue",
             "Where Melodex learns what each artist has released, to tell what's missing. The first is the core catalogue; the ones after it fill in what it doesn't have.",
@@ -106,6 +107,10 @@ else
         <Dialog Title="@($"Remove {removing.Name}?")" OnClose="() => _removing = null" Alert="true">
             @if (_error is not null) { <p class="error">@_error</p> }
             <p>Its settings are forgotten. You can add it again later.</p>
+            @if (removing.Type == PluginType.Connector)
+            {
+                <p>Everyone's login for it is forgotten too.@(removing.Enabled ? " It's the media server in use: with none on, music is still filed, but no server is told about it and playlists stop syncing." : "")</p>
+            }
             @if (removing.Type == PluginType.Index && _plugins.Count(p => p.Type == PluginType.Index) == 1)
             {
                 <p>It's your only catalogue. Without one, Melodex is a plain music library: new files show as their tags say, and
@@ -114,6 +119,38 @@ else
             <div class="toolbar dialog-buttons">
                 <button @onclick="() => _removing = null">Cancel</button>
                 <button class="danger" disabled="@_busy" @onclick="() => RemoveAsync(removing)">Remove</button>
+            </div>
+        </Dialog>
+    }
+
+    @if (_switching is { } switching)
+    {
+        var current = _plugins.FirstOrDefault(p => p.Type == PluginType.Connector && p.Enabled && p.Id != switching.Id);
+        <Dialog Title="@(current is null ? $"Turn {switching.Name} off?" : $"Switch to {switching.Name}?")" OnClose="() => _switching = null" Alert="true">
+            @if (_error is not null) { <p class="error">@_error</p> }
+            @if (current is null)
+            {
+                <p>It's the media server in use. With none on, music is still filed, but no server is told about it and playlists stop syncing.</p>
+            }
+            else
+            {
+                <p>@current.Name is the media server now. Turning @switching.Name on turns @current.Name off: only one is used at a time.</p>
+                <p>Melodex finds your songs again on @switching.Name, and from then on tells it about new music.</p>
+                @if (switching.Manifest?.Capabilities.Contains(ConnectorCapabilities.UserPlaylists) == true)
+                {
+                    <p>Playlists sync with @switching.Name once each person links their login for it, under their account. Logins for
+                        @current.Name are kept, for switching back.</p>
+                }
+                else
+                {
+                    <p>Playlists stay in Melodex but don't sync with @switching.Name. Logins for @current.Name are kept, for switching back.</p>
+                }
+            }
+            <div class="toolbar dialog-buttons">
+                <button @onclick="() => _switching = null">Cancel</button>
+                <button class="@(current is null ? "danger" : "primary")" disabled="@_busy" @onclick="() => SwitchAsync(switching)">
+                    @if (_busy) { <span class="spinner"></span> }@(current is null ? "Turn off" : $"Switch to {switching.Name}")
+                </button>
             </div>
         </Dialog>
     }
@@ -315,7 +352,7 @@ else
                 }
                 <span class="spacer"></span>
                 <IconButton Icon="power" On="plugin.Enabled" Title="@(plugin.Enabled ? "On: click to turn it off" : "Off: click to turn it on")"
-                            Disabled="_busy" OnClick="() => SetEnabledAsync(plugin, !plugin.Enabled)" />
+                            Disabled="_busy" OnClick="() => ToggleAsync(plugin)" />
                 <IconButton Icon="test" Title="Test the connection" Disabled="_busy" OnClick="() => TestAsync(plugin)" />
                 @if (plugin.Manifest is not { UsesSettingsOf: not null })
                 {
@@ -394,6 +431,27 @@ else
     private Task TestAsync(PluginInfo plugin) => RunAsync(() => Api.TestPluginAsync(plugin.Id));
 
     private Task SetEnabledAsync(PluginInfo plugin, bool enabled) => RunAsync(() => Api.UpdatePluginAsync(plugin.Id, new UpdatePlugin(Enabled: enabled)));
+
+    // A media server being switched to, or the one in use being turned off, asked about first.
+    private PluginInfo? _switching;
+
+    private Task ToggleAsync(PluginInfo plugin)
+    {
+        var others = _plugins!.Any(p => p.Type == PluginType.Connector && p.Enabled && p.Id != plugin.Id);
+        if (plugin.Type == PluginType.Connector && (plugin.Enabled ? !others : others))
+        {
+            _error = null;
+            _switching = plugin;
+            return Task.CompletedTask;
+        }
+        return SetEnabledAsync(plugin, !plugin.Enabled);
+    }
+
+    private Task SwitchAsync(PluginInfo plugin) => RunAsync(async () =>
+    {
+        await Api.UpdatePluginAsync(plugin.Id, new UpdatePlugin(Enabled: !plugin.Enabled));
+        _switching = null;
+    });
 
     private Task RemoveAsync(PluginInfo plugin) => RunAsync(async () =>
     {

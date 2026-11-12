@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Melodex.Client;
+using Melodex.Contracts.Plugins;
 using Melodex.Core.Data;
 using Melodex.Core.Library;
 
@@ -271,9 +272,9 @@ public sealed class PlaylistService(MelodexDbContext db, SettingsService setting
 
     private static string? Comment(string? comment) => string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
 
-    // Whether the user's playlists are synced, for each playlist's state.
+    // Whether the user's playlists are synced, for each playlist's state: they've linked a login on the media server in use.
     private async Task<bool> SyncingAsync(Guid userId, CancellationToken ct) =>
-        await db.Users.AnyAsync(u => u.Id == userId && u.MediaServerUsername != null, ct);
+        await db.MediaServerLogins.AnyAsync(l => l.UserId == userId && l.PluginInstance.Enabled && l.PluginInstance.Type == PluginType.Connector, ct);
 
     // Its own picture stands for it when it has one; otherwise its albums' covers do.
     private static PlaylistSummary Summary(Playlist p, bool syncing, IReadOnlyList<string> albumCovers) => new(

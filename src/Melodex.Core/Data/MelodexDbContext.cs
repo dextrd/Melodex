@@ -85,6 +85,7 @@ public partial class MelodexDbContext(DbContextOptions<MelodexDbContext> options
     public DbSet<ArtworkRecord> Artwork => Set<ArtworkRecord>();
     public DbSet<User> Users => Set<User>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+    public DbSet<MediaServerLogin> MediaServerLogins => Set<MediaServerLogin>();
     public DbSet<Webhook> Webhooks => Set<Webhook>();
     public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
     public DbSet<Playlist> Playlists => Set<Playlist>();
@@ -228,6 +229,13 @@ public partial class MelodexDbContext(DbContextOptions<MelodexDbContext> options
         modelBuilder.Entity<User>(e =>
         {
             e.HasIndex(u => u.NormalizedUsername).IsUnique();
+        });
+
+        modelBuilder.Entity<MediaServerLogin>(e =>
+        {
+            e.HasKey(l => new { l.UserId, l.PluginInstanceId });
+            e.HasOne<User>().WithMany(u => u.MediaServerLogins).HasForeignKey(l => l.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(l => l.PluginInstance).WithMany().HasForeignKey(l => l.PluginInstanceId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<WebhookDelivery>(e =>
