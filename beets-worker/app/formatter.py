@@ -16,6 +16,7 @@ from typing import Any, Callable
 
 from mediafile import Image, ImageType, MediaFile
 
+from . import seektable
 from .folders import clear_away
 
 TEXT_FIELDS = {"title", "artist", "album", "albumartist", "country", "media", "albumtype", "label", "catalognum",
@@ -77,6 +78,7 @@ def _write(full: Path, tags: dict[str, str], artwork: bytes | None, remove_artwo
     elif remove_artwork:
         media.images = []
     media.save()
+    seektable.ensure(full)
 
 
 def format_files(library: Path, files: list[FormatFile], artwork: dict[str, bytes],

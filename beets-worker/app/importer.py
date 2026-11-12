@@ -24,7 +24,7 @@ from beets.library import Item, Library
 from beets.util import displayable_path
 from mediafile import MediaFile
 
-from . import reflinks, upgrade
+from . import reflinks, seektable, upgrade
 from .folders import find_musicless, remove_musicless
 from .formatter import FormatFile, format_files
 
@@ -281,12 +281,14 @@ class Importer:
             if release.date:
                 media.date = _date(release.date)
             media.save()
+            seektable.ensure(path)
             return
         media.mb_trackid = staged.recording_id
         if staged.track_id:
             media.mb_releasetrackid = staged.track_id
         media.mb_albumid = release.music_brainz_id
         media.save()
+        seektable.ensure(path)
 
     @staticmethod
     def _unique(path: Path) -> Path:

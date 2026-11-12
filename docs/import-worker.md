@@ -163,6 +163,13 @@ A folder has no music in it when it holds nothing but:
 Anything else keeps it: music, a video, a PDF, a file of a kind not listed, one of Melodex's own `.melodex-` working
 copies, a link, or a hidden folder, which may be another program's (`.stfolder`), as may `lost+found`.
 
+## Seek tables
+
+A FLAC file the worker writes, on import, when formatting or when upgrading, gets a seek table if it has none: a point
+every 10 seconds saying where in the file that time is. Without one a player seeking has to guess, which Safari does
+slowly and imprecisely, so a seek repeats a moment of the song and synced lyrics fall out of step. The audio isn't
+touched, and a file that has one keeps it.
+
 ## `POST /v1/reflinks`
 
 Whether a file in staging can be reflinked into the library, tried with a small file made for the purpose and

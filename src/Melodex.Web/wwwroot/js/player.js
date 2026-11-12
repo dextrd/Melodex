@@ -14,12 +14,22 @@ export function init(dotnet) {
     // The visualiser's audio graph is suspended until it's resumed by a click; playing counts.
     audio.addEventListener("play", () => context?.resume());
     audio.addEventListener("timeupdate", () => {
+        // While seeking, the time can still be the old one, which would put the seek bar back.
+        if (audio.seeking)
+            return;
         // Once a second is plenty for a seek bar, and keeps calls into .NET down.
         const now = Math.floor(audio.currentTime);
         if (now !== second) {
             second = now;
             player.invokeMethodAsync("OnTime", audio.currentTime, Number.isFinite(audio.duration) ? audio.duration : 0);
         }
+    });
+    // Where a seek landed, at once, which may not be quite where it was asked for; the lyrics jump there too.
+    audio.addEventListener("seeked", () => {
+        second = Math.floor(audio.currentTime);
+        player.invokeMethodAsync("OnTime", audio.currentTime, Number.isFinite(audio.duration) ? audio.duration : 0);
+        if (lyrics?.isConnected)
+            light(true);
     });
     audio.addEventListener("ended", () => player.invokeMethodAsync("OnEnded"));
     audio.addEventListener("playing", () => player.invokeMethodAsync("OnPlaying", true));

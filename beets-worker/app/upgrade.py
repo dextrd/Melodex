@@ -14,7 +14,7 @@ from typing import Any
 import mutagen
 from mediafile import MediaFile
 
-from . import reflinks
+from . import reflinks, seektable
 
 # Parts of other fields (date sets year, month and day), a copy of another (art is the first of images), or about
 # the encode rather than the song, so the new file keeps its own.
@@ -57,6 +57,7 @@ def copy_tags(old: Path, new: Path) -> None:
         if value is not None:
             setattr(target, field, value)
     target.save()
+    seektable.ensure(new)
 
 
 def replace(staging: Path, library: Path, staged: str, path: str, hold: str | None) -> dict[str, Any]:
