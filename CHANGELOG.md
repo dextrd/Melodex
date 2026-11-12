@@ -4,6 +4,13 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-12
+
+Fixes from using 1.2.0: Deezer's artists and albums no longer show twice beside MusicBrainz's, seeking lands where it's
+asked, iPhones keep playing in the background, and phone layouts fit the screen. Downloads from one album show as one.
+After updating, Melodex merges artists and albums added twice and finds Deezer's artist pictures again, in the
+background. Update the beets worker along with the core, for FLAC seek tables.
+
 ### Added
 
 - Downloads from the same album show as one, with how its songs stand; open it for its songs in the album's order.
