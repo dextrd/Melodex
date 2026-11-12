@@ -815,11 +815,21 @@ tr.playing td:nth-child(2) { color: var(--accent); font-weight: 600; }
 
 /* Listen now: one row per track, with how long it's kept. */
 .listen-item { display: grid; grid-template-columns: 3rem minmax(0, 1fr) auto; gap: .75rem; align-items: center; padding: .6rem 1rem; }
-.listen-item + .listen-item { border-top: 1px solid var(--border); }
+.listen-item + .listen-item, .card > .listen-song + *, .card > .listen-album + * { border-top: 1px solid var(--border); }
+/* With a chevron that opens it: an album's songs, or how a song was fetched (#64). */
+.listen-item.toggled { grid-template-columns: 1rem 3rem minmax(0, 1fr) auto; padding-left: .6rem; }
+.listen-toggle { display: grid; place-items: center; width: 1.5rem; height: 2rem; margin: 0 -.25rem; padding: 0; border: none; background: none; cursor: pointer; }
+.listen-album-title { color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.listen-album-songs { border-top: 1px solid var(--border); background: color-mix(in srgb, var(--text) 3%, transparent); }
+.listen-album-songs .listen-song + .listen-song { border-top: 1px solid var(--border); }
+.listen-number { text-align: center; font-variant-numeric: tabular-nums; }
+.listen-detail { padding: 0 1rem .75rem 2.5rem; }
 .listen-status { gap: .4rem .75rem; margin-top: .4rem; flex-wrap: wrap; }
 .listen-actions { display: flex; gap: .3rem; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 @media (max-width: 640px) {
     .listen-item { grid-template-columns: 2.5rem minmax(0, 1fr); }
+    .listen-item.toggled { grid-template-columns: 1rem 2.5rem minmax(0, 1fr); }
+    .listen-detail { padding-left: 1rem; }
     .listen-actions { grid-column: 1 / -1; justify-content: flex-start; }
 }
 

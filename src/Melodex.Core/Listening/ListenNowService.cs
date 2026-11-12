@@ -290,7 +290,7 @@ public sealed class ListenNowService(
         var editions = await db.Editions.Where(e => editionIds.Contains(e.Id))
             .Select(e => new { e.Id, e.AlbumId, AlbumTitle = e.Album.Title }).ToDictionaryAsync(e => e.Id, ct);
         var listings = await db.EditionTracks.Where(et => editionIds.Contains(et.EditionId) && trackIds.Contains(et.TrackId))
-            .Select(et => new { et.EditionId, et.TrackId, et.Title, et.Duration }).ToListAsync(ct);
+            .Select(et => new { et.EditionId, et.TrackId, et.Title, et.Duration, et.Disc, et.Position }).ToListAsync(ct);
         var mediaServerIds = await db.LibraryFiles.Where(f => f.TrackId != null && trackIds.Contains(f.TrackId.Value) && f.MediaServerTrackId != null)
             .Select(f => new { TrackId = f.TrackId!.Value, f.MediaServerTrackId }).ToListAsync(ct);
 
@@ -314,7 +314,9 @@ public sealed class ListenNowService(
                 state == ListenNowState.InLibrary ? mediaServerIds.FirstOrDefault(m => m.TrackId == item.TrackId)?.MediaServerTrackId : null,
                 item.CreatedAt,
                 request?.Paused ?? false,
-                request?.QueueOrder ?? 0);
+                request?.QueueOrder ?? 0,
+                listing?.Disc,
+                listing?.Position);
         }).ToList();
     }
 

@@ -47,16 +47,95 @@ else
 {
     var playable = Playable;
     <div class="card">
-        @foreach (var item in _items)
+        @foreach (var group in Groups())
         {
-            <div class="listen-item">
-                <Cover Url="@item.CoverUrl" />
+            if (group.Items.Count == 1)
+            {
+                @Row(group.Items[0], playable, number: null)
+                continue;
+            }
+            var albumId = group.AlbumId!.Value;
+            var open = _openAlbums.Contains(albumId);
+            var first = group.Items[0];
+            var ready = group.Items.Where(playable.Contains).ToList();
+            var addable = group.Items.Where(i => i.State == ListenNowState.Playable).ToList();
+            var discardable = group.Items.Where(Discardable).ToList();
+            <section class="listen-album" aria-label="@first.AlbumTitle">
+                <div class="listen-item toggled">
+                    <button class="listen-toggle" aria-expanded="@(open ? "true" : "false")" aria-label="@(open ? "Hide its songs" : "Show its songs")"
+                            @onclick="() => ToggleAlbum(albumId)">
+                        <span class="chevron @(open ? "open" : "")" aria-hidden="true"></span>
+                    </button>
+                    <Cover Url="@first.CoverUrl" />
+                    <div style="min-width: 0;">
+                        <div class="ellipsis"><button class="link listen-album-title" @onclick="() => ToggleAlbum(albumId)"><strong>@first.AlbumTitle</strong></button></div>
+                        <div class="muted small ellipsis">
+                            @if (first.ArtistId is { } artist) { <a class="muted" href="artists/@artist">@first.ArtistCredit</a> } else { @first.ArtistCredit }
+                            <span> · </span><a class="muted" href="albums/@albumId">@Format.Count(group.Items.Count, "song", "songs")</a>
+                        </div>
+                        <div class="row small listen-status">
+                            @foreach (var (label, badge, count) in Summary(group.Items))
+                            {
+                                <span class="badge @badge">@count @label.ToLowerInvariant()</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="listen-actions">
+                        <IconButton Icon="play" Requires="@UserPermissions.Listen" Disabled="@(ready.Count == 0)" Title="Play its songs, in order"
+                                    OnClick="() => PlayAsync(ready, 0)" />
+                        <QueueButton Title="Add its songs to the queue: next, or at the end" OnQueue="next => Player.AddAsync(ready.Select(PlayerEntry.Listening).ToList(), next)" />
+                        @if (addable.Count > 0)
+                        {
+                            <IconButton Icon="add" Disabled="@ScanStatus.Reading"
+                                        Title="@(ScanStatus.Reading ? "Wait until the scan has read your files" : $"Add the {Format.Count(addable.Count, "song", "songs")} ready to play to your library")"
+                                        OnClick="() => EachAsync(addable, i => Api.AddListeningAsync(i.Id))" />
+                        }
+                        @if (discardable.Count > 0)
+                        {
+                            <IconButton Icon="discard" Confirm="true" Title="@($"Delete its {Format.Count(discardable.Count, "song", "songs")}, or stop fetching them")"
+                                        OnClick="() => EachAsync(discardable, i => Api.DiscardListeningAsync(i.Id))" />
+                        }
+                    </div>
+                </div>
+                @if (open)
+                {
+                    <div class="listen-album-songs">
+                        @foreach (var item in group.Items)
+                        {
+                            @Row(item, playable, Number(item, group.Items))
+                        }
+                    </div>
+                }
+            </section>
+        }
+    </div>
+}
+
+@code {
+    private static readonly IReadOnlyList<(bool Value, string Label, string? Hint)> Tabs =
+        [(false, "Now", "Still to play, fetch or add"), (true, "All time", "Including those deleted or added to the library")];
+
+    private const string AllKey = "downloadsAll";
+
+    // A song: on its own, with its cover; on an album opened, with its number. Opened, it shows how it was fetched.
+    private RenderFragment Row(ListenNowInfo item, List<ListenNowInfo> playable, string? number) =>
+        @<div class="listen-song">
+            <div class="listen-item toggled">
+                <button class="listen-toggle" aria-expanded="@(_openItems.ContainsKey(item.RequestId) ? "true" : "false")"
+                        aria-label="@(_openItems.ContainsKey(item.RequestId) ? "Hide how it was fetched" : "Show how it was fetched")"
+                        @onclick="() => ToggleItemAsync(item)">
+                    <span class="chevron @(_openItems.ContainsKey(item.RequestId) ? "open" : "")" aria-hidden="true"></span>
+                </button>
+                @if (number is null) { <Cover Url="@item.CoverUrl" /> } else { <span class="listen-number muted">@number</span> }
                 <div style="min-width: 0;">
                     <div class="ellipsis"><strong>@item.Title</strong></div>
-                    <div class="muted small ellipsis">
-                        @if (item.ArtistId is { } artist) { <a class="muted" href="artists/@artist">@item.ArtistCredit</a> } else { @item.ArtistCredit }
-                        @if (item.AlbumId is { } album) { <span> · </span><a class="muted" href="albums/@album">@item.AlbumTitle</a> }
-                    </div>
+                    @if (number is null)
+                    {
+                        <div class="muted small ellipsis">
+                            @if (item.ArtistId is { } artist) { <a class="muted" href="artists/@artist">@item.ArtistCredit</a> } else { @item.ArtistCredit }
+                            @if (item.AlbumId is { } album) { <span> · </span><a class="muted" href="albums/@album">@item.AlbumTitle</a> }
+                        </div>
+                    }
                     <div class="row small listen-status">
                         <span class="badge @(item.Paused && item.Pending ? "neutral" : Badge(item.State))" title="@item.Detail">@Label(item)</span>
                         @if (item.State == ListenNowState.Playable && item.ExpiresAt is { } expires)
@@ -86,12 +165,6 @@ else
                                     Title="@(ScanStatus.Reading ? "Wait until the scan has read your files" : "Add to your library, without fetching it again")"
                                     OnClick="() => AddAsync(item)" />
                     }
-                    @if (item.State == ListenNowState.Failed)
-                    {
-                        <a class="icon-button" href="activity?open=@item.RequestId" title="Details" aria-label="Details">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.5" /></svg>
-                        </a>
-                    }
                     @if (item.State == ListenNowState.Requested && !item.Paused && Waiting.IndexOf(item) is var place and >= 0)
                     {
                         <IconButton Icon="up" Title="Fetch sooner" Disabled="@(place == 0)" OnClick="() => MoveAsync(item, place - 1)" />
@@ -109,27 +182,94 @@ else
                                         OnClick="() => RunAsync(() => Api.PauseRequestAsync(item.RequestId))" />
                         }
                     }
-                    @if (item.State is not (ListenNowState.Importing or ListenNowState.InLibrary or ListenNowState.Expired))
+                    @if (Discardable(item))
                     {
                         <IconButton Icon="discard" Title="@(item.Pending ? "Stop fetching it" : "Delete it now")" OnClick="() => DiscardAsync(item)" />
                     }
                 </div>
             </div>
+            @if (_openItems.TryGetValue(item.RequestId, out var detail))
+            {
+                <div class="listen-detail">
+                    @if (detail is null) { <Loading Inline="true" /> } else { <RequestDetail Request="detail" OnChanged="LoadAsync" /> }
+                </div>
+            }
+        </div>;
+
+    /// <summary>Songs from one album, or a song from none.</summary>
+    private sealed record Group(Guid? AlbumId, List<ListenNowInfo> Items);
+
+    // Songs from the same album as one, in the album's order, where the first of them would be; the rest each on their own.
+    private List<Group> Groups()
+    {
+        var groups = new List<Group>();
+        var albums = new Dictionary<Guid, Group>();
+        foreach (var item in _items!)
+        {
+            if (item.AlbumId is { } album && albums.TryGetValue(album, out var group))
+                group.Items.Add(item);
+            else
+            {
+                group = new Group(item.AlbumId, [item]);
+                groups.Add(group);
+                if (item.AlbumId is { } id)
+                    albums[id] = group;
+            }
         }
-    </div>
-}
+        foreach (var group in groups)
+            group.Items.Sort((a, b) => (a.Disc ?? int.MaxValue, a.Position ?? int.MaxValue).CompareTo((b.Disc ?? int.MaxValue, b.Position ?? int.MaxValue)));
+        return groups;
+    }
 
-@code {
-    private static readonly IReadOnlyList<(bool Value, string Label, string? Hint)> Tabs =
-        [(false, "Now", "Still to play, fetch or add"), (true, "All time", "Including those deleted or added to the library")];
+    private static string Number(ListenNowInfo item, List<ListenNowInfo> album) =>
+        item.Position is not { } position ? "" : album.Select(i => i.Disc).Distinct().Count() > 1 ? $"{item.Disc}-{position}" : $"{position}";
 
-    private const string AllKey = "downloadsAll";
+    // How an album's songs stand: how many are ready, fetching and so on.
+    private static IEnumerable<(string Label, string Badge, int Count)> Summary(List<ListenNowInfo> items) =>
+        items.GroupBy(i => (Label(i), i.Paused && i.Pending ? "neutral" : Badge(i.State))).Select(g => (g.Key.Item1, g.Key.Item2, g.Count()));
+
+    private static bool Discardable(ListenNowInfo item) => item.State is not (ListenNowState.Importing or ListenNowState.InLibrary or ListenNowState.Expired);
+
+    private readonly HashSet<Guid> _openAlbums = [];
+    // Songs opened to show how they were fetched, by their request; null while it's on its way.
+    private readonly Dictionary<Guid, RequestInfo?> _openItems = [];
+
+    private void ToggleAlbum(Guid album)
+    {
+        if (!_openAlbums.Remove(album))
+            _openAlbums.Add(album);
+    }
+
+    private async Task ToggleItemAsync(ListenNowInfo item)
+    {
+        if (_openItems.Remove(item.RequestId))
+            return;
+        _openItems[item.RequestId] = null;
+        StateHasChanged();
+        _openItems[item.RequestId] = await Api.GetRequestAsync(item.RequestId);
+    }
+
+    private async Task EachAsync(List<ListenNowInfo> items, Func<ListenNowInfo, Task> action)
+    {
+        _error = null;
+        try
+        {
+            foreach (var item in items)
+                await action(item);
+        }
+        catch (MelodexApiException e)
+        {
+            _error = e.Message;
+        }
+        await LoadAsync();
+    }
 
     // Include those discarded, expired or added to the library.
     private bool _all;
     private IReadOnlyList<ListenNowInfo>? _items;
 
-    private List<ListenNowInfo> Playable => _items!.Where(i => i.State is not (ListenNowState.Failed or ListenNowState.Expired)).ToList();
+    // In the order shown: an album's songs in its order.
+    private List<ListenNowInfo> Playable => Groups().SelectMany(g => g.Items).Where(i => i.State is not (ListenNowState.Failed or ListenNowState.Expired)).ToList();
     private int _expiry = 60;
     private string? _error;
 
@@ -167,6 +307,10 @@ else
             InvokeAsync(async () =>
             {
                 await LoadAsync();
+                // How songs still being fetched were fetched changes as they are.
+                foreach (var id in _openItems.Keys.ToList())
+                    if (_items?.FirstOrDefault(i => i.RequestId == id) is { Pending: true } || _openItems[id]?.Active == true)
+                        _openItems[id] = await Api.GetRequestAsync(id);
                 StateHasChanged();
             });
     }

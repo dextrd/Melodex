@@ -44,6 +44,8 @@ public sealed record StartListen(RequestKind Kind, Guid Id, Guid? EditionId = nu
 /// <param name="MediaServerTrackId">Once in the library, the media server's ID for it, to play it from there instead.</param>
 /// <param name="Paused">Its request is held back; resume it with <c>POST /requests/{requestId}/resume</c>.</param>
 /// <param name="QueueOrder">Its place among listen-now tracks waiting to be fetched: lower goes first.</param>
+/// <param name="Disc">Its disc on the edition fetched, to list an album's tracks in order.</param>
+/// <param name="Position">Its place on that disc.</param>
 public sealed record ListenNowInfo(
     Guid Id,
     Guid TrackId,
@@ -67,7 +69,9 @@ public sealed record ListenNowInfo(
     string? MediaServerTrackId,
     DateTime CreatedAt,
     bool Paused = false,
-    double QueueOrder = 0)
+    double QueueOrder = 0,
+    int? Disc = null,
+    int? Position = null)
 {
     /// <summary>Still on its way to being playable.</summary>
     public bool Pending => State is ListenNowState.Requested or ListenNowState.Fetching;
