@@ -9,6 +9,8 @@
 @inject NavigationManager Nav
 @inject Preferences Preferences
 @inject LibraryStore Library
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
 <PageTitle>Review · Melodex</PageTitle>
 
@@ -812,8 +814,16 @@ else
         _focusFilter = _filterOpen;
     }
 
+    // The tab last scrolled into view, so it's done once as each is opened.
+    private string? _tabInView;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_tabInView != Tab)
+        {
+            _tabInView = Tab;
+            await JS.InvokeVoidAsync("melodexScroll.tabIntoView");
+        }
         if (_focusFilter)
         {
             _focusFilter = false;

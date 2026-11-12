@@ -17,6 +17,15 @@ window.melodexScroll = {
         };
         go();
     },
+    // A row of tabs that scrolls sideways on a phone: the open tab, centred where it can be.
+    tabIntoView: () => {
+        const tab = document.querySelector('.page-tabs .active');
+        if (!tab)
+            return;
+        const row = tab.parentElement;
+        const left = tab.getBoundingClientRect().left - row.getBoundingClientRect().left + row.scrollLeft;
+        row.scrollTo({ left: left - (row.clientWidth - tab.offsetWidth) / 2, behavior: 'instant' });
+    },
 };
 
 // Blazor scrolls the window to the top as a new page opens; where the page scrolls in its own box, that box is what goes.

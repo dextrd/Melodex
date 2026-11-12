@@ -38,6 +38,8 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   formatting and when upgrading; others get one the next time they're formatted. The player also no longer jumps back
   to the old time just after a seek, and the lyrics follow to where a seek lands. Update the beets worker's image with
   the core's (#61).
+- The Review page's tabs fit a phone's screen, scrolling sideways with the open one in view, rather than widening the
+  page so it zooms out (#80).
 
 ### Removed
 

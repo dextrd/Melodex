@@ -1424,11 +1424,15 @@ input[type=search]:disabled { opacity: .6; }
 @media (prefers-reduced-motion: reduce) { .arrives { animation: none; } }
 
 /* The Library page's tabs: Browse and Playlists. */
-.page-tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin: -.25rem 0 1rem; }
-.page-tabs a { padding: .5rem .9rem; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 600; }
+/* Tabs wider than the screen scroll sideways rather than widening the page (#80). The line under them is a shadow, so the
+   active tab's underline covers it without poking out of the row. */
+.page-tabs { display: flex; gap: .25rem; box-shadow: inset 0 -1px var(--border); margin: -.25rem 0 1rem; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+.page-tabs::-webkit-scrollbar { display: none; }
+.page-tabs a, .page-tabs button { flex: none; white-space: nowrap; }
+.page-tabs a { padding: .5rem .9rem; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; font-weight: 600; }
 .page-tabs a:hover { color: var(--text); }
 .page-tabs a.active { color: var(--text); border-bottom-color: var(--accent); }
-.page-tabs button { padding: .5rem .9rem; color: var(--muted); background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; margin-bottom: -1px; font: inherit; font-weight: 600; cursor: pointer; }
+.page-tabs button { padding: .5rem .9rem; color: var(--muted); background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; font: inherit; font-weight: 600; cursor: pointer; }
 .page-tabs button:hover { color: var(--text); background: none; }
 .page-tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
 /* A tab with something to fix on it, after a save that didn't go through. */
@@ -1436,6 +1440,7 @@ input[type=search]:disabled { opacity: .6; }
 .editor-tabs { margin-top: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .server-account { border: 1px solid var(--border); border-radius: var(--radius); padding: .75rem .9rem; margin-bottom: .75rem; }
 .server-account > .row { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; }
+@media (max-width: 640px) { .page-tabs a, .page-tabs button { padding: .5rem .7rem; } }
 .page-tabs .tab-count { margin-left: .35rem; padding: 0 .4rem; border-radius: 999px; font-size: .75rem; background: var(--border); color: var(--text); }
 
 /* Pins: on a square, shown on hover like other tile buttons, and always once pinned; in a list, faint until wanted. */
