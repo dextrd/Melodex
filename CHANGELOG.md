@@ -16,6 +16,9 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   through Wikidata by their MusicBrainz ID, and by name only when just one Deezer artist has it or one of them has an
   album of theirs; otherwise it offers none rather than someone else's. Artist pictures Deezer found are looked for
   again (#59).
+- Searching no longer lists an artist twice, once from MusicBrainz and once from Deezer. An album or song Deezer finds
+  is by the artist MusicBrainz has of that name, when it's clear which: the one with that album, else the only one,
+  else the only one in your library. Artists already added twice are merged when Melodex starts (#58).
 
 ## [1.2.0] - 2026-11-12
 
