@@ -31,6 +31,9 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 - The **Navidrome cover art** plugin. Melodex reads your files' own covers itself, which **Use your files' cover art**
   under **Settings** puts first, so it only did that again, and only with Navidrome. It's removed from installs that
   had it, and the pictures it found are found again (#66).
+- Songs you have are no longer marked "On another album" on a copy of their own album that came from Deezer. An album
+  Deezer has is the one MusicBrainz has by the same artist with the same title, and the copies already made are merged
+  into it when Melodex starts, with the files on them (#60).
 
 ## [1.2.0] - 2026-11-12
 

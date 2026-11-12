@@ -254,6 +254,83 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// For an album a gap-filling catalogue has, unknown by its ID: the core catalogue's album by the same artist with the
+    /// same title, so there aren't two. Only when there's one. Null for the core catalogue's own albums.
+    /// </summary>
+    private async Task<Album?> SameAlbumAsync(Guid artistId, string title, string provider, CancellationToken ct)
+    {
+        var indexes = await IndexesAsync(ct);
+        if (indexes.Count == 0 || indexes[0].Provider == provider || TextMatch.NormaliseAlbum(title) is not { Length: > 0 } key)
+            return null;
+        var core = indexes[0].Provider;
+        var candidates = new List<Album>();
+        foreach (var album in await AlbumsTitledAsync(artistId, key, ct))
+            if (await HasIdAsync(EntityKind.Album, album.Id, core, ct) && !await HasIdAsync(EntityKind.Album, album.Id, provider, ct))
+                candidates.Add(album);
+        return candidates.Count == 1 ? candidates[0] : null;
+    }
+
+    /// <summary>The artist's albums, saved or about to be, with this normalised title.</summary>
+    private async Task<List<Album>> AlbumsTitledAsync(Guid artistId, string key, CancellationToken ct)
+    {
+        var saved = await db.Albums.Where(a => a.ArtistId == artistId).ToListAsync(ct);
+        return saved.Concat(Tracked(db.Albums).Where(a => a.ArtistId == artistId)).DistinctBy(a => a.Id)
+            .Where(a => TextMatch.NormaliseAlbum(a.Title) == key).ToList();
+    }
+
+    /// <summary>
+    /// Albums only a gap-filling catalogue knows that are the core catalogue's album by the same artist with the same
+    /// title, made before imports looked for it: their IDs, editions and requests move to it, and they're removed. The
+    /// files on their editions stay on those editions, now the album's. The number merged.
+    /// </summary>
+    public async Task<int> MergeDuplicateAlbumsAsync(CancellationToken ct)
+    {
+        var indexes = await IndexesAsync(ct);
+        if (indexes.Count == 0)
+            return 0;
+        var core = indexes[0].Provider;
+        var copies = await db.Albums
+            .Where(a => db.Crosswalk.Any(m => m.EntityKind == EntityKind.Album && m.EntityId == a.Id)
+                        && !db.Crosswalk.Any(m => m.EntityKind == EntityKind.Album && m.EntityId == a.Id && m.Provider == core))
+            .ToListAsync(ct);
+        var merged = 0;
+        foreach (var copy in copies)
+        {
+            if (TextMatch.NormaliseAlbum(copy.Title) is not { Length: > 0 } key)
+                continue;
+            var providers = await db.Crosswalk.Where(m => m.EntityKind == EntityKind.Album && m.EntityId == copy.Id).Select(m => m.Provider).Distinct().ToListAsync(ct);
+            var candidates = new List<Album>();
+            foreach (var album in await AlbumsTitledAsync(copy.ArtistId, key, ct))
+                if (album.Id != copy.Id && await HasIdAsync(EntityKind.Album, album.Id, core, ct)
+                    && !await db.Crosswalk.AnyAsync(m => m.EntityKind == EntityKind.Album && m.EntityId == album.Id && providers.Contains(m.Provider), ct))
+                    candidates.Add(album);
+            if (candidates.Count != 1)
+                continue;
+            await MergeAlbumAsync(copy, candidates[0], ct);
+            merged++;
+        }
+        if (merged > 0)
+            logger.LogInformation("Merged {Count} albums a gap-filling catalogue had added twice", merged);
+        return merged;
+    }
+
+    private async Task MergeAlbumAsync(Album from, Album into, CancellationToken ct)
+    {
+        await db.Crosswalk.Where(m => m.EntityKind == EntityKind.Album && m.EntityId == from.Id).ExecuteUpdateAsync(u => u.SetProperty(m => m.EntityId, into.Id), ct);
+        await db.Editions.Where(e => e.AlbumId == from.Id).ExecuteUpdateAsync(u => u.SetProperty(e => e.AlbumId, into.Id), ct);
+        await db.Requests.Where(r => r.TargetKind == EntityKind.Album && r.TargetId == from.Id).ExecuteUpdateAsync(u => u.SetProperty(r => r.TargetId, into.Id), ct);
+        await db.Artwork.Where(a => a.EntityKind == EntityKind.Album && a.EntityId == from.Id).ExecuteDeleteAsync(ct);
+        // As with artists: what the context holds moves too, and the album is deleted directly, keeping its editions.
+        foreach (var edition in Tracked(db.Editions).Where(e => e.AlbumId == from.Id))
+            edition.AlbumId = into.Id;
+        foreach (var mapping in Tracked(db.Crosswalk).Where(m => m.EntityKind == EntityKind.Album && m.EntityId == from.Id))
+            mapping.EntityId = into.Id;
+        db.Entry(from).State = EntityState.Detached;
+        await db.Albums.Where(a => a.Id == from.Id).ExecuteDeleteAsync(ct);
+        await db.SaveChangesAsync(ct);
+    }
+
     /// <summary>Of artists with the same name, the one it's clear an artist with albums of these titles is.</summary>
     private async Task<Artist?> PickAsync(IReadOnlyList<Artist> candidates, IReadOnlyCollection<string> albumTitles, CancellationToken ct)
     {
@@ -352,6 +429,11 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
         if (album is null)
         {
             artist ??= await ArtistForRefAsync(source.Artist, source.Title, ct);
+            if (await SameAlbumAsync(artist.Id, source.Title, source.Id.Provider, ct) is { } same)
+            {
+                await MapAsync(EntityKind.Album, same.Id, source.Id, ct);
+                return same;
+            }
             album = new Album { ArtistId = artist.Id, Title = source.Title, ArtistCredit = source.ArtistCredit };
             db.Albums.Add(album);
         }
@@ -413,6 +495,13 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
         }
 
         var imported = await ImportAlbumAsync(detail.Album, null, ct);
+        // The same album as the core catalogue's: it keeps the editions it has from there.
+        if (await OutrankedAsync(EntityKind.Album, imported.Id, id.Provider, ct))
+        {
+            await db.SaveChangesAsync(ct);
+            await RefreshEditionsAsync(imported, false, ct);
+            return imported;
+        }
         await ImportEditionsAsync(imported, detail.Editions, ct);
         await db.SaveChangesAsync(ct);
         return imported;

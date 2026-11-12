@@ -12,14 +12,14 @@ namespace Melodex.Core.Tests;
 
 /// <summary>
 /// With Deezer filling gaps after MusicBrainz, an artist Deezer names is the one MusicBrainz has, when it's clear which,
-/// rather than a second one of the same name.
+/// rather than a second one of the same name; and so is an album it has.
 /// </summary>
-public sealed class DuplicateArtistTests : IDisposable
+public sealed class DuplicateCatalogueTests : IDisposable
 {
     private readonly string _dataPath = Path.Combine(Path.GetTempPath(), "melodex-tests", Guid.NewGuid().ToString("N"));
     private readonly WebApplicationFactory<Program> _factory;
 
-    public DuplicateArtistTests()
+    public DuplicateCatalogueTests()
     {
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseSetting("Melodex:DataPath", _dataPath));
         using var scope = _factory.Services.CreateScope();
@@ -120,5 +120,53 @@ public sealed class DuplicateArtistTests : IDisposable
         Assert.Equal(radiohead.Id, await catalogue.FindAsync(EntityKind.Artist, new ProviderId(Providers.Deezer, "399"), default));
         Assert.Equal(radiohead.Id, (await db.Requests.SingleAsync()).TargetId);
         Assert.NotNull(await db.Artists.FindAsync(alaskan.Id));
+    }
+
+    [Fact]
+    public async Task An_album_from_Deezer_is_the_one_MusicBrainz_has_by_the_same_artist()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MelodexDbContext>();
+        var catalogue = scope.ServiceProvider.GetRequiredService<CatalogueService>();
+        var muse = MusicBrainzArtist(db, "Muse", "mb-uk", inLibrary: true, "The Resistance");
+        await db.SaveChangesAsync();
+        var resistance = await db.Albums.SingleAsync(a => a.ArtistId == muse.Id);
+        db.Crosswalk.Add(new ProviderIdMapping { EntityKind = EntityKind.Album, EntityId = resistance.Id, Provider = Providers.MusicBrainz, Value = "rg-resistance" });
+        await db.SaveChangesAsync();
+
+        var album = await catalogue.ImportAlbumAsync(DeezerAlbum("1", "The Resistance", "705", "Muse"), null, default);
+        await db.SaveChangesAsync();
+
+        Assert.Equal(resistance.Id, album.Id);
+        Assert.Single(await db.Albums.Where(a => a.Title == "The Resistance").ToListAsync());
+        Assert.Equal(resistance.Id, await catalogue.FindAsync(EntityKind.Album, new ProviderId(Providers.Deezer, "1"), default));
+    }
+
+    [Fact]
+    public async Task An_album_added_twice_before_is_merged_with_its_editions_and_files()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MelodexDbContext>();
+        var catalogue = scope.ServiceProvider.GetRequiredService<CatalogueService>();
+        var muse = MusicBrainzArtist(db, "Muse", "mb-uk", inLibrary: true, "The Resistance");
+        await db.SaveChangesAsync();
+        var resistance = await db.Albums.SingleAsync(a => a.ArtistId == muse.Id);
+        db.Crosswalk.Add(new ProviderIdMapping { EntityKind = EntityKind.Album, EntityId = resistance.Id, Provider = Providers.MusicBrainz, Value = "rg-resistance" });
+        // The Deezer copy, with its one edition and a file matched to it.
+        var copy = new Album { ArtistId = muse.Id, Title = "The Resistance", ArtistCredit = "Muse" };
+        var edition = new Edition { AlbumId = copy.Id, Title = "The Resistance", TrackCount = 1 };
+        var track = new Track { ArtistId = muse.Id, Title = "Uprising", ArtistCredit = "Muse" };
+        db.AddRange(copy, edition, track, new EditionTrack { EditionId = edition.Id, Disc = 1, Position = 1, Number = "1", Title = "Uprising", TrackId = track.Id });
+        db.Crosswalk.Add(new ProviderIdMapping { EntityKind = EntityKind.Album, EntityId = copy.Id, Provider = Providers.Deezer, Value = "1" });
+        db.LibraryFiles.Add(new LibraryFile { Path = "Muse/The Resistance/01 Uprising.flac", TrackId = track.Id, EditionId = edition.Id, ArtistId = muse.Id, MatchedAt = DateTime.UtcNow });
+        await db.SaveChangesAsync();
+
+        await catalogue.MergeDuplicateAlbumsAsync(default);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal([resistance.Id], await db.Albums.Where(a => a.Title == "The Resistance").Select(a => a.Id).ToListAsync());
+        Assert.Equal(resistance.Id, (await db.Editions.SingleAsync(e => e.Id == edition.Id)).AlbumId);
+        Assert.Equal(edition.Id, (await db.LibraryFiles.SingleAsync()).EditionId);
+        Assert.Equal(resistance.Id, await catalogue.FindAsync(EntityKind.Album, new ProviderId(Providers.Deezer, "1"), default));
     }
 }
