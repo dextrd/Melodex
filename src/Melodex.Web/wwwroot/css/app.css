@@ -746,6 +746,8 @@ button.icon.play svg { fill: currentColor; }
 .np-from .muted { text-transform: uppercase; letter-spacing: .06em; font-size: .72rem; margin-right: .4rem; }
 .np-from a { color: var(--text); font-weight: 600; }
 .now-playing button.icon:hover:not(:disabled), .now-playing button.icon.on { background: color-mix(in srgb, var(--text) 12%, transparent); }
+/* The play button keeps its colour: a phone counts a tapped button as under the pointer until something else is (#82). */
+.now-playing button.icon.play:hover:not(:disabled) { background: var(--accent); }
 .now-playing button.icon.on { color: var(--accent); }
 .np-body {
     flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2.5rem;
