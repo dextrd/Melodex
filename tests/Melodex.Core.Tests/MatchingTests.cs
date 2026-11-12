@@ -174,6 +174,7 @@ public class PluginCatalogTests
                 Melodex.Plugins.Navidrome.NavidromeArtworkFactory.PluginId, Melodex.Plugins.Navidrome.NavidromeConnectorFactory.PluginId,
                 Melodex.Plugins.FanartTv.FanartTvFactory.PluginId, Melodex.Plugins.Wikimedia.WikimediaCommonsFactory.PluginId,
                 Melodex.Plugins.Deezer.DeezerFactory.PluginId, Melodex.Plugins.Deezer.DeezerIndexFactory.PluginId, Melodex.Plugins.Lrclib.LrclibFactory.PluginId,
+                Melodex.Plugins.Plex.PlexConnectorFactory.PluginId,
             ], Catalog(root).All.Select(p => p.Manifest.Id));
         }
         finally

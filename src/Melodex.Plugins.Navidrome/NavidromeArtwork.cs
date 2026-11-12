@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Melodex.Contracts.Catalogue;
 using Melodex.Contracts.Plugins;
+using Melodex.Contracts.Plugins.Connectors;
 using Melodex.Contracts.Plugins.Artwork;
 
 namespace Melodex.Plugins.Navidrome;
@@ -63,8 +64,8 @@ public sealed class NavidromeArtwork(PluginContext context) : IArtworkPlugin
             var known = NavidromeConnector.Text(album, "musicBrainzId");
             if (releases.Count > 0 && !string.IsNullOrEmpty(known))
                 continue;
-            if (NavidromeConnector.Same(NavidromeConnector.Text(album, "name"), query.Title)
-                && (query.ArtistName is null || NavidromeConnector.Same(NavidromeConnector.Text(album, "artist"), query.ArtistName)))
+            if (TrackMatching.SameText(NavidromeConnector.Text(album, "name"), query.Title)
+                && (query.ArtistName is null || TrackMatching.SameText(NavidromeConnector.Text(album, "artist"), query.ArtistName)))
                 return album;
         }
         return null;

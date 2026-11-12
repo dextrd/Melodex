@@ -1,7 +1,7 @@
 @using Melodex.Contracts.Plugins
 @inject MelodexClient Api
 
-@* Setup's music step: whether Melodex can read the music folder, and connecting Navidrome. *@
+@* Setup's music step: whether Melodex can read the music folder, and connecting a media server. *@
 @if (_status is null)
 {
     <Loading />
@@ -27,18 +27,25 @@ else
     </div>
 
     <div class="card setup-card">
-        <h2>Navidrome</h2>
-        <p>Melodex tells Navidrome to scan when music arrives, shows covers from your own files through it, and can keep each person's playlists the same in both.</p>
+        <h2>Media server</h2>
+        <p>The server you listen through. Melodex tells it to scan when music arrives, and finds the music there.</p>
         @if (_status.MediaServer)
         {
             <p><span class="badge owned">Connected</span> Change it under Plugins, the next step.</p>
         }
-        else if (_navidrome is { } navidrome)
+        else if (_server is { } server)
         {
-            <SchemaForm @ref="_form" Schema="navidrome.Manifest.SettingsSchema" />
+            @if (_servers.Count > 1)
+            {
+                <Segmented T="string" Value="server.Manifest.Id" Options="_servers.Select(s => (s.Manifest.Id, s.Manifest.Name, (string?)null)).ToList()"
+                           OnChange="Choose" Label="Media server" Disabled="_busy" />
+            }
+            <p class="muted small">@server.Manifest.Description</p>
+            @* Keyed, so another server's form starts afresh. *@
+            <SchemaForm @key="server.Manifest.Id" @ref="_form" Schema="server.Manifest.SettingsSchema" />
             @if (_error is not null) { <p class="error">@_error</p> }
             <div class="toolbar">
-                <span class="muted small">No Navidrome? Skip this: Melodex still files your music.</span>
+                <span class="muted small">No media server? Skip this: Melodex still files your music.</span>
                 <span class="spacer"></span>
                 <button class="primary" disabled="@_busy" @onclick="ConnectAsync">
                     @if (_busy) { <span class="spinner"></span> }Connect
@@ -52,15 +59,27 @@ else
     private const string NavidromeId = "melodex.connector.navidrome";
 
     private SetupStatus? _status;
-    private AvailablePlugin? _navidrome;
+    // The media servers Melodex has a plugin for, Navidrome first, and the one being set up.
+    private List<AvailablePlugin> _servers = [];
+    private AvailablePlugin? _server;
     private SchemaForm? _form;
     private bool _busy;
     private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
-        _navidrome = (await Api.ListAvailablePluginsAsync()).FirstOrDefault(p => p.Manifest.Id == NavidromeId && p.Problem is null);
+        _servers = (await Api.ListAvailablePluginsAsync())
+            .Where(p => p.Manifest is { Type: PluginType.Connector, UsesSettingsOf: null } && p.Problem is null)
+            .OrderBy(p => p.Manifest.Id != NavidromeId).ThenBy(p => p.Manifest.Name)
+            .ToList();
+        _server = _servers.FirstOrDefault();
         await CheckAsync();
+    }
+
+    private void Choose(string id)
+    {
+        _server = _servers.First(s => s.Manifest.Id == id);
+        _error = null;
     }
 
     private async Task CheckAsync()
@@ -82,13 +101,14 @@ else
         _error = null;
         try
         {
-            var added = await Api.AddPluginAsync(new AddPlugin(PluginId: NavidromeId, Settings: _form!.ToJson()));
+            var server = _server!.Manifest;
+            var added = await Api.AddPluginAsync(new AddPlugin(PluginId: server.Id, Settings: _form!.ToJson()));
             var tested = await Api.TestPluginAsync(added.Id);
             if (tested.Health == HealthStatus.Unhealthy)
             {
                 // Keep what was typed, to fix and try again.
                 await Api.RemovePluginAsync(added.Id);
-                _error = $"Couldn't reach Navidrome: {tested.HealthMessage}";
+                _error = $"Couldn't reach {server.Name}: {tested.HealthMessage}";
             }
             _status = await Api.GetSetupAsync();
         }
