@@ -819,7 +819,7 @@ tr.playing td:nth-child(2) { color: var(--accent); font-weight: 600; }
 /* With a chevron that opens it: an album's songs, or how a song was fetched (#64). */
 .listen-item.toggled { grid-template-columns: 1rem 3rem minmax(0, 1fr) auto; padding-left: .6rem; }
 .listen-toggle { display: grid; place-items: center; width: 1.5rem; height: 2rem; margin: 0 -.25rem; padding: 0; border: none; background: none; cursor: pointer; }
-.listen-album-title { color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+button.link.listen-album-title { display: block; max-width: 100%; color: var(--text); text-align: left; font: inherit; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .listen-album-songs { border-top: 1px solid var(--border); background: color-mix(in srgb, var(--text) 3%, transparent); }
 .listen-album-songs .listen-song + .listen-song { border-top: 1px solid var(--border); }
 .listen-number { text-align: center; font-variant-numeric: tabular-nums; }
