@@ -4,6 +4,12 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-12
+
+Media servers: Plex and Jellyfin can take Navidrome's place, one at a time, and each user keeps a login for each.
+Plugins of every kind can be your own. After updating, check **Settings → Plugins**: if more than one media server was
+turned on, only the one in use stays on.
+
 ### Added
 
 - Jellyfin can be the media server. Melodex tells it which folders new music went into, finds each song there by its
