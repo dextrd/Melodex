@@ -20,7 +20,8 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 - The full-screen player's play button keeps the theme's colour after it's tapped on a phone, rather than turning grey
   until the player is opened again (#82).
-- The spinner in the play button while a song loads is centred in it (#83).
+- Spinners are centred in the buttons they show in alone: the play button while a song loads, and the small square
+  buttons beside albums and songs while they work (#83).
 - Artists with the same name no longer get the same Deezer picture. Deezer finds an artist by their Deezer ID, or
   through Wikidata by their MusicBrainz ID, and by name only when just one Deezer artist has it or one of them has an
   album of theirs; otherwise it offers none rather than someone else's. Artist pictures Deezer found are looked for
@@ -43,18 +44,18 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   the core's (#61).
 - The Review page's tabs fit a phone's screen, scrolling sideways with the open one in view, rather than widening the
   page so it zooms out (#80).
-
-### Removed
-
-- The **Navidrome cover art** plugin. Melodex reads your files' own covers itself, which **Use your files' cover art**
-  under **Settings** puts first, so it only did that again, and only with Navidrome. It's removed from installs that
-  had it, and the pictures it found are found again (#66).
 - Songs you have are no longer marked "On another album" on a copy of their own album that came from Deezer. An album
   Deezer has is the one MusicBrainz has by the same artist with the same title, and the copies already made are merged
   into it when Melodex starts, with the files on them (#60).
 - An album Deezer added before MusicBrainz's arrived becomes MusicBrainz's, rather than search listing it twice, and
   search lists a song once on an album that has it twice, such as two recordings of the same name, preferring the one
   you have (#60).
+
+### Removed
+
+- The **Navidrome cover art** plugin. Melodex reads your files' own covers itself, which **Use your files' cover art**
+  under **Settings** puts first, so it only did that again, and only with Navidrome. It's removed from installs that
+  had it, and the pictures it found are found again (#66).
 
 ## [1.2.0] - 2026-11-12
 
