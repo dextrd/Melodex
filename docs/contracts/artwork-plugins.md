@@ -32,7 +32,9 @@ An album in the library is shown with the cover of the edition you have; one you
 
 `ArtworkQuery` carries the subject (`artist`, `album` or `edition`), its title or name, the artist credit, and the
 IDs the core has for it, its album and its artist, as `ProviderId`s. For MusicBrainz those are the artist, release
-group and release IDs. A candidate's `key` is the plugin's own reference, such as a URL; the core only hands it back.
+group and release IDs. For an artist it also carries `albumTitles`, the titles of albums of theirs the core knows, so
+a plugin that finds artists by name can tell two with the same name apart. A candidate's `key` is the plugin's own
+reference, such as a URL; the core only hands it back.
 
 ## Capabilities
 
@@ -57,7 +59,7 @@ instance of that plugin, and only offers it once that plugin is set up.
 | Cover Art Archive | albums, editions | Set up by default. Covers MusicBrainz users have uploaded, by release and release group. |
 | Navidrome cover art | albums, editions | Not set up by default. The artwork in your own files, through Navidrome; borrows the Navidrome connection. Albums you have only. |
 | Wikimedia Commons | artists | Set up by default; no account. Freely licensed photos, found through Wikidata by MusicBrainz artist ID, so never someone else of the same name. Mostly well-known artists. |
-| Deezer | artists | Set up by default; no account. Deezer's artist pictures, found by exact name (ignoring case and accents), the most followed first, so two artists with one name can be mixed up. |
+| Deezer | artists | Set up by default; no account. Deezer's artist pictures: by the artist's Deezer ID, or their Deezer ID on Wikidata found by their MusicBrainz ID, or else by exact name (ignoring case and accents) when only one Deezer artist has it or one has an album of theirs. Otherwise none, rather than someone else's. |
 | fanart.tv | artists | Needs a free personal API key. Artist pictures by MusicBrainz artist ID. |
 
 Defaults are set up once each, after the artwork plugins already there, so removing one sticks and a new default

@@ -3,7 +3,9 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Melodex.Contracts.Catalogue;
 using Melodex.Contracts.Plugins;
+using Melodex.Contracts.Plugins.Artwork;
 using Melodex.Core.Data;
 using Melodex.Core.Plugins;
 using Melodex.Plugins.Deezer;
@@ -24,20 +26,68 @@ public sealed class ArtworkPluginTests
     }
 
     [Fact]
-    public void Deezer_takes_the_best_known_artist_of_exactly_that_name_with_a_picture()
+    public async Task Deezer_tells_artists_with_the_same_name_apart()
     {
-        var search = JsonDocument.Parse("""
-            { "data": [
-              { "name": "Bjork Tribute Band", "nb_fan": 900000, "picture_big": "https://cdn-images.dzcdn.net/images/artist/aaa/500x500.jpg" },
-              { "name": "Björk", "nb_fan": 12, "picture_big": "https://cdn-images.dzcdn.net/images/artist/bbb/500x500.jpg" },
-              { "name": "BJORK", "nb_fan": 5000, "picture_big": "https://cdn-images.dzcdn.net/images/artist//500x500-000000-80-0-0.jpg" },
-              { "name": "bjork ", "nb_fan": 400, "picture_big": "https://cdn-images.dzcdn.net/images/artist/ccc/500x500.jpg" }
-            ], "total": 4 }
-            """).RootElement;
-        // The most followed exact match has only the placeholder, so the next one's picture is used.
-        Assert.Equal("https://cdn-images.dzcdn.net/images/artist/ccc/500x500.jpg", Deezer.Pick(search, "Björk", "big"));
-        Assert.Null(Deezer.Pick(search, "Sugarcubes", "big"));
-        Assert.Null(Deezer.Pick(JsonDocument.Parse("""{ "data": [], "total": 0 }""").RootElement, "Björk", "big"));
+        const string uk = "https://cdn-images.dzcdn.net/images/artist/uk/500x500.jpg";
+        const string jp = "https://cdn-images.dzcdn.net/images/artist/jp/500x500.jpg";
+        const string fr = "https://cdn-images.dzcdn.net/images/artist/fr/500x500.jpg";
+        var deezer = new Deezer(new PluginContext
+        {
+            Settings = JsonDocument.Parse("{}").RootElement,
+            HttpClient = new HttpClient(new DeezerStandIn(new()
+            {
+                ["/artist/1"] = $$"""{"id": 1, "name": "Muse", "picture_big": "{{uk}}"}""",
+                ["/artist/2"] = $$"""{"id": 2, "name": "Muse", "picture_big": "{{jp}}"}""",
+                ["/artist/3"] = $$"""{"id": 3, "name": "Muse", "picture_big": "{{fr}}"}""",
+                ["/search/artist?limit=25&q=Muse"] = $$"""
+                    {"data": [{"id": 1, "name": "Muse", "nb_fan": 9000000, "picture_big": "{{uk}}"},
+                              {"id": 2, "name": "MUSE", "nb_fan": 300, "picture_big": "{{jp}}"},
+                              {"id": 3, "name": "Muse", "nb_fan": 40, "picture_big": "{{fr}}"},
+                              {"id": 4, "name": "Muse Tribute", "nb_fan": 50, "picture_big": "https://cdn-images.dzcdn.net/images/artist/x/500x500.jpg"}]}
+                    """,
+                ["/search/artist?limit=25&q=Bjork"] = """
+                    {"data": [{"id": 9, "name": "Björk", "nb_fan": 12, "picture_big": "https://cdn-images.dzcdn.net/images/artist//500x500-000000-80-0-0.jpg"}]}
+                    """,
+                ["/artist/1/albums?limit=100"] = """{"data": [{"title": "The Resistance"}, {"title": "Absolution"}]}""",
+                ["/artist/2/albums?limit=100"] = """{"data": [{"title": "Hikari"}]}""",
+                ["/artist/3/albums?limit=100"] = """{"data": [{"title": "Nuages lents"}]}""",
+                // Wikidata: the French Muse's MusicBrainz ID leads to their Deezer ID.
+                ["/w/api.php?format=json&action=query&list=search&srnamespace=0&srlimit=1&srsearch=haswbstatement%3AP434%3Dmb-fr"] =
+                    """{"query": {"search": [{"title": "Q3"}]}}""",
+                ["/w/api.php?format=json&action=wbgetclaims&property=P2722&entity=Q3"] =
+                    """{"claims": {"P2722": [{"rank": "normal", "mainsnak": {"datavalue": {"value": "3"}}}]}}""",
+            })),
+            LoggerFactory = NullLoggerFactory.Instance,
+            DataDirectory = Path.GetTempPath(),
+        });
+        async Task<string?> PictureAsync(string name, ProviderId[] ids, params string[] albums) =>
+            (await deezer.FindAsync(new ArtworkQuery(ArtworkSubject.Artist, name, null, ids, [], [], albums), CancellationToken.None)).SingleOrDefault()?.Key;
+
+        // By their Deezer ID, even when the best known Muse has the same name.
+        Assert.Equal(jp, await PictureAsync("Muse", [new(Providers.Deezer, "2")]));
+        // By their MusicBrainz ID, through Wikidata.
+        Assert.Equal(fr, await PictureAsync("Muse", [new(Providers.MusicBrainz, "mb-fr")]));
+        // By name, only when one of them has one of their albums.
+        Assert.Equal(uk, await PictureAsync("Muse", [new(Providers.MusicBrainz, "mb-uk")], "The Resistance"));
+        Assert.Equal(jp, await PictureAsync("Muse", [], "hikari"));
+        Assert.Null(await PictureAsync("Muse", [], "Something Else"));
+        Assert.Null(await PictureAsync("Muse", []));
+        // The only artist of that name, but with Deezer's placeholder, has none.
+        Assert.Null(await PictureAsync("Bjork", []));
+    }
+
+    /// <summary>Deezer and Wikidata answering only what the test gives them.</summary>
+    private sealed class DeezerStandIn(Dictionary<string, string> answers) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var key = request.RequestUri!.PathAndQuery;
+            var body = answers.GetValueOrDefault(key) ?? (request.RequestUri.Host == "api.deezer.com"
+                ? """{"error": {"type": "DataException", "message": "no data", "code": 800}}"""
+                : """{"query": {"search": []}}""");
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                { RequestMessage = request, Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json") });
+        }
     }
 
     [Fact]

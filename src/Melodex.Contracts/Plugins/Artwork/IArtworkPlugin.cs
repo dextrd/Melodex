@@ -42,13 +42,18 @@ public enum ArtworkSubject
 /// <param name="Ids">The subject's IDs: for MusicBrainz, the artist, release group or release ID.</param>
 /// <param name="AlbumIds">For an edition, its album's IDs, such as the MusicBrainz release group.</param>
 /// <param name="ArtistIds">For an album or edition, its artist's IDs.</param>
+/// <param name="AlbumTitles">
+/// For an artist, the titles of albums of theirs the core knows, so a plugin that finds artists by name can tell two
+/// with the same name apart. Empty for albums and editions, and from older cores.
+/// </param>
 public sealed record ArtworkQuery(
     ArtworkSubject Subject,
     string Title,
     string? ArtistName,
     IReadOnlyList<ProviderId> Ids,
     IReadOnlyList<ProviderId> AlbumIds,
-    IReadOnlyList<ProviderId> ArtistIds);
+    IReadOnlyList<ProviderId> ArtistIds,
+    IReadOnlyList<string>? AlbumTitles = null);
 
 /// <summary>An image a plugin can download.</summary>
 /// <param name="Key">The plugin's own reference to it, such as a URL; the core only hands it back.</param>
