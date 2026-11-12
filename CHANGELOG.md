@@ -4,6 +4,12 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ## [Unreleased]
 
+### Added
+
+- Downloads from the same album show as one, with how its songs stand; open it for its songs in the album's order.
+  Open a song to see how it was fetched, as on the Activity page. An album's songs can be played, queued, added to
+  your library or deleted at once (#64).
+
 ### Changed
 
 - Deezer comes before Wikimedia Commons among the artwork plugins, as it has artists' own photos where Wikimedia often
