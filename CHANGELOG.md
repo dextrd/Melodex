@@ -23,6 +23,12 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   to, as **Listen now** does for the whole album, even on an album you have none of. The tracks from it on are fetched
   first. Before, only the tracks you have were queued, and a track you don't have played on its own (#63).
 
+### Removed
+
+- The **Navidrome cover art** plugin. Melodex reads your files' own covers itself, which **Use your files' cover art**
+  under **Settings** puts first, so it only did that again, and only with Navidrome. It's removed from installs that
+  had it, and the pictures it found are found again (#66).
+
 ## [1.2.0] - 2026-11-12
 
 Media servers: Plex and Jellyfin can take Navidrome's place, one at a time, and each user keeps a login for each.

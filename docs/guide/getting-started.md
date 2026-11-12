@@ -11,7 +11,7 @@ with them, and everything in it can be changed later under **Settings**. Until t
    **Remember me** to stay signed in on that browser for 30 days.
 2. **Music.** Melodex checks it can read your music folder and counts what's there; if it finds nothing, check
    `MUSIC_PATH` and the folder's permissions. Then your media server, Navidrome, Jellyfin or Plex: Melodex tells it to
-   scan when music arrives. For Navidrome, which also shows the covers from your own files, give its address and a Navidrome
+   scan when music arrives. For Navidrome, give its address and a Navidrome
    **admin** username and password (only admins can start scans). For Jellyfin, give its address and an API key (see
    [Jellyfin](plugins.md#jellyfin)); for Plex, its address and a Plex token (see [Plex](plugins.md#plex)).
 3. **Plugins.** These start as the MusicBrainz catalogue, YouTube Music (yt-dlp), Cover Art Archive, Wikimedia
