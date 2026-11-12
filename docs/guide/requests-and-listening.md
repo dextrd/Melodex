@@ -151,6 +151,15 @@ blur of itself, with a visualiser that moves with the music, and beside it, eith
 The visualiser can be hidden, the browser's own full screen turned on, and playing stopped, from the buttons at the
 top. Escape closes it. The volume and whether the visualiser shows are kept in this browser.
 
+### Gapless playback
+
+Songs from the same album run into each other with no pause between them, as on the record: a live album, a DJ mix,
+a symphony. The next song in the queue is loaded while this one plays, and started a few hundredths of a second
+before it ends. **Settings → Playback** says which songs do: those from the same album (the default), every song in
+the queue, or none, which loads nothing ahead. Repeating one song, and songs still being fetched to listen to, play
+as before. An MP3 or AAC file may still have a sliver of silence its encoder added; FLAC and Opus join cleanly. A
+phone that won't start a song without a tap plays the next one the usual way.
+
 ### The visualiser
 
 The visualiser's bars are worked out from each song by Melodex, not your browser, so the song is downloaded once: they

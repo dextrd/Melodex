@@ -595,7 +595,7 @@ public static class LibraryEndpoints
         settings.MapPut("/playback", async (SavePlayback value, SettingsService s, TaskQueue queue, CancellationToken ct) =>
             {
                 var before = (await s.GetPlaybackAsync(ct)).Visualiser;
-                await s.SavePlaybackAsync(new PlaybackSettings { Visualiser = value.Visualiser }, ct);
+                await s.SavePlaybackAsync(new PlaybackSettings { Visualiser = value.Visualiser, Gapless = value.Gapless }, ct);
                 if (value.DeleteBarsFiles)
                     await queue.EnqueueAsync(BarsTask.TaskKind, BarsTask.Delete, ct);
                 else if (value.Visualiser == VisualiserBars.WhenMatching && before != VisualiserBars.WhenMatching)
@@ -603,7 +603,7 @@ public static class LibraryEndpoints
                 return Results.NoContent();
             })
             .WithName("SavePlaybackSettings")
-            .WithSummary("Whether there's a visualiser, and when its bars are made. Made when matching, every song gets them in a .bars file beside it, "
+            .WithSummary("Which songs play without a gap between them, whether there's a visualiser, and when its bars are made. Made when matching, every song gets them in a .bars file beside it, "
                          + "starting now; with deleteBarsFiles, those files are deleted.");
 
         settings.MapGet("/artists/{id:guid}/showing", async (Guid id, SettingsService s, MelodexDbContext db, CancellationToken ct) =>

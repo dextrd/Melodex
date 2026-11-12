@@ -13,10 +13,25 @@ public enum VisualiserBars
     Off,
 }
 
+/// <summary>Which songs run into each other with no gap between them.</summary>
+public enum GaplessPlayback
+{
+    /// <summary>None: each song starts once the one before has ended and the next has loaded.</summary>
+    Off,
+
+    /// <summary>One song after another from the same album, as the record plays them.</summary>
+    SameAlbum,
+
+    /// <summary>Every song after another in the queue.</summary>
+    Always,
+}
+
 /// <summary>How music is played.</summary>
 public sealed record PlaybackSettings
 {
     public VisualiserBars Visualiser { get; init; } = VisualiserBars.OnDemand;
+
+    public GaplessPlayback Gapless { get; init; } = GaplessPlayback.SameAlbum;
 }
 
 /// <summary>Playback's settings, with what bars beside every song would take.</summary>
@@ -28,4 +43,4 @@ public sealed record PlaybackStatus(PlaybackSettings Settings, int Songs, long E
 
 /// <summary>Playback's settings to save.</summary>
 /// <param name="DeleteBarsFiles">Delete the .bars files beside the library's songs too.</param>
-public sealed record SavePlayback(VisualiserBars Visualiser, bool DeleteBarsFiles = false);
+public sealed record SavePlayback(VisualiserBars Visualiser, bool DeleteBarsFiles = false, GaplessPlayback Gapless = GaplessPlayback.SameAlbum);

@@ -11,6 +11,10 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   takes the visualiser away. Choosing to keep them beside songs says how much room they'd take first; leaving it asks
   whether to delete them (#89).
 
+- Gapless playback: songs from the same album run into each other with no pause, as the record plays them. The next
+  song is loaded while this one plays and started as it ends. Choose under **Settings → Playback** whether it's songs
+  from the same album (the default), every song, or none (#1).
+
 ### Changed
 
 - The visualiser's bars are made by Melodex rather than your browser, which no longer downloads each song a second

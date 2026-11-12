@@ -19,7 +19,8 @@ public sealed class BarsEndpointTests(RequestFixture fixture)
         Assert.Contains($"library/files/{track.FileId}/bars?", url);
         // As an audio element's would be: signed, without a login.
         using var http = fixture.Factory.CreateClient();
-        Assert.Equal(VisualiserBars.OnDemand, (await Api.GetPlaybackAsync()).Visualiser);
+        var playback = await Api.GetPlaybackAsync();
+        Assert.Equal((VisualiserBars.OnDemand, GaplessPlayback.SameAlbum), (playback.Visualiser, playback.Gapless));
 
         using (var bars = await http.GetAsync(url))
         {
@@ -35,8 +36,9 @@ public sealed class BarsEndpointTests(RequestFixture fixture)
 
         try
         {
-            await Api.SavePlaybackSettingsAsync(new SavePlayback(VisualiserBars.Off));
-            Assert.Equal(VisualiserBars.Off, (await Api.GetPlaybackAsync()).Visualiser);
+            await Api.SavePlaybackSettingsAsync(new SavePlayback(VisualiserBars.Off, Gapless: GaplessPlayback.Always));
+            playback = await Api.GetPlaybackAsync();
+            Assert.Equal((VisualiserBars.Off, GaplessPlayback.Always), (playback.Visualiser, playback.Gapless));
             using var off = await http.GetAsync(url);
             Assert.Equal(HttpStatusCode.NotFound, off.StatusCode);
             var status = await Api.GetPlaybackSettingsAsync();

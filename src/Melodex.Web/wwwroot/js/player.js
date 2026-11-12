@@ -1,17 +1,23 @@
-// The one audio element behind the player bar. Player.cs drives it and hears back about time, ends and errors.
-let audio;
+// The audio element behind the player bar. Player.cs drives it and hears back about time, ends and errors. A second
+// one waits beside it with the next song loaded, while that runs on from this one with no gap (#1); as this one ends,
+// that one starts, and they swap places.
+let audio, spare;
 let player;
 let second = -1;
+// The song loaded in the spare, and what's said of it once it plays: { token, meta }.
+let prepared = null;
+// Watching the last moments of a song, to start the next exactly as it ends; and a start in progress.
+let watching = 0, handing = null;
+// How far ahead of the end the next song is started, to make up for the moment it takes to begin.
+const LEAD = 0.04;
 
-export function init(dotnet) {
-    player = dotnet;
-    if (audio)
-        return;
-    document.addEventListener("keydown", shortcut);
-    audio = new Audio();
-    audio.preload = "auto";
-    audio.volume = storedVolume();
-    audio.addEventListener("timeupdate", () => {
+function element() {
+    const el = new Audio();
+    el.preload = "auto";
+    el.volume = storedVolume();
+    // Only the one playing is heard from: the spare loading or the one just finished say nothing.
+    const on = (name, handler) => el.addEventListener(name, e => { if (el === audio) handler(e); });
+    on("timeupdate", () => {
         // While seeking, the time can still be the old one, which would put the seek bar back.
         if (audio.seeking)
             return;
@@ -21,21 +27,45 @@ export function init(dotnet) {
             second = now;
             player.invokeMethodAsync("OnTime", audio.currentTime, Number.isFinite(audio.duration) ? audio.duration : 0);
         }
+        if (prepared && !watching && Number.isFinite(audio.duration) && audio.duration - audio.currentTime < 1.5)
+            watch();
     });
     // Where a seek landed, at once, which may not be quite where it was asked for; the lyrics jump there too.
-    audio.addEventListener("seeked", () => {
+    on("seeked", () => {
         second = Math.floor(audio.currentTime);
         player.invokeMethodAsync("OnTime", audio.currentTime, Number.isFinite(audio.duration) ? audio.duration : 0);
         if (lyrics?.isConnected)
             light(true);
     });
-    audio.addEventListener("ended", () => player.invokeMethodAsync("OnEnded"));
-    audio.addEventListener("playing", () => player.invokeMethodAsync("OnPlaying", true));
-    audio.addEventListener("pause", () => player.invokeMethodAsync("OnPlaying", false));
-    audio.addEventListener("error", () => {
+    on("ended", () => {
+        unwatch();
+        // A start of the next one still going decides: on its way, it's played; refused, it's as if there were none.
+        if (handing)
+            handing.then(started => { if (!started) player.invokeMethodAsync("OnEnded"); });
+        else
+            player.invokeMethodAsync("OnEnded");
+    });
+    on("playing", () => player.invokeMethodAsync("OnPlaying", true));
+    on("pause", () => { if (!audio.ended) player.invokeMethodAsync("OnPlaying", false); });
+    on("error", () => {
         if (audio.getAttribute("src"))
             player.invokeMethodAsync("OnError", audio.error?.message || "The file couldn't be played.");
     });
+    if ("mediaSession" in navigator) {
+        // Said outright, so the phone's controls show the music as it is.
+        on("playing", () => navigator.mediaSession.playbackState = "playing");
+        on("pause", () => navigator.mediaSession.playbackState = "paused");
+    }
+    return el;
+}
+
+export function init(dotnet) {
+    player = dotnet;
+    if (audio)
+        return;
+    document.addEventListener("keydown", shortcut);
+    audio = element();
+    spare = element();
     if ("mediaSession" in navigator) {
         // Media keys, and the lock screen on a phone.
         navigator.mediaSession.setActionHandler("play", () => audio.play());
@@ -45,6 +75,79 @@ export function init(dotnet) {
         // Whether it's playing is left to the phone, which follows the music itself: told outright, an iPhone showed it
         // paused as it started, and held on to it after stop (#94).
     }
+}
+
+function setMetadata(meta) {
+    if ("mediaSession" in navigator && "MediaMetadata" in window)
+        navigator.mediaSession.metadata = meta ? new MediaMetadata({
+            title: meta.title, artist: meta.artist, album: meta.album ?? "",
+            artwork: meta.cover ? [{ src: new URL(meta.cover, document.baseURI).href }] : [],
+        }) : null;
+}
+
+/** Loads the next song into the spare, to start as this one ends. */
+export function prepare(url, meta, token) {
+    prepared = { token, meta };
+    if (spare.getAttribute("src") !== url) {
+        spare.src = url;
+        spare.load();
+    }
+}
+
+/** Forgets the song loaded ahead: the queue has changed, or it's no longer to run on from this one. */
+export function unprepare() {
+    prepared = null;
+    unwatch();
+    if (spare.getAttribute("src")) {
+        spare.removeAttribute("src");
+        spare.load();
+    }
+}
+
+// Close to the end, the time is checked often enough to start the next song within a few hundredths of a second.
+function watch() {
+    watching = setInterval(() => {
+        if (!prepared || audio.paused || audio.seeking)
+            return;
+        const left = audio.duration - audio.currentTime;
+        // Sought back from the end: watched again when it gets there.
+        if (left > 2)
+            unwatch();
+        else if (left <= LEAD)
+            handOff();
+    }, 10);
+}
+
+function unwatch() {
+    clearInterval(watching);
+    watching = 0;
+}
+
+function handOff() {
+    unwatch();
+    const from = audio, to = spare, next = prepared;
+    prepared = null;
+    to.volume = from.volume;
+    handing = to.play().then(() => {
+        audio = to;
+        spare = from;
+        second = -1;
+        // What's left of the last one is a moment, and the next has it covered.
+        from.pause();
+        from.removeAttribute("src");
+        from.load();
+        setMetadata(next.meta);
+        if ("mediaSession" in navigator)
+            navigator.mediaSession.playbackState = "playing";
+        player.invokeMethodAsync("OnPlaying", true);
+        player.invokeMethodAsync("OnAdvanced", next.token);
+        return true;
+    }, () => {
+        // Not allowed to start it without a tap, as some phones won't: the song ends, and the next loads as it always has.
+        to.removeAttribute("src");
+        to.load();
+        return false;
+    }).finally(() => { handing = null; });
 }
 
 // Keyboard shortcuts, anywhere but a text box. The player's need something in the queue; "/" opens Search.
@@ -89,12 +192,9 @@ export function canPlay(type) {
 
 export function load(url, meta) {
     second = -1;
+    unwatch();
     audio.src = url;
-    if ("mediaSession" in navigator && "MediaMetadata" in window)
-        navigator.mediaSession.metadata = new MediaMetadata({
-            title: meta.title, artist: meta.artist, album: meta.album ?? "",
-            artwork: meta.cover ? [{ src: new URL(meta.cover, document.baseURI).href }] : [],
-        });
+    setMetadata(meta);
     play();
 }
 
@@ -115,11 +215,11 @@ export function seek(seconds) {
 }
 
 export function stop() {
+    unprepare();
     audio.pause();
     audio.removeAttribute("src");
     audio.load();
-    if ("mediaSession" in navigator)
-        navigator.mediaSession.metadata = null;
+    setMetadata(null);
 }
 
 // ---- Volume, kept per browser ----
@@ -139,8 +239,10 @@ export function getVolume() {
 
 export function setVolume(value) {
     const v = Math.min(1, Math.max(0, value));
-    if (audio)
+    if (audio) {
         audio.volume = v;
+        spare.volume = v;
+    }
     try {
         localStorage.setItem("melodex.volume", String(v));
     } catch {
