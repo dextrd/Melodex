@@ -11,8 +11,10 @@ export function init(dotnet) {
     audio = new Audio();
     audio.preload = "auto";
     audio.volume = storedVolume();
-    // The visualiser's audio graph is suspended until it's resumed by a click; playing counts.
-    audio.addEventListener("play", () => context?.resume());
+    // The visualiser's copy follows the music.
+    for (const event of ["play", "pause", "seeked", "ratechange", "loadstart"])
+        audio.addEventListener(event, follow);
+    document.addEventListener("visibilitychange", follow);
     audio.addEventListener("timeupdate", () => {
         // While seeking, the time can still be the old one, which would put the seek bar back.
         if (audio.seeking)
@@ -149,22 +151,32 @@ export function setVolume(value) {
 
 // ---- The visualiser: bars that move with the music, drawn under the cover in the full-screen player ----
 
-let context, analyser, frame = 0, canvas;
+// The bars are drawn from a copy of the music: a second element kept in step with the one you hear, sent through Web
+// Audio and out silently. Sent through Web Audio itself, the music you hear would only come out that way, and phones
+// stop Web Audio when the browser goes to the background: it would go quiet while the song carried on. The copy plays
+// only while the bars are drawn and the page is in view.
+let context, analyser, copy, frame = 0, canvas, frames = 0;
 
 export function startVisualiser(target) {
     canvas = target;
     if (!audio || !canvas)
         return;
     if (!context) {
-        // Once the audio goes through Web Audio it can't come back out, so this is only set up when first wanted, by
-        // a click. The stream is the core's own, so the analyser may read it.
+        // Set up when first wanted, by a click, so the copy may play. The stream is the core's own, so the analyser may
+        // read it.
         context = new AudioContext();
-        const source = context.createMediaElementSource(audio);
+        copy = new Audio();
+        copy.preload = "auto";
+        const source = context.createMediaElementSource(copy);
         analyser = context.createAnalyser();
         analyser.fftSize = 2048;
         analyser.smoothingTimeConstant = 0.8;
+        // Through a silent gain to the speakers, as some browsers only work out a graph that reaches them.
+        const silent = context.createGain();
+        silent.gain.value = 0;
         source.connect(analyser);
-        analyser.connect(context.destination);
+        analyser.connect(silent);
+        silent.connect(context.destination);
     }
     context.resume();
     cancelAnimationFrame(frame);
@@ -175,6 +187,9 @@ export function startVisualiser(target) {
             stopVisualiser();
             return;
         }
+        // Back in step now and then, as two elements drift.
+        if (++frames % 30 === 0)
+            follow();
         const ratio = window.devicePixelRatio || 1;
         const width = canvas.clientWidth, height = canvas.clientHeight;
         if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) {
@@ -208,11 +223,35 @@ export function startVisualiser(target) {
         }
     };
     draw();
+    follow();
+}
+
+/** Keeps the copy playing what the music is, where it is, while the bars are drawn; otherwise it's still. */
+function follow() {
+    if (!copy)
+        return;
+    const src = audio.getAttribute("src");
+    if (!frame || !src || document.hidden) {
+        copy.pause();
+        return;
+    }
+    if (copy.getAttribute("src") !== src)
+        copy.src = src;
+    copy.playbackRate = audio.playbackRate;
+    if (Math.abs(copy.currentTime - audio.currentTime) > 0.25)
+        copy.currentTime = audio.currentTime;
+    if (audio.paused)
+        copy.pause();
+    else if (copy.paused) {
+        context.resume();
+        copy.play().catch(() => {});
+    }
 }
 
 export function stopVisualiser() {
     cancelAnimationFrame(frame);
     frame = 0;
+    follow();
 }
 
 // ---- Lyrics that follow along: the line being sung is lit and kept in view ----
