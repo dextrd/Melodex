@@ -155,6 +155,10 @@ public sealed class CatalogueSearch(MelodexDbContext db, CatalogueService servic
             .Select(m => new { m.EntityId, m.Provider, m.Value }).ToListAsync(ct)).ToLookup(m => m.EntityId, m => new Contracts.Catalogue.ProviderId(m.Provider, m.Value));
         var owned = (await db.LibraryFiles.Where(f => f.TrackId != null && trackIds.Contains(f.TrackId.Value)).Select(f => f.TrackId!.Value).ToListAsync(ct)).ToHashSet();
         var summaries = (await view.GetAlbumSummariesAsync([.. albumIds.Union(tracks.Select(t => t.Album?.Id).OfType<Guid>())], ct)).ToDictionary(a => a.Id);
+        // A song on the same album twice, such as two recordings both titled the same, or one from each catalogue, is
+        // listed once: the one you have, if either.
+        tracks = tracks.GroupBy(t => (TextMatch.NormaliseTitle(t.Track.Title), TextMatch.NormaliseArtist(t.Track.ArtistCredit), t.Album?.Id))
+            .Select(g => g.OrderByDescending(t => owned.Contains(t.Track.Id)).First()).ToList();
 
         return new SearchResults(
             artists.Select(a => new SearchArtist(a.Id, a.Name, a.Disambiguation, a.InLibrary, artistProviderIds[a.Id].ToList(), LibraryView.ArtistImageUrl(a.Id))).ToList(),

@@ -210,19 +210,20 @@ app.MapFallbackToFile("index.html", new StaticFileOptions
     OnPrepareResponse = file => file.Context.Response.Headers.CacheControl = "no-cache",
 });
 
-// Artists a gap-filling catalogue added twice, before imports looked for the one the core catalogue has, are merged:
-// in the background, as there may be many to look at.
+// Artists and albums a gap-filling catalogue added twice, before imports looked for the ones the core catalogue has,
+// are merged: in the background, as there may be many to look at.
 app.Lifetime.ApplicationStarted.Register(() => _ = Task.Run(async () =>
 {
     try
     {
         using var scope = app.Services.CreateScope();
-        if (await scope.ServiceProvider.GetRequiredService<CatalogueService>().MergeDuplicateArtistsAsync(app.Lifetime.ApplicationStopping) > 0)
+        var catalogue = scope.ServiceProvider.GetRequiredService<CatalogueService>();
+        if (await catalogue.MergeDuplicateArtistsAsync(app.Lifetime.ApplicationStopping) + await catalogue.MergeDuplicateAlbumsAsync(app.Lifetime.ApplicationStopping) > 0)
             app.Services.GetRequiredService<LibraryCache>().Invalidate();
     }
     catch (Exception e) when (e is not OperationCanceledException)
     {
-        app.Logger.LogWarning(e, "Couldn't merge artists added twice");
+        app.Logger.LogWarning(e, "Couldn't merge artists and albums added twice");
     }
 }));
 

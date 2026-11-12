@@ -442,13 +442,15 @@ else
 
     private static readonly IReadOnlyList<string> AllKinds = ["artists", "albums", "tracks"];
 
+    // A song is the same one on the same album with the same title and artist, though it may be another copy of it.
     private static SearchResults Merge(SearchResults shown, SearchResults found) => new(
-        Merge(shown.Artists, found.Artists, a => a.Id), Merge(shown.Albums, found.Albums, a => a.Id), Merge(shown.Tracks, found.Tracks, t => t.Id));
+        Merge(shown.Artists, found.Artists, a => a.Id), Merge(shown.Albums, found.Albums, a => a.Id),
+        Merge(shown.Tracks, found.Tracks, t => (t.Title.Trim().ToLowerInvariant(), t.ArtistCredit.Trim().ToLowerInvariant(), t.AlbumId)));
 
-    private static List<T> Merge<T>(IReadOnlyList<T> shown, IReadOnlyList<T> found, Func<T, Guid> id)
+    private static List<T> Merge<T, TKey>(IReadOnlyList<T> shown, IReadOnlyList<T> found, Func<T, TKey> key) where TKey : notnull
     {
-        var newer = found.ToDictionary(id);
-        return [.. shown.Select(s => newer.GetValueOrDefault(id(s), s)), .. found.Where(f => shown.All(s => id(s) != id(f)))];
+        var newer = found.DistinctBy(key).ToDictionary(key);
+        return [.. shown.Select(s => newer.GetValueOrDefault(key(s), s)), .. found.Where(f => shown.All(s => !Equals(key(s), key(f))))];
     }
 
     // As you type, what Melodex already holds; when typing pauses a little longer, MusicBrainz too, and the address
