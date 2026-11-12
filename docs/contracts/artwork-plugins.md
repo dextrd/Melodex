@@ -57,7 +57,6 @@ instance of that plugin, and only offers it once that plugin is set up.
 | Plugin | Subjects | Notes |
 | --- | --- | --- |
 | Cover Art Archive | albums, editions | Set up by default. Covers MusicBrainz users have uploaded, by release and release group. |
-| Navidrome cover art | albums, editions | Not set up by default. The artwork in your own files, through Navidrome; borrows the Navidrome connection. Albums you have only. |
 | Wikimedia Commons | artists | Set up by default; no account. Freely licensed photos, found through Wikidata by MusicBrainz artist ID, so never someone else of the same name. Mostly well-known artists. |
 | Deezer | artists | Set up by default; no account. Deezer's artist pictures: by the artist's Deezer ID, or their Deezer ID on Wikidata found by their MusicBrainz ID, or else by exact name (ignoring case and accents) when only one Deezer artist has it or one has an album of theirs. Otherwise none, rather than someone else's. |
 | fanart.tv | artists | Needs a free personal API key. Artist pictures by MusicBrainz artist ID. |

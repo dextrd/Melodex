@@ -7,7 +7,7 @@
 | `src/Melodex.Contracts` | Plugin contracts: index, artwork, lyrics and media-server plugins, and the retrieval HTTP wire types |
 | `src/Melodex.Core` | The core service: public API at `/api/v1`, data model, library scan and matching, task queue |
 | `src/Melodex.Plugins.MusicBrainz` | Built-in catalogue plugins: MusicBrainz releases, at its one request a second, and Cover Art Archive covers |
-| `src/Melodex.Plugins.Navidrome` | The built-in media-server connector for Navidrome, over the Subsonic API, and its cover art from your own files |
+| `src/Melodex.Plugins.Navidrome` | The built-in media-server connector for Navidrome, over the Subsonic API |
 | `src/Melodex.Plugins.Wikimedia` | Built-in artwork plugin: artist photos from Wikimedia Commons, by MusicBrainz ID through Wikidata |
 | `src/Melodex.Plugins.Deezer` | Built-in artwork plugin: artist pictures from Deezer's public catalogue, by name |
 | `src/Melodex.Plugins.FanartTv` | Built-in artwork plugin: artist pictures from fanart.tv, with your own API key |

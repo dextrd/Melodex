@@ -6,7 +6,7 @@ Melodex is pluggable in five ways. Manage them under **Settings → Plugins**, w
 | Kind | Does | Comes with Melodex |
 | --- | --- | --- |
 | **Catalogue** | Where artists, albums and songs come from | MusicBrainz (its public server, or your own mirror), Deezer |
-| **Media server** | Told to scan when music arrives; can sync playlists, and Navidrome also lends its covers | Navidrome, Jellyfin, Plex |
+| **Media server** | Told to scan when music arrives; can sync playlists | Navidrome, Jellyfin, Plex |
 | **Retrieval** | Fetches music | YouTube Music (yt-dlp) and the inbox folder; Internet Archive, Prowlarr, Qobuz, Tidal and Bandcamp when you turn them on |
 | **Artwork** | Covers and artist pictures | Cover Art Archive, Deezer, Wikimedia Commons, fanart.tv (with your own key) |
 | **Lyrics** | The words of songs, synced where they can be | LRCLIB |
@@ -85,7 +85,6 @@ Plex is told to scan only the folders new music went into, and finds each song b
 Navidrome's alone for now:
 
 - Plex's accounts are plex.tv's rather than logins to the server, so playlists don't sync with Plex.
-- Covers from your own files come through Navidrome only.
 - An upgraded song with a new file name may be a new song to Plex, without its plays and ratings (see
   [upgrades](requests-and-listening.md#upgrades)).
 

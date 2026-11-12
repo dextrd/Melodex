@@ -89,27 +89,6 @@ public sealed class NavidromeTests
     }
 
     [Fact]
-    public void Cover_art_is_taken_from_the_same_release_or_else_an_album_of_the_same_name()
-    {
-        var albums = JsonDocument.Parse("""
-            [
-              { "id": "1", "name": "Dummy", "artist": "Portishead", "musicBrainzId": "rel-japan", "coverArt": "al-1" },
-              { "id": "2", "name": "Dummy", "artist": "Portishead", "musicBrainzId": "rel-uk", "coverArt": "al-2" },
-              { "id": "3", "name": "Dummy", "artist": "Portishead", "coverArt": "al-3" },
-              { "id": "4", "name": "Dummy", "artist": "Someone Else", "coverArt": "al-4" }
-            ]
-            """).RootElement.EnumerateArray().ToList();
-        ArtworkQuery Query(ArtworkSubject subject, params string[] ids) =>
-            new(subject, "dummy", "PORTISHEAD", [.. ids.Select(i => new ProviderId(Providers.MusicBrainz, i))], [], []);
-
-        Assert.Equal("2", NavidromeArtwork.Pick(albums, Query(ArtworkSubject.Edition, "rel-uk"))?.GetProperty("id").GetString());
-        // Another release isn't this edition however alike the names, but an untagged album of the same name may be.
-        Assert.Equal("3", NavidromeArtwork.Pick(albums, Query(ArtworkSubject.Edition, "rel-us"))?.GetProperty("id").GetString());
-        Assert.Equal("1", NavidromeArtwork.Pick(albums, Query(ArtworkSubject.Album, "rg-dummy"))?.GetProperty("id").GetString());
-        Assert.Null(NavidromeArtwork.Pick(albums[3..], Query(ArtworkSubject.Album)));
-    }
-
-    [Fact]
     public async Task Playlists_are_handled_as_their_owner_and_only_theirs_are_listed()
     {
         var (connector, server) = Create();
