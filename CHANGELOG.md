@@ -22,6 +22,13 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   it, turning the one in use off. An install with several turned on keeps the one in use. Each user's media server
   login is kept for each server, so switching back uses the login already linked, and a playlist that's on both
   finds its copy there by name instead of being made twice (#53).
+- Editing a user is one dialog with three tabs, opened with the settings button on their card: **Login**,
+  **Permissions** and **Media server accounts**, with their login on each media server that syncs playlists, in use
+  or not. One Save keeps it all, and a tab with something to fix is marked. A card shows only the Admin and You
+  chips, and what they may do as a list that opens to show the rest. **Your account** is the same three tabs, for
+  yourself (#55).
+- The playlist folder separator is now a setting of each media server that syncs playlists, rather than each
+  person's: everyone's playlists are on the same server. An existing install keeps its admin's separator (#55).
 
 ### Fixed
 

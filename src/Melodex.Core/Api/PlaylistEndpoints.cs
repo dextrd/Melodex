@@ -5,6 +5,7 @@ using Melodex.Contracts.Plugins.Connectors;
 using Melodex.Core.Access;
 using Melodex.Core.Data;
 using Melodex.Core.Playlists;
+using Melodex.Core.Plugins;
 
 namespace Melodex.Core.Api;
 
@@ -142,6 +143,47 @@ public static class PlaylistEndpoints
     // Your own media server login, and the admin's way of setting someone else's.
     private static void MapLogins(RouteGroupBuilder api)
     {
+        api.MapGet("/auth/media-servers", (HttpContext http, MelodexDbContext db, ConnectorPlugins connectors, CancellationToken ct) =>
+                AccountsAsync(Caller.Of(http).UserId, db, connectors, ct))
+            .RequireScope(Scopes.SignedIn).WithTags("Access")
+            .WithName("ListMediaServerAccounts")
+            .WithSummary("Your login on each media server that syncs playlists, the one in use or not: each keeps its own, for switching between them.")
+            .Produces<List<MediaServerAccount>>();
+
+        api.MapPut("/auth/media-servers/{serverId:guid}", (Guid serverId, LinkMediaServer body, HttpContext http, MelodexDbContext db, ConnectorPlugins connectors,
+                PlaylistSync sync, PlaylistSyncer syncer, CancellationToken ct) => LinkAccountAsync(Caller.Of(http).UserId, serverId, body, db, connectors, sync, syncer, ct))
+            .RequireScope(Scopes.SignedIn).WithTags("Access")
+            .WithName("LinkMediaServerAccount")
+            .WithSummary("Link your login on one media server, in use or not. It's checked there first, and kept encrypted.")
+            .Produces<MediaServerAccount>().ProducesValidationProblem().Produces(StatusCodes.Status404NotFound);
+
+        api.MapDelete("/auth/media-servers/{serverId:guid}", (Guid serverId, HttpContext http, MelodexDbContext db, CancellationToken ct) =>
+                UnlinkAccountAsync(Caller.Of(http).UserId, serverId, db, ct))
+            .RequireScope(Scopes.SignedIn).WithTags("Access")
+            .WithName("UnlinkMediaServerAccount")
+            .WithSummary("Forget your login on one media server. Your playlists stay in both places, but no longer change together while it's in use.")
+            .Produces(StatusCodes.Status204NoContent);
+
+        api.MapGet("/users/{id:guid}/media-servers", (Guid id, MelodexDbContext db, ConnectorPlugins connectors, CancellationToken ct) => AccountsAsync(id, db, connectors, ct))
+            .RequireScope(Scopes.Users).WithTags("Access")
+            .WithName("ListUserMediaServerAccounts")
+            .WithSummary("Someone's login on each media server that syncs playlists.")
+            .Produces<List<MediaServerAccount>>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapPut("/users/{id:guid}/media-servers/{serverId:guid}", (Guid id, Guid serverId, LinkMediaServer body, MelodexDbContext db, ConnectorPlugins connectors,
+                PlaylistSync sync, PlaylistSyncer syncer, CancellationToken ct) => LinkAccountAsync(id, serverId, body, db, connectors, sync, syncer, ct))
+            .RequireScope(Scopes.Users).WithTags("Access")
+            .WithName("LinkUserMediaServerAccount")
+            .WithSummary("Link someone's login on one media server for them, in use or not.")
+            .Produces<MediaServerAccount>().ProducesValidationProblem().Produces(StatusCodes.Status404NotFound);
+
+        api.MapDelete("/users/{id:guid}/media-servers/{serverId:guid}", (Guid id, Guid serverId, MelodexDbContext db, CancellationToken ct) =>
+                UnlinkAccountAsync(id, serverId, db, ct))
+            .RequireScope(Scopes.Users).WithTags("Access")
+            .WithName("UnlinkUserMediaServerAccount")
+            .WithSummary("Forget someone's login on one media server.")
+            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
+
         api.MapPut("/auth/media-server", (LinkMediaServer body, HttpContext http, MelodexDbContext db, PlaylistSync sync, PlaylistSyncer syncer, CancellationToken ct) =>
                 LinkAsync(Caller.Of(http).UserId, body, db, sync, syncer, ct))
             .RequireScope(Scopes.SignedIn).WithTags("Access")
@@ -173,19 +215,26 @@ public static class PlaylistEndpoints
     {
         if (await db.Users.FindAsync([userId], ct) is not { } user)
             return Results.NotFound();
-        if (string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrEmpty(body.Password))
-            return Results.ValidationProblem(new Dictionary<string, string[]> { ["username"] = ["Give the username and password you sign in to the media server with."] });
         if (await sync.ServerAsync(ct) is not { } server)
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["server"] = ["The media server doesn't sync playlists: tick Sync playlists in its plugin's settings first."],
             });
+        return await KeepAsync(user, server.Instance, server.Playlists, body, db, sync, syncer, ct) ?? Results.Ok(await sync.StatusAsync(user, ct));
+    }
+
+    // Checks a login on the media server and keeps it, or says why not.
+    private static async Task<IResult?> KeepAsync(User user, PluginInstance server, IPlaylistSync playlists, LinkMediaServer body, MelodexDbContext db,
+        PlaylistSync sync, PlaylistSyncer syncer, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrEmpty(body.Password))
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["username"] = [$"Give the username and password you sign in to {server.Name} with."] });
 
         var login = new ServerLogin(body.Username.Trim(), body.Password);
         HealthReport check;
         try
         {
-            check = await server.Playlists.CheckLoginAsync(login, ct);
+            check = await playlists.CheckLoginAsync(login, ct);
         }
         catch (HttpRequestException e)
         {
@@ -195,17 +244,57 @@ public static class PlaylistEndpoints
             return Results.ValidationProblem(new Dictionary<string, string[]> { ["password"] = [check.Message ?? "That login doesn't work."] });
 
         // A different login is a different set of playlists: what was linked to the old one starts again.
-        var linked = await sync.LinkedAsync(user.Id, server.Instance.Id, ct);
+        var linked = await sync.LinkedAsync(user.Id, server.Id, ct);
         if (!string.Equals(linked?.Username, login.Username, StringComparison.OrdinalIgnoreCase))
-            await ForgetAsync(db, user.Id, server.Instance.Id, ct);
+            await ForgetAsync(db, user.Id, server.Id, ct);
         if (linked is null)
-            db.MediaServerLogins.Add(linked = new MediaServerLogin { UserId = user.Id, PluginInstanceId = server.Instance.Id, Username = login.Username, Password = "" });
+            db.MediaServerLogins.Add(linked = new MediaServerLogin { UserId = user.Id, PluginInstanceId = server.Id, Username = login.Username, Password = "" });
         linked.Username = login.Username;
         linked.Password = sync.Protect(login.Password);
-        user.PlaylistSyncError = null;
+        if (server.Enabled)
+            user.PlaylistSyncError = null;
         await db.SaveChangesAsync(ct);
-        syncer.Changed(user.Id);
-        return Results.Ok(await sync.StatusAsync(user, ct));
+        if (server.Enabled)
+            syncer.Changed(user.Id);
+        return null;
+    }
+
+    // Their login on each media server that syncs playlists.
+    private static async Task<IResult> AccountsAsync(Guid? userId, MelodexDbContext db, ConnectorPlugins connectors, CancellationToken ct)
+    {
+        if (await db.Users.FindAsync([userId], ct) is not { } user)
+            return Results.NotFound();
+        var logins = await db.MediaServerLogins.Where(l => l.UserId == user.Id).ToDictionaryAsync(l => l.PluginInstanceId, l => l.Username, ct);
+        return Results.Ok((await connectors.SyncingPlaylistsAsync(ct))
+            .Select(s => new MediaServerAccount(s.Instance.Id, s.Instance.Name, s.Instance.Enabled, logins.GetValueOrDefault(s.Instance.Id))).ToList());
+    }
+
+    private static async Task<IResult> LinkAccountAsync(Guid? userId, Guid serverId, LinkMediaServer body, MelodexDbContext db, ConnectorPlugins connectors,
+        PlaylistSync sync, PlaylistSyncer syncer, CancellationToken ct)
+    {
+        if (await db.Users.FindAsync([userId], ct) is not { } user)
+            return Results.NotFound();
+        if ((await connectors.SyncingPlaylistsAsync(ct)).FirstOrDefault(s => s.Instance.Id == serverId) is not ({ } server, { } playlists))
+            return await db.PluginInstances.AnyAsync(p => p.Id == serverId && p.Type == PluginType.Connector, ct)
+                ? Results.ValidationProblem(new Dictionary<string, string[]> { ["server"] = ["That media server doesn't sync playlists: tick Sync playlists in its plugin's settings first."] })
+                : Results.NotFound();
+        return await KeepAsync(user, server, playlists, body, db, sync, syncer, ct)
+               ?? Results.Ok(new MediaServerAccount(server.Id, server.Name, server.Enabled, body.Username.Trim()));
+    }
+
+    private static async Task<IResult> UnlinkAccountAsync(Guid? userId, Guid serverId, MelodexDbContext db, CancellationToken ct)
+    {
+        if (await db.Users.FindAsync([userId], ct) is not { } user)
+            return Results.NotFound();
+        await db.MediaServerLogins.Where(l => l.UserId == user.Id && l.PluginInstanceId == serverId).ExecuteDeleteAsync(ct);
+        if (await db.PluginInstances.AnyAsync(p => p.Id == serverId && p.Enabled, ct))
+        {
+            user.PlaylistSyncError = null;
+            user.PlaylistsSyncedAt = null;
+        }
+        await ForgetAsync(db, user.Id, serverId, ct);
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
     }
 
     // Unlinks the login on the media server in use; logins on others are kept for when they're used again.

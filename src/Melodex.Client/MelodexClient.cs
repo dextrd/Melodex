@@ -769,6 +769,26 @@ public sealed class MelodexClient(HttpClient http)
         await EnsureAsync(response, ct);
     }
 
+    /// <summary>Your login on each media server that syncs playlists, or someone else's with <paramref name="userId"/>.</summary>
+    public async Task<IReadOnlyList<MediaServerAccount>> ListMediaServerAccountsAsync(Guid? userId = null, CancellationToken ct = default) =>
+        (await http.GetFromJsonAsync<List<MediaServerAccount>>(userId is { } id ? $"{Api}/users/{id}/media-servers" : $"{Api}/auth/media-servers", MelodexJson.Options, ct))!;
+
+    /// <summary>Links a login on one media server, in use or not, after checking it works there.</summary>
+    public async Task<MediaServerAccount> LinkMediaServerAccountAsync(Guid serverId, LinkMediaServer login, Guid? userId = null, CancellationToken ct = default)
+    {
+        using var response = await http.PutAsJsonAsync($"{AccountsOf(userId)}/{serverId}", login, MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<MediaServerAccount>(MelodexJson.Options, ct))!;
+    }
+
+    public async Task UnlinkMediaServerAccountAsync(Guid serverId, Guid? userId = null, CancellationToken ct = default)
+    {
+        using var response = await http.DeleteAsync($"{AccountsOf(userId)}/{serverId}", ct);
+        await EnsureAsync(response, ct);
+    }
+
+    private static string AccountsOf(Guid? userId) => userId is { } id ? $"{Api}/users/{id}/media-servers" : $"{Api}/auth/media-servers";
+
     /// <summary>Throws <see cref="MelodexApiException"/> with the server's own explanation for anything but success.</summary>
     private static async Task EnsureAsync(HttpResponseMessage response, CancellationToken ct)
     {

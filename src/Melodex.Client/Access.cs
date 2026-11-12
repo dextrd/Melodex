@@ -15,9 +15,13 @@ namespace Melodex.Client;
 /// A catalogue is on. Without one, Melodex is a plain music library: files are listed as their tags say, and there's
 /// no missing music, fetching, or searching for music you don't have.
 /// </param>
+/// <param name="PlaylistFolders">
+/// What separates folders in playlist names, such as <c>/</c> making <c>Moods/Calm</c> a playlist Calm in a folder
+/// Moods; empty for no folders. Set in the settings of the media server in use, when it syncs playlists.
+/// </param>
 public sealed record AuthStatus(bool SetUp, bool SignedIn, bool LetIn, string? Username, Guid? UserId = null, bool IsAdmin = false,
     IReadOnlyList<string>? Permissions = null, Appearance? Appearance = null, bool OwnAppearance = false, bool SetupFinished = true,
-    bool Catalogue = true)
+    bool Catalogue = true, string PlaylistFolders = "/")
 {
     public bool May(string permission) => IsAdmin || Permissions?.Contains(permission) == true || Permissions?.Contains(UserPermissions.Admin) == true;
 }
@@ -30,13 +34,9 @@ public enum ThemeMode { Auto, Light, Dark, Black }
 
 /// <summary>How the web app looks and behaves for someone, kept with their account: <c>PUT /auth/appearance</c>.</summary>
 /// <param name="HighContrast">Stronger text and borders, and status colours that colour-blind people can tell apart.</param>
-/// <param name="PlaylistFolders">
-/// What separates folders in playlist names, such as <c>/</c> making <c>Moods/Calm</c> a playlist Calm in a folder
-/// Moods. Empty for no folders.
-/// </param>
 /// <param name="ListPage">No longer used: the Library draws only the tiles near the screen, however many there are. Kept so older settings still read.</param>
 public sealed record Appearance(ThemeColor Color = ThemeColor.Pink, ThemeMode Mode = ThemeMode.Auto, bool HighContrast = false,
-    string PlaylistFolders = "/", int ListPage = Appearance.DefaultListPage)
+    int ListPage = Appearance.DefaultListPage)
 {
     public const int DefaultListPage = 60;
 }
@@ -89,9 +89,10 @@ public static class UserPermissions
 /// <param name="IsAdmin">The admin, made at setup: may do everything, and only they can change their account.</param>
 /// <param name="Permissions">See <see cref="UserPermissions"/>; every one for the admin.</param>
 /// <param name="Keys">How many API keys they've made.</param>
-/// <param name="MediaServerUsername">Their login on the media server, for syncing their playlists, once linked.</param>
+/// <param name="MediaServerUsername">Their login on the media server in use, for syncing their playlists, once linked.</param>
+/// <param name="MediaServer">The media server in use, when they've linked a login there.</param>
 public sealed record UserInfo(Guid Id, string Username, bool IsAdmin, IReadOnlyList<string> Permissions, DateTime CreatedAt, DateTime? LastSignInAt, int Keys = 0,
-    string? MediaServerUsername = null);
+    string? MediaServerUsername = null, string? MediaServer = null);
 
 /// <summary>Body of <c>POST /users</c>.</summary>
 public sealed record CreateUser(string Username, string Password, IReadOnlyList<string> Permissions);

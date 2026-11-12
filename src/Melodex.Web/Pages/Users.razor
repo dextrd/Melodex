@@ -37,43 +37,32 @@ else
             @foreach (var user in _users)
             {
                 var you = user.Id == Auth.Status?.UserId;
-                <div class="plugin-card user-card">
+                var expanded = _expanded.Contains(user.Id);
+                var permissions = user.IsAdmin ? "Everything"
+                    : user.Permissions.Count == 0 ? "Can't do anything yet"
+                    : string.Join(", ", UserPermissions.All.Where(p => user.Permissions.Contains(p.Id)).Select(p => p.Name));
+                <div class="plugin-card user-card @(expanded ? "open" : "")">
                     <div class="plugin-top">
                         <strong class="ellipsis" title="@user.Username">@user.Username</strong>
                         @if (user.IsAdmin) { <span class="badge owned">Admin</span> }
                         @if (you) { <span class="badge neutral">You</span> }
                     </div>
-                    <div class="scope-list">
-                        @if (user.IsAdmin)
-                        {
-                            <span class="badge neutral" title="The admin may do everything">Everything</span>
-                        }
-                        else if (user.Permissions.Count == 0)
-                        {
-                            <span class="muted small">Can't do anything yet</span>
-                        }
-                        else
-                        {
-                            @foreach (var permission in UserPermissions.All.Where(p => user.Permissions.Contains(p.Id)))
-                            {
-                                <span class="badge neutral" title="@permission.Hint">@permission.Name</span>
-                            }
-                        }
+                    @* Two lines, like plugins' descriptions; a click or tap shows the rest. *@
+                    <div class="muted small plugin-about" title="@(expanded ? null : permissions)" role="button" tabindex="0"
+                         aria-expanded="@(expanded ? "true" : "false")" @onclick="() => ToggleExpanded(user)"
+                         @onkeydown="e => ToggleOnKey(e, user)">
+                        @permissions
                     </div>
                     <div class="muted small">
                         @(user.LastSignInAt is { } signedIn ? $"Signed in {Format.Ago(signedIn)}" : "Never signed in")
                         @if (user.Keys > 0) { <span> · @Format.Count(user.Keys, "API key", "API keys")</span> }
-                        @if (user.MediaServerUsername is { } server) { <span> · playlists synced as @server</span> }
+                        @if (user.MediaServerUsername is { } server) { <span> · playlists synced with @user.MediaServer as @server</span> }
                     </div>
                     <div class="plugin-actions">
                         <span class="spacer"></span>
                         @if (!user.IsAdmin || Auth.Status?.IsAdmin == true)
                         {
-                            <button class="small" @onclick="() => StartEdit(user)">Edit</button>
-                            @if (_syncAvailable)
-                            {
-                                <button class="small" title="Link their media server login, to sync their playlists" @onclick="() => StartLink(user)">Playlists</button>
-                            }
+                            <IconButton Icon="settings" Title="Edit" OnClick="() => StartEdit(user)" />
                         }
                         @if (!user.IsAdmin && !you)
                         {
@@ -86,74 +75,10 @@ else
     </section>
 }
 
-@if (_linking is not null)
+@if (_editing is { } editing)
 {
-    <Dialog Title="@($"Sync {_linking.Username}'s playlists")" OnClose="() => _linking = null">
-        <p class="muted small">
-            @(_linking.MediaServerUsername is { } current ? $"Synced as {current}. A new login replaces it." : "Their playlists stay in Melodex until a media server login is linked.")
-            It's checked first, and kept encrypted.
-        </p>
-        <label class="field">
-            <span class="field-label">Media server username</span>
-            <input type="text" autocomplete="off" @bind="_serverUsername" @bind:event="oninput" />
-        </label>
-        <label class="field">
-            <span class="field-label">Media server password</span>
-            <input type="password" autocomplete="off" @bind="_serverPassword" @bind:event="oninput" />
-        </label>
-        @if (_error is not null) { <p class="error small">@_error</p> }
-        <div class="toolbar">
-            @if (_linking.MediaServerUsername is not null)
-            {
-                <button disabled="@_busy" @onclick="UnlinkAsync">Unlink</button>
-            }
-            <span class="spacer"></span>
-            <button @onclick="() => _linking = null">Cancel</button>
-            <button class="primary" disabled="@(_busy || _serverUsername.Trim().Length == 0 || _serverPassword.Length == 0)" @onclick="LinkAsync">Link</button>
-        </div>
-    </Dialog>
-}
-
-@if (_editing is not null)
-{
-    var admin = _editing.IsAdmin;
-    <Dialog Title="@(_editing.Id == Guid.Empty ? "Add user" : $"Edit {_editing.Username}")" OnClose="() => _editing = null">
-        <label class="field">
-            <span class="field-label">Username</span>
-            <input type="text" autocomplete="off" @bind="_username" @bind:event="oninput" />
-        </label>
-        <label class="field">
-            <span class="field-label">@(_editing.Id == Guid.Empty ? "Password" : "New password")</span>
-            <input type="password" autocomplete="new-password" placeholder="@(_editing.Id == Guid.Empty ? "" : "Leave empty to keep it")"
-                   @bind="_password" @bind:event="oninput" />
-            <span class="muted small">
-                At least 8 characters.@(_editing.Id == Guid.Empty ? " Tell them it, and they can change it under their account." : " A new one signs them out everywhere.")
-            </span>
-        </label>
-        @if (admin)
-        {
-            <p class="muted small">The admin may do everything; that can't change.</p>
-        }
-        else
-        {
-            <div class="field-label">What they can do</div>
-            @foreach (var permission in UserPermissions.All)
-            {
-                var allowed = Auth.May(permission.Id);
-                <label class="dialog-choice @(allowed ? "" : "dim")" title="@(allowed ? "" : "You can only give permissions you have yourself")">
-                    <input type="checkbox" disabled="@(!allowed)" checked="@_permissions.Contains(permission.Id)" @onchange="e => Toggle(permission.Id, (bool)e.Value!)" />
-                    <span><strong>@permission.Name</strong><span class="muted small">@permission.Hint</span></span>
-                </label>
-            }
-        }
-        @if (_error is not null) { <p class="error small">@_error</p> }
-        <div class="toolbar dialog-buttons">
-            <button @onclick="() => _editing = null">Cancel</button>
-            <button class="primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_username) || _editing.Id == Guid.Empty && _password.Length == 0)" @onclick="SaveAsync">
-                @if (_busy) { <span class="spinner"></span> }
-                @(_editing.Id == Guid.Empty ? "Add" : "Save")
-            </button>
-        </div>
+    <Dialog Title="@(editing.User is null ? "Add user" : $"Edit {editing.User.Username}")" OnClose="() => _editing = null" Class="wide">
+        <UserEditor User="editing.User" OnSaved="SavedAsync" OnCancel="() => _editing = null" />
     </Dialog>
 }
 
@@ -174,104 +99,41 @@ else
 
 @code {
     private IReadOnlyList<UserInfo>? _users;
-    private UserInfo? _editing;
+    // The user being edited, or none for a new one.
+    private sealed record Editing(UserInfo? User);
+    private Editing? _editing;
     private UserInfo? _removing;
-    private string _username = "";
-    private string _password = "";
-    private HashSet<string> _permissions = [];
     private bool _busy;
     private string? _error;
-
-    private UserInfo? _linking;
-    private string _serverUsername = "";
-    private string _serverPassword = "";
-    private bool _syncAvailable;
+    private readonly HashSet<Guid> _expanded = [];
 
     protected override async Task OnInitializedAsync()
     {
         if (!Auth.May(UserPermissions.Users))
             return;
         _users = await Api.ListUsersAsync();
-        if (Auth.May(UserPermissions.Listen))
-            _syncAvailable = (await Api.GetPlaylistSyncAsync()).Available;
     }
 
-    private void StartLink(UserInfo user)
+    private void StartNew() => _editing = new Editing(null);
+
+    private void StartEdit(UserInfo user) => _editing = new Editing(user);
+
+    private void ToggleExpanded(UserInfo user)
     {
-        _linking = user;
-        _serverUsername = user.MediaServerUsername ?? "";
-        _serverPassword = "";
-        _error = null;
+        if (!_expanded.Remove(user.Id))
+            _expanded.Add(user.Id);
     }
 
-    private Task LinkAsync() => ChangeLinkAsync(() => Api.LinkMediaServerAsync(new LinkMediaServer(_serverUsername.Trim(), _serverPassword), _linking!.Id));
-
-    private Task UnlinkAsync() => ChangeLinkAsync(() => Api.UnlinkMediaServerAsync(_linking!.Id));
-
-    private async Task ChangeLinkAsync(Func<Task> action)
+    private void ToggleOnKey(KeyboardEventArgs e, UserInfo user)
     {
-        _busy = true;
-        _error = null;
-        try
-        {
-            await action();
-            _linking = null;
-            _users = await Api.ListUsersAsync();
-        }
-        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
-        {
-            _error = e.Message;
-        }
-        _busy = false;
+        if (e.Key is "Enter" or " ")
+            ToggleExpanded(user);
     }
 
-    private void StartNew() => Start(new UserInfo(Guid.Empty, "", false, [UserPermissions.Read, UserPermissions.Listen], DateTime.UtcNow, null));
-
-    private void StartEdit(UserInfo user) => Start(user);
-
-    private void Start(UserInfo user)
+    private async Task SavedAsync()
     {
-        _editing = user;
-        _username = user.Username;
-        _password = "";
-        _permissions = user.Permissions.ToHashSet();
-        _error = null;
-    }
-
-    private void Toggle(string permission, bool on)
-    {
-        if (on)
-            _permissions.Add(permission);
-        else
-            _permissions.Remove(permission);
-    }
-
-    private async Task SaveAsync()
-    {
-        var editing = _editing!;
-        var permissions = UserPermissions.All.Select(p => p.Id).Where(_permissions.Contains).ToList();
-        _busy = true;
-        _error = null;
-        try
-        {
-            if (editing.Id == Guid.Empty)
-                await Api.CreateUserAsync(new CreateUser(_username, _password, permissions));
-            else
-                await Api.UpdateUserAsync(editing.Id, new UpdateUser(_username, _password.Length > 0 ? _password : null, editing.IsAdmin ? null : permissions));
-            _editing = null;
-            _users = await Api.ListUsersAsync();
-            // Your own name may have changed.
-            if (editing.Id == Auth.Status?.UserId)
-                Auth.Set(await Api.GetAuthStatusAsync());
-        }
-        catch (MelodexApiException e)
-        {
-            _error = e.Message;
-        }
-        finally
-        {
-            _busy = false;
-        }
+        _editing = null;
+        _users = await Api.ListUsersAsync();
     }
 
     private async Task RemoveAsync(UserInfo user)

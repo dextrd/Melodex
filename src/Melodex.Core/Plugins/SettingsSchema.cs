@@ -85,6 +85,13 @@ public static class SettingsSchema
         if (property.TryGetProperty("enum", out var options) && options.ValueKind == JsonValueKind.Array
             && !options.EnumerateArray().Any(o => JsonNode.DeepEquals(JsonNode.Parse(o.GetRawText()), node)))
             return $"Must be one of {string.Join(", ", options.EnumerateArray().Select(o => o.ToString()))}.";
+        if (value.TryGetValue<string>(out var text))
+        {
+            if (property.TryGetProperty("maxLength", out var most) && text.Length > most.GetInt32())
+                return $"Must be at most {most} characters.";
+            if (property.TryGetProperty("pattern", out var pattern) && !System.Text.RegularExpressions.Regex.IsMatch(text, pattern.GetString()!))
+                return property.TryGetProperty("patternMessage", out var message) ? message.GetString() : "Isn't in the right form.";
+        }
         if (value.TryGetValue<double>(out var number))
         {
             if (property.TryGetProperty("minimum", out var min) && number < min.GetDouble())

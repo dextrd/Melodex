@@ -6,6 +6,7 @@ using Melodex.Client;
 using Melodex.Contracts.Plugins;
 using Melodex.Core.Access;
 using Melodex.Core.Data;
+using Melodex.Core.Plugins;
 
 namespace Melodex.Core.Api;
 
@@ -17,7 +18,7 @@ public static class AccessEndpoints
     {
         var auth = api.MapGroup("/auth").WithTags("Access");
 
-        auth.MapGet("/status", async (HttpContext http, AccessService access, MelodexDbContext db, CancellationToken ct) =>
+        auth.MapGet("/status", async (HttpContext http, AccessService access, MelodexDbContext db, ConnectorPlugins connectors, CancellationToken ct) =>
             {
                 var (caller, _) = await access.IdentifyAsync(http, ct);
                 var user = caller is { Kind: CallerKind.User, UserId: { } id } ? (await access.UsersAsync(ct)).GetValueOrDefault(id) : null;
@@ -26,7 +27,8 @@ public static class AccessEndpoints
                 return new AuthStatus(setUp, caller?.Kind == CallerKind.User, caller is not null, caller?.Name, caller?.UserId,
                     caller is { Kind: CallerKind.User, IsAdmin: true }, caller is null ? [] : Scopes.All.Where(caller.Scopes.Contains).ToList(),
                     own ?? await DefaultAppearanceAsync(db, ct), own is not null, setUp && await SetupEndpoints.IsDoneAsync(db, ct),
-                    await db.PluginInstances.AnyAsync(p => p.Type == PluginType.Index && p.Enabled, ct));
+                    await db.PluginInstances.AnyAsync(p => p.Type == PluginType.Index && p.Enabled, ct),
+                    caller is null ? ConnectorPlugins.DefaultPlaylistFolders : await connectors.PlaylistFoldersAsync(ct));
             })
             .AllowAnyone()
             .WithName("GetAuthStatus")
@@ -199,7 +201,7 @@ public static class AccessEndpoints
                 var logins = await ServerUsernamesAsync(db, ct);
                 return (await db.Users.AsNoTracking().ToListAsync(ct))
                     .OrderByDescending(u => u.IsAdmin).ThenBy(u => u.Username, StringComparer.OrdinalIgnoreCase)
-                    .Select(u => Info(u, keys.GetValueOrDefault(u.Id), logins.GetValueOrDefault(u.Id))).ToList();
+                    .Select(u => Info(u, keys.GetValueOrDefault(u.Id), logins.TryGetValue(u.Id, out var linked) ? linked : null)).ToList();
             })
             .WithName("ListUsers").WithSummary("Everyone who signs in, the admin first, with what they may do.");
 
@@ -250,7 +252,7 @@ public static class AccessEndpoints
                 if (user.Id == caller.UserId && caller.Kind == CallerKind.User)
                     await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, AccessService.Principal(user),
                         new AuthenticationProperties { IsPersistent = await RememberedAsync(http) });
-                return Results.Ok(Info(user, await db.ApiKeys.CountAsync(k => k.UserId == user.Id, ct), (await ServerUsernamesAsync(db, ct)).GetValueOrDefault(user.Id)));
+                return Results.Ok(Info(user, await db.ApiKeys.CountAsync(k => k.UserId == user.Id, ct), (await ServerUsernamesAsync(db, ct)).TryGetValue(user.Id, out var linked) ? linked : null));
             })
             .WithName("UpdateUser")
             .WithSummary("Rename someone, set a new password for them (which signs them out everywhere), or change what they may do. Only the admin "
@@ -329,14 +331,15 @@ public static class AccessEndpoints
     private static ApiKeyInfo Info(ApiKey key) =>
         new(key.Id, key.Name, key.Prefix, Scopes.Parse(key.Scopes).ToList(), key.CreatedAt, key.LastUsedAt, key.UserId, key.User?.Username);
 
-    private static UserInfo Info(User user, int keys, string? serverUsername) =>
+    private static UserInfo Info(User user, int keys, (string Username, string Server)? linked) =>
         new(user.Id, user.Username, user.IsAdmin, Scopes.All.Where(AccessService.PermissionsOf(user).Contains).ToList(), user.CreatedAt, user.LastSignInAt, keys,
-            serverUsername);
+            linked?.Username, linked?.Server);
 
     // Each user's login on the media server in use.
-    private static Task<Dictionary<Guid, string>> ServerUsernamesAsync(MelodexDbContext db, CancellationToken ct) =>
-        db.MediaServerLogins.Where(l => l.PluginInstance.Enabled && l.PluginInstance.Type == PluginType.Connector)
-            .ToDictionaryAsync(l => l.UserId, l => l.Username, ct);
+    private static async Task<Dictionary<Guid, (string Username, string Server)>> ServerUsernamesAsync(MelodexDbContext db, CancellationToken ct) =>
+        (await db.MediaServerLogins.Where(l => l.PluginInstance.Enabled && l.PluginInstance.Type == PluginType.Connector)
+            .Select(l => new { l.UserId, l.Username, l.PluginInstance.Name }).ToListAsync(ct))
+            .ToDictionary(l => l.UserId, l => (l.Username, l.Name));
 
     private const string DefaultAppearanceKey = "appearance.default";
 
@@ -362,8 +365,6 @@ public static class AccessEndpoints
     {
         if (!Enum.IsDefined(body.Color) || !Enum.IsDefined(body.Mode))
             return Results.ValidationProblem(new Dictionary<string, string[]> { ["appearance"] = ["That isn't a theme Melodex has."] });
-        if (body.PlaylistFolders is null || body.PlaylistFolders.Length > 3 || body.PlaylistFolders.Any(char.IsWhiteSpace))
-            return Results.ValidationProblem(new Dictionary<string, string[]> { ["playlistFolders"] = ["Separate folders with up to 3 characters, not spaces, or none."] });
         if (body.ListPage is < 20 or > 500)
             return Results.ValidationProblem(new Dictionary<string, string[]> { ["listPage"] = ["Show from 20 to 500 at a time."] });
         return null;
