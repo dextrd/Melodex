@@ -72,7 +72,7 @@ public sealed class ArtworkPluginTests
         await db.SaveChangesAsync();
 
         await ArtworkPlugins.EnsureDefaultAsync(db, catalog);
-        Assert.Equal([FanartTvFactory.PluginId, WikimediaCommonsFactory.PluginId, DeezerFactory.PluginId],
+        Assert.Equal([FanartTvFactory.PluginId, DeezerFactory.PluginId, WikimediaCommonsFactory.PluginId],
             await db.PluginInstances.Where(p => p.Type == PluginType.Artwork).OrderBy(p => p.Priority).Select(p => p.PluginId).ToListAsync());
 
         // Removing one sticks.
