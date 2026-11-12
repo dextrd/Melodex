@@ -27,6 +27,11 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 - On a phone, an album with several discs leaves room for numbers like "2-10", which ran into the songs' titles (#78).
 - Any artist opened from a search is added to **Recent artists**, however you got there: from an album or song found,
   or from an album's, song's or another artist's page opened from the search, not only from the artists found (#62).
+- Seeking no longer repeats a moment of the song or leaves synced lyrics out of step, which happened in Safari with
+  FLAC files that have no seek table. The beets worker gives FLAC files one when it writes them, on import, when
+  formatting and when upgrading; others get one the next time they're formatted. The player also no longer jumps back
+  to the old time just after a seek, and the lyrics follow to where a seek lands. Update the beets worker's image with
+  the core's (#61).
 
 ### Removed
 
