@@ -4,6 +4,7 @@
 @inject MelodexClient Api
 @inject Preferences Prefs
 @inject Glimpses Glimpses
+@inject NavSections Sections
 
 <PageTitle>@(_artist?.Name ?? "Artist") · Melodex</PageTitle>
 
@@ -208,7 +209,11 @@ else
         _glimpsed = false;
         _notFound = _artist is null;
         if (_artist is not null)
+        {
             Glimpses.Saw(_artist);
+            await Search.OpenedArtistAsync(Prefs, new Search.RecentArtist(_artist.Id, _artist.Name, _artist.Disambiguation, _artist.ImageUrl),
+                Sections.Current == NavSection.Search);
+        }
         Follow();
     }
 

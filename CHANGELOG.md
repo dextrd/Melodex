@@ -25,6 +25,8 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 - Album pages no longer zoom out on iPhones: Safari counted the Edition list's longest option as overflow even with the
   list shrunk to fit (#42).
 - On a phone, an album with several discs leaves room for numbers like "2-10", which ran into the songs' titles (#78).
+- Any artist opened from a search is added to **Recent artists**, however you got there: from an album or song found,
+  or from an album's, song's or another artist's page opened from the search, not only from the artists found (#62).
 
 ### Removed
 

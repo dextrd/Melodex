@@ -169,7 +169,7 @@ else
                                 <div class="ellipsis"><a href="@Format.AlbumHref(album)">@album.Title</a></div>
                                 <div class="muted small ellipsis">
                                     <span class="show-narrow"><StatusBadge Album="album.Status" /></span>
-                                    @if (album.Local) { @album.ArtistCredit } else { <a href="artists/@album.ArtistId">@album.ArtistCredit</a> }@(Format.Year(album.FirstReleaseDate) is { Length: > 0 } year ? $" · {year}" : "") · @Format.TypeLabel(album.Type)
+                                    @if (album.Local) { @album.ArtistCredit } else { <a href="artists/@album.ArtistId" @onclick="() => RememberArtistAsync(album.ArtistId, album.ArtistCredit)">@album.ArtistCredit</a> }@(Format.Year(album.FirstReleaseDate) is { Length: > 0 } year ? $" · {year}" : "") · @Format.TypeLabel(album.Type)
                                 </div>
                             </td>
                             <td class="num hide-narrow"><StatusBadge Album="album.Status" /></td>
@@ -251,7 +251,7 @@ else
     };
 
     private const string RecentKey = "recentSearches";
-    private const string RecentArtistsKey = "recentArtists";
+    public const string RecentArtistsKey = "recentArtists";
     private const int RecentCount = 12;
 
     /// <summary>How long typing pauses before MusicBrainz is asked, too: long enough not to ask about half a word.</summary>
@@ -552,12 +552,47 @@ else
             await RememberAsync(text);
     }
 
+    /// <summary>
+    /// An artist opened from an album or track: named as far as known for now, as a credit can name several. Their page
+    /// puts their own name and picture in once it loads.
+    /// </summary>
+    private Task RememberArtistAsync(Guid id, string credit) =>
+        RememberArtistAsync(new RecentArtist(id, Glimpses.Artist(id)?.Name ?? credit, null, $"api/v1/artwork/artist/{id}"));
+
     private async Task RememberArtistAsync(RecentArtist artist)
     {
         _recentArtists = [artist, .. _recentArtists.Where(a => a.Id != artist.Id)];
         if (_recentArtists.Count > RecentCount)
             _recentArtists = _recentArtists[..RecentCount];
         await Prefs.SetAsync(RecentArtistsKey, _recentArtists);
+    }
+
+    /// <summary>
+    /// An artist's page, opened: put first among the recent artists when it was reached from a search, however many
+    /// pages on (a song's, then its artist's); otherwise only brought up to date if it's there, as one opened from a
+    /// song's credit was kept under the credit, which can name several.
+    /// </summary>
+    public static async Task OpenedArtistAsync(Preferences prefs, RecentArtist artist, bool fromSearch)
+    {
+        var recent = await prefs.GetAsync<List<RecentArtist>>(RecentArtistsKey, []);
+        var index = recent.FindIndex(a => a.Id == artist.Id);
+        if (fromSearch)
+        {
+            var updated = index < 0 ? artist : artist with { ImageUrl = artist.ImageUrl ?? recent[index].ImageUrl };
+            List<RecentArtist> next = [updated, .. recent.Where(a => a.Id != artist.Id)];
+            if (next.Count > RecentCount)
+                next = next[..RecentCount];
+            if (!next.SequenceEqual(recent))
+                await prefs.SetAsync(RecentArtistsKey, next);
+            return;
+        }
+        if (index < 0)
+            return;
+        var named = recent[index] with { Name = artist.Name, Disambiguation = artist.Disambiguation, ImageUrl = artist.ImageUrl ?? recent[index].ImageUrl };
+        if (named == recent[index])
+            return;
+        recent[index] = named;
+        await prefs.SetAsync(RecentArtistsKey, recent);
     }
 
     private async Task ForgetArtistAsync(RecentArtist artist)
@@ -649,7 +684,7 @@ else
                                 <div class="ellipsis"><a href="tracks/@track.Id" class="plain">@track.Title</a></div>
                                 <div class="muted small ellipsis">
                                     @if (_file is null) { <span class="show-narrow"><StatusBadge Track="track.Owned ? TrackStatus.Owned : TrackStatus.Missing" /></span> }
-                                    @if (track.ArtistId is { } artistId) { <a href="artists/@artistId">@track.ArtistCredit</a> } else { @track.ArtistCredit }
+                                    @if (track.ArtistId is { } artistId) { <a href="artists/@artistId" @onclick="() => RememberArtistAsync(artistId, track.ArtistCredit)">@track.ArtistCredit</a> } else { @track.ArtistCredit }
                                     @if (track.AlbumId is { } id) { <span> · <a href="albums/@id">@track.AlbumTitle</a></span> }
                                 </div>
                             </td>
