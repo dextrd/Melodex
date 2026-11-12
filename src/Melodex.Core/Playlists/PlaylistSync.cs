@@ -40,11 +40,11 @@ public sealed class PlaylistSync(MelodexDbContext db, ConnectorPlugins connector
         }
     }
 
-    private async Task<string?> CouldSyncAsync(CancellationToken ct)
+    private async Task<PluginInstance?> CouldSyncAsync(CancellationToken ct)
     {
         try
         {
-            return await connectors.GetActiveAsync(ct) is { Connector: IPlaylistSync } active ? active.Instance.Name : null;
+            return await connectors.GetActiveAsync(ct) is { Connector: IPlaylistSync } active ? active.Instance : null;
         }
         catch (Exception e) when (e is InvalidOperationException or KeyNotFoundException)
         {
@@ -54,13 +54,15 @@ public sealed class PlaylistSync(MelodexDbContext db, ConnectorPlugins connector
 
     public string Protect(string password) => Protector.Protect(password);
 
-    public ServerLogin? LoginOf(User user)
+    /// <summary>The user's login on the media server, if they've linked one there.</summary>
+    public Task<MediaServerLogin?> LinkedAsync(Guid userId, Guid instanceId, CancellationToken ct) =>
+        db.MediaServerLogins.FirstOrDefaultAsync(l => l.UserId == userId && l.PluginInstanceId == instanceId, ct);
+
+    public ServerLogin? LoginOf(MediaServerLogin linked)
     {
-        if (user.MediaServerUsername is not { } username || user.MediaServerPassword is not { } password)
-            return null;
         try
         {
-            return new ServerLogin(username, Protector.Unprotect(password));
+            return new ServerLogin(linked.Username, Protector.Unprotect(linked.Password));
         }
         catch (System.Security.Cryptography.CryptographicException)
         {
@@ -74,16 +76,17 @@ public sealed class PlaylistSync(MelodexDbContext db, ConnectorPlugins connector
         var server = await ServerAsync(ct);
         // A server that could sync playlists but hasn't been asked to is named, so its plugin's setting can be pointed to;
         // with no such server, there's nothing to say.
-        var name = server?.Instance.Name ?? await CouldSyncAsync(ct);
-        return new PlaylistSyncStatus(server is not null, name, user.MediaServerUsername, user.PlaylistsSyncedAt, user.PlaylistSyncError);
+        var instance = server?.Instance ?? await CouldSyncAsync(ct);
+        var linked = instance is null ? null : await LinkedAsync(user.Id, instance.Id, ct);
+        return new PlaylistSyncStatus(server is not null, instance?.Name, linked?.Username, user.PlaylistsSyncedAt, user.PlaylistSyncError);
     }
 
     /// <summary>Syncs the user's playlists now, if they're synced, and says how it went.</summary>
     public async Task<PlaylistSyncStatus> SyncAsync(User user, CancellationToken ct)
     {
-        if (await ServerAsync(ct) is not { } server || user.MediaServerUsername is null)
+        if (await ServerAsync(ct) is not { } server || await LinkedAsync(user.Id, server.Instance.Id, ct) is not { } linked)
             return await StatusAsync(user, ct);
-        if (LoginOf(user) is not { } login)
+        if (LoginOf(linked) is not { } login)
         {
             user.PlaylistSyncError = "Your media server login needs linking again: the keys it was kept with have changed.";
             await db.SaveChangesAsync(ct);
@@ -128,6 +131,19 @@ public sealed class PlaylistSync(MelodexDbContext db, ConnectorPlugins connector
         foreach (var playlist in local.Where(p => p.ServerId is not null && p.ServerInstanceId != instanceId))
             Forget(playlist);
         var linked = local.Where(p => p.ServerId is not null).Select(p => p.ServerId!).ToHashSet();
+
+        // One not linked here takes the server's playlist of the same name rather than making a second, as after switching
+        // back to a server used before; whichever changed last wins.
+        var unclaimed = remote.Values.Where(p => !linked.Contains(p.Id)).ToList();
+        foreach (var playlist in local.Where(p => p.ServerId is null && p.DeletedAt is null))
+        {
+            if (unclaimed.FirstOrDefault(p => string.Equals(p.Name, playlist.Name, StringComparison.OrdinalIgnoreCase)) is not { } same)
+                continue;
+            unclaimed.Remove(same);
+            playlist.ServerId = same.Id;
+            playlist.ServerInstanceId = instanceId;
+            linked.Add(same.Id);
+        }
 
         foreach (var playlist in local)
         {
@@ -540,11 +556,12 @@ public sealed class PlaylistSyncer(IServiceScopeFactory scopes, ILogger<Playlist
                 await using var scope = scopes.CreateAsyncScope();
                 var db = scope.ServiceProvider.GetRequiredService<MelodexDbContext>();
                 var sync = scope.ServiceProvider.GetRequiredService<PlaylistSync>();
-                if (await sync.ServerAsync(stoppingToken) is null)
+                if (await sync.ServerAsync(stoppingToken) is not { } server)
                     continue;
                 var everyone = users.Contains(null);
                 var ids = users.OfType<Guid>().ToList();
-                foreach (var user in await db.Users.Where(u => u.MediaServerUsername != null && (everyone || ids.Contains(u.Id))).ToListAsync(stoppingToken))
+                var linked = db.MediaServerLogins.Where(l => l.PluginInstanceId == server.Instance.Id).Select(l => l.UserId);
+                foreach (var user in await db.Users.Where(u => linked.Contains(u.Id) && (everyone || ids.Contains(u.Id))).ToListAsync(stoppingToken))
                     await sync.SyncAsync(user, stoppingToken);
             }
             catch (Exception e) when (e is not OperationCanceledException)

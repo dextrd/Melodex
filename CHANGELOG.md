@@ -16,6 +16,13 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   on its own, in any language, and be added by its address with **Add your own plugin…**, a button of its own in every
   section's Add dialog. They speak a small HTTP contract for their kind (#46).
 
+### Changed
+
+- Only one media server is used at a time. Another is added turned off, and turning it on asks first, then switches to
+  it, turning the one in use off. An install with several turned on keeps the one in use. Each user's media server
+  login is kept for each server, so switching back uses the login already linked, and a playlist that's on both
+  finds its copy there by name instead of being made twice (#53).
+
 ### Fixed
 
 - An album page no longer zooms out on iPhones when an edition's name is long: its Edition list shrinks to fit the

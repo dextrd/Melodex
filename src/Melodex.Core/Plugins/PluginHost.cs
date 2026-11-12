@@ -148,7 +148,7 @@ public sealed class IndexPlugins(MelodexDbContext db, PluginHost host)
 }
 
 /// <summary>
-/// The active media-server connector, if one is set up: the enabled instance with the lowest priority. Each file's ID
+/// The active media-server connector, if one is set up: the enabled one, as only one is kept enabled. Each file's ID
 /// on the media server is the active one's, so they're forgotten when another becomes active, to be found again there.
 /// </summary>
 public sealed class ConnectorPlugins(MelodexDbContext db, PluginHost host)
@@ -179,6 +179,7 @@ public sealed class ConnectorPlugins(MelodexDbContext db, PluginHost host)
             await db.LibraryFiles.Where(f => f.MediaServerTrackId != null).ExecuteUpdateAsync(f => f.SetProperty(x => x.MediaServerTrackId, (string?)null), ct);
             await db.PlaylistEntries.Where(e => e.ServerTrackId != null && e.Playlist.ServerInstanceId != instance.Id)
                 .ExecuteUpdateAsync(e => e.SetProperty(x => x.ServerTrackId, (string?)null), ct);
+            await db.Users.Where(u => u.PlaylistSyncError != null).ExecuteUpdateAsync(u => u.SetProperty(x => x.PlaylistSyncError, (string?)null), ct);
         }
         if (setting is null)
             db.Settings.Add(new Setting { Key = ActiveSetting, ValueJson = value });

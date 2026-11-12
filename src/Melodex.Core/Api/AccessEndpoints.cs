@@ -196,9 +196,10 @@ public static class AccessEndpoints
             {
                 var keys = await db.ApiKeys.Where(k => k.UserId != null).GroupBy(k => k.UserId!.Value).Select(g => new { g.Key, Count = g.Count() })
                     .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+                var logins = await ServerUsernamesAsync(db, ct);
                 return (await db.Users.AsNoTracking().ToListAsync(ct))
                     .OrderByDescending(u => u.IsAdmin).ThenBy(u => u.Username, StringComparer.OrdinalIgnoreCase)
-                    .Select(u => Info(u, keys.GetValueOrDefault(u.Id))).ToList();
+                    .Select(u => Info(u, keys.GetValueOrDefault(u.Id), logins.GetValueOrDefault(u.Id))).ToList();
             })
             .WithName("ListUsers").WithSummary("Everyone who signs in, the admin first, with what they may do.");
 
@@ -214,7 +215,7 @@ public static class AccessEndpoints
                 db.Users.Add(user);
                 await db.SaveChangesAsync(ct);
                 access.UsersChanged();
-                return Results.Created($"/api/v1/users/{user.Id}", Info(user, 0));
+                return Results.Created($"/api/v1/users/{user.Id}", Info(user, 0, null));
             })
             .WithName("CreateUser")
             .WithSummary("Add someone who can sign in, with what they may do. You can only give permissions you have yourself.")
@@ -249,7 +250,7 @@ public static class AccessEndpoints
                 if (user.Id == caller.UserId && caller.Kind == CallerKind.User)
                     await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, AccessService.Principal(user),
                         new AuthenticationProperties { IsPersistent = await RememberedAsync(http) });
-                return Results.Ok(Info(user, await db.ApiKeys.CountAsync(k => k.UserId == user.Id, ct)));
+                return Results.Ok(Info(user, await db.ApiKeys.CountAsync(k => k.UserId == user.Id, ct), (await ServerUsernamesAsync(db, ct)).GetValueOrDefault(user.Id)));
             })
             .WithName("UpdateUser")
             .WithSummary("Rename someone, set a new password for them (which signs them out everywhere), or change what they may do. Only the admin "
@@ -328,9 +329,14 @@ public static class AccessEndpoints
     private static ApiKeyInfo Info(ApiKey key) =>
         new(key.Id, key.Name, key.Prefix, Scopes.Parse(key.Scopes).ToList(), key.CreatedAt, key.LastUsedAt, key.UserId, key.User?.Username);
 
-    private static UserInfo Info(User user, int keys) =>
+    private static UserInfo Info(User user, int keys, string? serverUsername) =>
         new(user.Id, user.Username, user.IsAdmin, Scopes.All.Where(AccessService.PermissionsOf(user).Contains).ToList(), user.CreatedAt, user.LastSignInAt, keys,
-            user.MediaServerUsername);
+            serverUsername);
+
+    // Each user's login on the media server in use.
+    private static Task<Dictionary<Guid, string>> ServerUsernamesAsync(MelodexDbContext db, CancellationToken ct) =>
+        db.MediaServerLogins.Where(l => l.PluginInstance.Enabled && l.PluginInstance.Type == PluginType.Connector)
+            .ToDictionaryAsync(l => l.UserId, l => l.Username, ct);
 
     private const string DefaultAppearanceKey = "appearance.default";
 

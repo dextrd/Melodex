@@ -157,9 +157,9 @@ public sealed class JellyfinTests : IDisposable
         return (connector, server);
     }
 
-    private sealed record Call(string Method, Uri Uri, string Authorization, string? Body);
+    internal sealed record Call(string Method, Uri Uri, string Authorization, string? Body);
 
-    private sealed class FakeJellyfin : HttpMessageHandler
+    internal sealed class FakeJellyfin : HttpMessageHandler
     {
         public ConcurrentQueue<Call> Requests { get; } = new();
         public ConcurrentDictionary<string, string> Etags { get; } = new();

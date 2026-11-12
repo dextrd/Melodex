@@ -599,6 +599,29 @@ namespace Melodex.Core.Data.Migrations
                     b.ToTable("ListenNowItems");
                 });
 
+            modelBuilder.Entity("Melodex.Core.Data.MediaServerLogin", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PluginInstanceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Password")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("UserId", "PluginInstanceId");
+
+                    b.HasIndex("PluginInstanceId");
+
+                    b.ToTable("MediaServerLogins");
+                });
+
             modelBuilder.Entity("Melodex.Core.Data.Playlist", b =>
                 {
                     b.Property<Guid>("Id")
@@ -989,12 +1012,6 @@ namespace Melodex.Core.Data.Migrations
                     b.Property<DateTime?>("LastSignInAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("MediaServerPassword")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("MediaServerUsername")
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("NormalizedUsername")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -1215,6 +1232,23 @@ namespace Melodex.Core.Data.Migrations
                     b.Navigation("Track");
                 });
 
+            modelBuilder.Entity("Melodex.Core.Data.MediaServerLogin", b =>
+                {
+                    b.HasOne("Melodex.Core.Data.PluginInstance", "PluginInstance")
+                        .WithMany()
+                        .HasForeignKey("PluginInstanceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Melodex.Core.Data.User", null)
+                        .WithMany("MediaServerLogins")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PluginInstance");
+                });
+
             modelBuilder.Entity("Melodex.Core.Data.Playlist", b =>
                 {
                     b.HasOne("Melodex.Core.Data.User", "User")
@@ -1304,6 +1338,11 @@ namespace Melodex.Core.Data.Migrations
             modelBuilder.Entity("Melodex.Core.Data.Track", b =>
                 {
                     b.Navigation("Appearances");
+                });
+
+            modelBuilder.Entity("Melodex.Core.Data.User", b =>
+                {
+                    b.Navigation("MediaServerLogins");
                 });
 #pragma warning restore 612, 618
         }

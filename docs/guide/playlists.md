@@ -81,4 +81,8 @@ Navidrome copy in the meantime.
 Unlinking your login stops syncing. Your playlists stay in both places, but no longer change together. Linking a
 different login starts afresh with that login's playlists.
 
+Logins are kept for each media server. After [switching to another](plugins.md#one-media-server-at-a-time), you link
+your login for the new one; switching back uses the login you linked before, and each playlist finds its copy there by
+name, keeping whichever side changed last.
+
 Next: [Your library](library.md).

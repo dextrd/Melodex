@@ -195,32 +195,40 @@ public static class PlaylistEndpoints
             return Results.ValidationProblem(new Dictionary<string, string[]> { ["password"] = [check.Message ?? "That login doesn't work."] });
 
         // A different login is a different set of playlists: what was linked to the old one starts again.
-        if (!string.Equals(user.MediaServerUsername, login.Username, StringComparison.OrdinalIgnoreCase))
-            await ForgetAsync(db, user.Id, ct);
-        user.MediaServerUsername = login.Username;
-        user.MediaServerPassword = sync.Protect(login.Password);
+        var linked = await sync.LinkedAsync(user.Id, server.Instance.Id, ct);
+        if (!string.Equals(linked?.Username, login.Username, StringComparison.OrdinalIgnoreCase))
+            await ForgetAsync(db, user.Id, server.Instance.Id, ct);
+        if (linked is null)
+            db.MediaServerLogins.Add(linked = new MediaServerLogin { UserId = user.Id, PluginInstanceId = server.Instance.Id, Username = login.Username, Password = "" });
+        linked.Username = login.Username;
+        linked.Password = sync.Protect(login.Password);
         user.PlaylistSyncError = null;
         await db.SaveChangesAsync(ct);
         syncer.Changed(user.Id);
         return Results.Ok(await sync.StatusAsync(user, ct));
     }
 
+    // Unlinks the login on the media server in use; logins on others are kept for when they're used again.
     private static async Task<IResult> UnlinkAsync(Guid? userId, MelodexDbContext db, CancellationToken ct)
     {
         if (await db.Users.FindAsync([userId], ct) is not { } user)
             return Results.NotFound();
-        user.MediaServerUsername = user.MediaServerPassword = user.PlaylistSyncError = null;
+        var active = await db.PluginInstances.Where(p => p.Type == PluginType.Connector && p.Enabled).Select(p => (Guid?)p.Id).FirstOrDefaultAsync(ct);
+        await db.MediaServerLogins.Where(l => l.UserId == user.Id && (active == null || l.PluginInstanceId == active)).ExecuteDeleteAsync(ct);
+        user.PlaylistSyncError = null;
         user.PlaylistsSyncedAt = null;
-        await ForgetAsync(db, user.Id, ct);
+        await ForgetAsync(db, user.Id, active, ct);
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
     }
 
-    // Unlinks the user's playlists from the server's copies, and drops those deleted here but not yet there.
-    private static async Task ForgetAsync(MelodexDbContext db, Guid userId, CancellationToken ct)
+    // Unlinks the user's playlists from the server's copies (any server's, without one), and drops those deleted here but
+    // not yet there.
+    private static async Task ForgetAsync(MelodexDbContext db, Guid userId, Guid? instanceId, CancellationToken ct)
     {
-        await db.Playlists.Where(p => p.UserId == userId && p.DeletedAt != null).ExecuteDeleteAsync(ct);
-        await db.Playlists.Where(p => p.UserId == userId).ExecuteUpdateAsync(p => p
+        var playlists = db.Playlists.Where(p => p.UserId == userId && (instanceId == null || p.ServerInstanceId == instanceId || p.ServerInstanceId == null));
+        await playlists.Where(p => p.DeletedAt != null).ExecuteDeleteAsync(ct);
+        await playlists.ExecuteUpdateAsync(p => p
             .SetProperty(x => x.ServerId, (string?)null).SetProperty(x => x.ServerInstanceId, (Guid?)null)
             .SetProperty(x => x.ServerChangedAt, (DateTime?)null).SetProperty(x => x.SyncedAt, (DateTime?)null).SetProperty(x => x.NeedsPush, false), ct);
     }

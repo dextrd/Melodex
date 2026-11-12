@@ -23,6 +23,20 @@ Each retrieval plugin runs as a container of its own, from the same compose file
 others when named in `COMPOSE_PROFILES` (see [installing](installing.md#retrieval-plugins)). Add one under **Add**,
 where each is a template with its address filled in, and fill in its settings.
 
+## One media server at a time
+
+Melodex uses one media server at a time. The first you add is turned on; any other is added turned off, ready to
+switch to. Turning another on asks first, then turns the one in use off. Switching:
+
+- finds your songs again on the new server, by their MusicBrainz IDs, files or tags;
+- tells the new server about new music from then on;
+- syncs playlists with it once each person links their login for it. Logins are kept for each server, so switching
+  back uses the ones already linked, and a playlist that's on both is matched to its copy by name rather than made
+  twice. Playlists already on the old server stay there.
+
+Turning the only media server off asks first too: music is still filed, but no server is told about it and playlists
+stop syncing. Removing a media server forgets everyone's login for it.
+
 Retrieval plugins are all searched at once, and the [quality profile](requests-and-listening.md#quality) chooses
 between what they find. Artwork and lyrics plugins are tried in order; move them up and down to change it. A retrieval
 plugin is a separate service that speaks a small HTTP contract, so anyone can write one: see
