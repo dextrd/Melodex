@@ -204,7 +204,8 @@ public sealed class ArtworkCache(IServiceScopeFactory scopes, IOptions<MelodexOp
         switch (kind)
         {
             case EntityKind.Artist when await db.Artists.FindAsync(id) is { } artist:
-                return new ArtworkQuery(ArtworkSubject.Artist, artist.Name, null, await IdsAsync(EntityKind.Artist, id), [], []);
+                return new ArtworkQuery(ArtworkSubject.Artist, artist.Name, null, await IdsAsync(EntityKind.Artist, id), [], [],
+                    await db.Albums.Where(a => a.ArtistId == id).Select(a => a.Title).Distinct().Take(50).ToListAsync());
             case EntityKind.Album when await db.Albums.FindAsync(id) is { } album:
                 return new ArtworkQuery(ArtworkSubject.Album, album.Title, album.ArtistCredit, await IdsAsync(EntityKind.Album, id), [],
                     await IdsAsync(EntityKind.Artist, album.ArtistId));

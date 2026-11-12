@@ -10,6 +10,13 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   has only a snapshot. Wikimedia still fills in for artists Deezer has no picture of. This is the order for new installs;
   an existing one keeps its order, which you can change under **Settings → Plugins** (#57).
 
+### Fixed
+
+- Artists with the same name no longer get the same Deezer picture. Deezer finds an artist by their Deezer ID, or
+  through Wikidata by their MusicBrainz ID, and by name only when just one Deezer artist has it or one of them has an
+  album of theirs; otherwise it offers none rather than someone else's. Artist pictures Deezer found are looked for
+  again (#59).
+
 ## [1.2.0] - 2026-11-12
 
 Media servers: Plex and Jellyfin can take Navidrome's place, one at a time, and each user keeps a login for each.

@@ -18,13 +18,13 @@ public sealed class DeezerFactory : IPluginFactory
     {
         Id = PluginId,
         Name = "Deezer",
-        Version = "0.1.0",
+        Version = "0.2.0",
         Type = PluginType.Artwork,
         ContractVersion = ContractVersions.Artwork.ToString(),
-        Description = "Artist pictures and album covers from Deezer's public catalogue. No account needed. Artists are found by name, so two with the same name can be mixed up; covers are for albums Deezer's catalogue knows.",
+        Description = "Artist pictures and album covers from Deezer's public catalogue. No account needed. An artist is found by their Deezer ID, through Wikidata by their MusicBrainz ID, or by name when only one Deezer artist has it or one has their albums; covers are for albums Deezer's catalogue knows.",
         Homepage = "https://www.deezer.com",
         Capabilities = [ArtworkCapabilities.Artists, ArtworkCapabilities.Albums, ArtworkCapabilities.Editions],
-        Access = new PluginAccess { Network = ["api.deezer.com", "cdn-images.dzcdn.net", "e-cdns-images.dzcdn.net"] },
+        Access = new PluginAccess { Network = ["api.deezer.com", "cdn-images.dzcdn.net", "e-cdns-images.dzcdn.net", "www.wikidata.org"] },
         // Deezer allows 50 requests every 5 seconds.
         MaxRequestsPerSecond = 5,
         SettingsSchema = JsonDocument.Parse("""
@@ -47,13 +47,19 @@ public sealed class DeezerFactory : IPluginFactory
 }
 
 /// <summary>
-/// The picture of the Deezer artist with exactly the subject's name (ignoring case and accents), the one with the
-/// most fans when there are several, and the covers of albums by their Deezer IDs. Deezer gives a blank placeholder
-/// for artists and albums without one, which isn't offered.
+/// The picture of the subject's own Deezer artist, and the covers of albums by their Deezer IDs. The artist is the one
+/// with their Deezer ID, or the one Wikidata names for their MusicBrainz ID; failing those, the Deezer artist with
+/// exactly their name (ignoring case and accents) when there's only one, or the one with an album of the same title as
+/// one of theirs. Otherwise there's no picture rather than someone else's. Deezer gives a blank placeholder for artists
+/// and albums without one, which isn't offered.
 /// </summary>
 public sealed class Deezer(PluginContext context) : IArtworkPlugin
 {
     private static readonly Uri Api = new("https://api.deezer.com/");
+    private static readonly Uri Wikidata = new("https://www.wikidata.org/w/api.php");
+
+    // Same-named artists whose albums are looked at, most followed first.
+    private const int AlbumChecks = 5;
 
     private readonly HttpClient _http = context.HttpClient;
     private readonly string _size = context.Settings.TryGetProperty("size", out var size) && size.GetString() is "medium" or "xl" ? size.GetString()! : "big";
@@ -62,18 +68,80 @@ public sealed class Deezer(PluginContext context) : IArtworkPlugin
     {
         if (query.Subject != ArtworkSubject.Artist)
             return await CoversAsync(query, cancellationToken);
-        if (string.IsNullOrWhiteSpace(query.Title))
-            return [];
-        var found = await GetAsync($"search/artist?limit=25&q={Uri.EscapeDataString(query.Title)}", cancellationToken);
-        return Pick(found, query.Title, _size) is { } url ? [new ArtworkCandidate(url, "photo")] : [];
+        var url = await ByIdAsync(query, cancellationToken) ?? await ByNameAsync(query, cancellationToken);
+        return url is null ? [] : [new ArtworkCandidate(url, "photo")];
     }
+
+    private async Task<string?> ByIdAsync(ArtworkQuery query, CancellationToken ct)
+    {
+        var ids = query.Ids.Where(i => i.Provider == Providers.Deezer).Select(i => i.Value).ToList();
+        foreach (var mbid in query.Ids.Where(i => i.Provider == Providers.MusicBrainz).Select(i => i.Value))
+            if (await WikidataDeezerIdAsync(mbid, ct) is { } id)
+                ids.Add(id);
+        foreach (var id in ids.Distinct().Where(IsId))
+            if (Picture(await GetAsync($"artist/{id}", ct, missing: true), _size) is { } url)
+                return url;
+        return null;
+    }
+
+    private async Task<string?> ByNameAsync(ArtworkQuery query, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(query.Title))
+            return null;
+        var found = await GetAsync($"search/artist?limit=25&q={Uri.EscapeDataString(query.Title)}", ct);
+        var named = Named(found, query.Title);
+        if (named.Count == 1)
+            return Picture(named[0], _size);
+        var titles = (query.AlbumTitles ?? []).Select(Normalise).Where(t => t.Length > 0).ToHashSet();
+        if (titles.Count == 0)
+            return null;
+        foreach (var artist in named.Take(AlbumChecks))
+        {
+            if (!artist.TryGetProperty("id", out var id))
+                continue;
+            var albums = await GetAsync($"artist/{id.GetRawText()}/albums?limit=100", ct, missing: true);
+            if (albums.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array
+                && data.EnumerateArray().Any(a => a.TryGetProperty("title", out var t) && titles.Contains(Normalise(t.GetString()))))
+                return Picture(artist, _size);
+        }
+        return null;
+    }
+
+    /// <summary>The Deezer artist ID (P2722) of the Wikidata item with this MusicBrainz artist ID (P434), if it has one.</summary>
+    private async Task<string?> WikidataDeezerIdAsync(string mbid, CancellationToken ct)
+    {
+        var search = await _http.GetFromJsonAsync<JsonElement>(new Uri(Wikidata,
+            $"?format=json&action=query&list=search&srnamespace=0&srlimit=1&srsearch={Uri.EscapeDataString($"haswbstatement:P434={mbid}")}"), ct);
+        if (!search.TryGetProperty("query", out var q) || !q.TryGetProperty("search", out var hits) || hits.GetArrayLength() == 0
+            || hits[0].GetProperty("title").GetString() is not { } item)
+            return null;
+        var claims = await _http.GetFromJsonAsync<JsonElement>(new Uri(Wikidata, $"?format=json&action=wbgetclaims&property=P2722&entity={Uri.EscapeDataString(item)}"), ct);
+        return DeezerIds(claims).FirstOrDefault();
+    }
+
+    /// <summary>The Deezer artist IDs in a <c>wbgetclaims</c> answer for P2722, preferred rank first and deprecated ones left out.</summary>
+    public static IReadOnlyList<string> DeezerIds(JsonElement claims)
+    {
+        if (!claims.TryGetProperty("claims", out var all) || !all.TryGetProperty("P2722", out var ids))
+            return [];
+        return ids.EnumerateArray()
+            .Select(c => (Rank: c.TryGetProperty("rank", out var r) ? r.GetString() : null,
+                Id: c.TryGetProperty("mainsnak", out var snak) && snak.TryGetProperty("datavalue", out var value) && value.TryGetProperty("value", out var v)
+                    ? v.GetString() : null))
+            .Where(c => c.Id is { Length: > 0 } id && IsId(id) && c.Rank != "deprecated")
+            .OrderBy(c => c.Rank == "preferred" ? 0 : 1)
+            .Select(c => c.Id!)
+            .ToList();
+    }
+
+    private static bool IsId(string id) => id.Length > 0 && id.All(char.IsAsciiDigit);
 
     // A Deezer album is also its one edition, so an edition's own ID and its album's both lead to the cover.
     private async Task<IReadOnlyList<ArtworkCandidate>> CoversAsync(ArtworkQuery query, CancellationToken ct)
     {
         foreach (var id in query.Ids.Concat(query.AlbumIds).Where(i => i.Provider == Providers.Deezer).Select(i => i.Value).Distinct())
         {
-            if (id.Length == 0 || !id.All(char.IsAsciiDigit))
+            if (!IsId(id))
                 continue;
             var album = await _http.GetFromJsonAsync<JsonElement>(new Uri(Api, $"album/{id}"), ct);
             if (album.TryGetProperty($"cover_{_size}", out var cover) && cover.GetString() is { Length: > 0 } url && !IsPlaceholder(url))
@@ -82,18 +150,23 @@ public sealed class Deezer(PluginContext context) : IArtworkPlugin
         return [];
     }
 
-    /// <summary>The picture of the best-matching artist in a search answer, if they have one.</summary>
-    public static string? Pick(JsonElement search, string name, string size)
+    /// <summary>The artists in a search answer with exactly this name, ignoring case and accents, most followed first.</summary>
+    public static IReadOnlyList<JsonElement> Named(JsonElement search, string name)
     {
-        if (!search.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
-            return null;
+        if (search.ValueKind != JsonValueKind.Object || !search.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+            return [];
         var wanted = Normalise(name);
         return data.EnumerateArray()
             .Where(a => a.TryGetProperty("name", out var n) && Normalise(n.GetString()) == wanted)
             .OrderByDescending(a => a.TryGetProperty("nb_fan", out var f) && f.TryGetInt64(out var fans) ? fans : 0)
-            .Select(a => a.TryGetProperty($"picture_{size}", out var p) ? p.GetString() : null)
-            .FirstOrDefault(url => url is { Length: > 0 } && !IsPlaceholder(url));
+            .ToList();
     }
+
+    /// <summary>An artist's picture, unless it's Deezer's placeholder.</summary>
+    public static string? Picture(JsonElement artist, string size) =>
+        artist.ValueKind == JsonValueKind.Object && artist.TryGetProperty($"picture_{size}", out var p) && p.GetString() is { Length: > 0 } url && !IsPlaceholder(url)
+            ? url
+            : null;
 
     /// <summary>Deezer's stand-in for a missing picture has no image ID in its path: <c>/images/artist//</c> or <c>/images/cover//</c>.</summary>
     public static bool IsPlaceholder(string url) => url.Contains("/artist//", StringComparison.Ordinal) || url.Contains("/cover//", StringComparison.Ordinal);
@@ -134,12 +207,21 @@ public sealed class Deezer(PluginContext context) : IArtworkPlugin
         }
     }
 
-    private async Task<JsonElement> GetAsync(string path, CancellationToken ct)
+    // Deezer's code for an ID it doesn't know.
+    private const int NoData = 800;
+    private static readonly JsonElement Nothing = JsonDocument.Parse("{}").RootElement;
+
+    /// <param name="missing">Whether an unknown ID is nothing found (an empty answer) rather than an error.</param>
+    private async Task<JsonElement> GetAsync(string path, CancellationToken ct, bool missing = false)
     {
         var body = await _http.GetFromJsonAsync<JsonElement>(new Uri(Api, path), ct);
         // Errors, including going over the request quota, come back as 200 with an error object.
         if (body.TryGetProperty("error", out var error))
+        {
+            if (missing && error.TryGetProperty("code", out var code) && code.TryGetInt32(out var c) && c == NoData)
+                return Nothing;
             throw new HttpRequestException($"Deezer refused the request: {(error.TryGetProperty("message", out var m) ? m.GetString() : "unknown error")}");
+        }
         return body;
     }
 }
