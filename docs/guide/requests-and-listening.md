@@ -168,6 +168,9 @@ come as a small file of their own, about 300 KB for a four-minute song. **Settin
 Leaving **When matching** asks whether to delete the `.bars` files; kept, they're still used rather than making bars
 again. The bars aren't written into songs' tags.
 
+A name too long to fit scrolls round, here, in the player bar and in the playing song's row of a track list. It
+pauses while you point at it, and stays still if your device asks for reduced motion.
+
 The playlist button in the bar, or at the top of the full-screen player, adds what's playing to a playlist.
 
 **Keyboard shortcuts** work anywhere outside a text box:

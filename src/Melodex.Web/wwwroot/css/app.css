@@ -581,6 +581,23 @@ code { font-size: .85em; background: var(--bg); padding: .05rem .3rem; border-ra
 .segment-label::after { content: attr(data-label); font-weight: 600; height: 0; overflow: hidden; visibility: hidden; user-select: none; pointer-events: none; }
 .tile .tile-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A name too long for its space, scrolling round like a ticker (see ticker.js): the line slides along by its width and a
+   gap, which brings the copy after it to where it started. Paused while pointed at. */
+.ticker { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-ticking] {
+    display: block; text-overflow: clip; text-align: left;
+    animation: ticker var(--ticker-time) linear infinite;
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 1.5em), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 1.5em), transparent);
+}
+[data-ticking]::after { content: attr(data-ticker); content: attr(data-ticker) / ""; padding-left: 2.5em; }
+[data-ticking]:hover { animation-play-state: paused; }
+/* The copy is plain text in the line's own style, so what's in the line takes that style too while it moves, or the
+   loop would show where it starts again. */
+[data-ticking] :is(a, span, strong) { color: inherit; font-weight: inherit; }
+[data-ticking] .quality-dot { display: none; }
+@keyframes ticker { 0%, 20% { text-indent: 0; } 100% { text-indent: calc(-1 * var(--ticker-distance)); } }
+@media (prefers-reduced-motion: reduce) { [data-ticking] { animation: none; } [data-ticking]::after { content: none; } }
 .track-list { table-layout: fixed; }
 .track-list td { height: 56px; box-sizing: border-box; }
 .track-list col.cover-col { width: 3.5rem; }
@@ -650,7 +667,7 @@ h2.section-title { margin: 1.5rem 0 0; }
 }
 .player-art:hover > svg, .player-art:focus-visible > svg { opacity: 1; }
 .player-text { min-width: 0; }
-.player-title a { color: var(--text); font-weight: 600; }
+.player-title, .player-title a { color: var(--text); font-weight: 600; }
 .player-centre { display: flex; flex-direction: column; align-items: center; gap: .1rem; min-width: 0; }
 .player-centre .player-seek { width: 100%; max-width: 40rem; }
 .player-controls, .player-end { display: flex; gap: .35rem; align-items: center; }
@@ -744,8 +761,9 @@ button.icon.play .spinner { margin: 0; vertical-align: middle; }
 .np-head { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: .5rem; padding: .75rem 1rem; }
 .np-head-start, .np-head-end { display: flex; align-items: center; gap: .25rem; min-width: 0; }
 .np-head-end { justify-content: flex-end; }
-.np-from { max-width: min(36rem, 50vw); min-width: 0; text-align: center; font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.np-from .muted { text-transform: uppercase; letter-spacing: .06em; font-size: .72rem; margin-right: .4rem; }
+.np-from { max-width: min(36rem, 50vw); min-width: 0; display: flex; justify-content: center; align-items: baseline; font-size: .85rem; white-space: nowrap; }
+.np-from > .muted { flex: none; text-transform: uppercase; letter-spacing: .06em; font-size: .72rem; margin-right: .4rem; }
+.np-from-name { min-width: 0; color: var(--text); font-weight: 600; }
 .np-from a { color: var(--text); font-weight: 600; }
 .now-playing button.icon:hover:not(:disabled), .now-playing button.icon.on { background: color-mix(in srgb, var(--text) 12%, transparent); }
 /* The play button keeps its colour: a phone counts a tapped button as under the pointer until something else is (#82). */
