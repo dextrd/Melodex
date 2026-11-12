@@ -247,8 +247,11 @@ public sealed class ArtworkPlugins(MelodexDbContext db, PluginHost host)
         return plugins;
     }
 
-    /// <summary>The artwork plugins set up out of the box, in order: none needs an account.</summary>
-    public static readonly string[] Defaults = [CoverArtArchiveFactory.PluginId, WikimediaCommonsFactory.PluginId, DeezerFactory.PluginId];
+    /// <summary>
+    /// The artwork plugins set up out of the box, in order: none needs an account. Deezer has artists' own photos, so
+    /// it comes before Wikimedia Commons, which often has only a snapshot.
+    /// </summary>
+    public static readonly string[] Defaults = [CoverArtArchiveFactory.PluginId, DeezerFactory.PluginId, WikimediaCommonsFactory.PluginId];
 
     /// <summary>
     /// Sets up each default artwork plugin once, after any already there, so covers and artist pictures work out of the

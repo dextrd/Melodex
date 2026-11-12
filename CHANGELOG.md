@@ -4,6 +4,12 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ## [Unreleased]
 
+### Changed
+
+- Deezer comes before Wikimedia Commons among the artwork plugins, as it has artists' own photos where Wikimedia often
+  has only a snapshot. Wikimedia still fills in for artists Deezer has no picture of. This is the order for new installs;
+  an existing one keeps its order, which you can change under **Settings → Plugins** (#57).
+
 ## [1.2.0] - 2026-11-12
 
 Media servers: Plex and Jellyfin can take Navidrome's place, one at a time, and each user keeps a login for each.
