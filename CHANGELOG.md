@@ -46,7 +46,8 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   page so it zooms out (#80).
 - On iPhones, the music no longer goes quiet when you leave Safari after opening the full-screen player, while the song
   carries on silently. The visualiser's bars now come from a silent copy of the music that plays only while they're
-  shown, so the music you hear no longer goes through what the phone stops in the background (#65).
+  shown, so the music you hear no longer goes through what the phone stops in the background. Once the bars aren't
+  shown, the copy lets go of the music, so the phone's own controls stay with the music you hear (#65).
 
 ### Removed
 

@@ -46,6 +46,9 @@ export function init(dotnet) {
         navigator.mediaSession.setActionHandler("pause", () => audio.pause());
         navigator.mediaSession.setActionHandler("previoustrack", () => player.invokeMethodAsync("OnRemote", "previous"));
         navigator.mediaSession.setActionHandler("nexttrack", () => player.invokeMethodAsync("OnRemote", "next"));
+        // Said outright, so the controls show the music as it is rather than as the visualiser's copy was.
+        audio.addEventListener("playing", () => navigator.mediaSession.playbackState = "playing");
+        audio.addEventListener("pause", () => navigator.mediaSession.playbackState = "paused");
     }
 }
 
@@ -167,6 +170,7 @@ export function startVisualiser(target) {
         context = new AudioContext();
         copy = new Audio();
         copy.preload = "auto";
+        copy.disableRemotePlayback = true;
         const source = context.createMediaElementSource(copy);
         analyser = context.createAnalyser();
         analyser.fftSize = 2048;
@@ -226,13 +230,23 @@ export function startVisualiser(target) {
     follow();
 }
 
-/** Keeps the copy playing what the music is, where it is, while the bars are drawn; otherwise it's still. */
+/**
+ * Keeps the copy playing what the music is, where it is, while the bars are drawn; otherwise it lets go of the music
+ * altogether. Paused but holding it, an iPhone's controls go with the copy, as the last to play: leaving Safari, they
+ * showed the music stopped while it carried on.
+ */
 function follow() {
     if (!copy)
         return;
     const src = audio.getAttribute("src");
     if (!frame || !src || document.hidden) {
-        copy.pause();
+        if (copy.getAttribute("src") !== null) {
+            copy.pause();
+            copy.removeAttribute("src");
+            copy.load();
+            if ("mediaSession" in navigator)
+                navigator.mediaSession.playbackState = audio.paused ? "paused" : "playing";
+        }
         return;
     }
     if (copy.getAttribute("src") !== src)
