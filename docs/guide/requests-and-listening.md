@@ -149,8 +149,8 @@ blur of itself, with a visualiser that moves with the music, and beside it, eith
 - **The queue**.
 
 The visualiser can be turned off, the browser's own full screen turned on, and playing stopped, from the buttons at the
-top. Escape
-closes it. The volume and whether the visualiser shows are kept in this browser.
+top. Escape closes it. The volume and whether the visualiser shows are kept in this browser. While it shows, the
+visualiser downloads the song a second time to work out its bars from, so turn it off to save data on a phone.
 
 The playlist button in the bar, or at the top of the full-screen player, adds what's playing to a playlist.
 
