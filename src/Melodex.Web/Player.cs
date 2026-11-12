@@ -251,7 +251,7 @@ public sealed class Player : IAsyncDisposable
         {
             try
             {
-                foreach (var item in await _api.StartListeningAsync(new StartListen(RequestKind.Album, album.Album.Id, album.ShownEditionId)))
+                foreach (var item in await _api.StartListeningAsync(new StartListen(RequestKind.Album, album.Album.Id, album.ShownEditionId, fromTrack)))
                     listening[item.TrackId] = item;
             }
             catch (MelodexApiException e)

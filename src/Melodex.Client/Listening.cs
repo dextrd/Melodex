@@ -29,7 +29,11 @@ public enum ListenNowState
 /// <param name="Kind">A track, or an album to listen to its missing tracks in order.</param>
 /// <param name="Id">The track or album.</param>
 /// <param name="EditionId">The edition to fetch as; by default the one you have part of, or the usual one.</param>
-public sealed record StartListen(RequestKind Kind, Guid Id, Guid? EditionId = null);
+/// <param name="FromTrackId">
+/// For an album played from one of its tracks, that track: the missing tracks from it on are fetched first, then the
+/// ones before it.
+/// </param>
+public sealed record StartListen(RequestKind Kind, Guid Id, Guid? EditionId = null, Guid? FromTrackId = null);
 
 /// <summary>A track fetched to listen to without adding it to the library.</summary>
 /// <param name="Detail">What's happening, or why it failed or couldn't be added.</param>

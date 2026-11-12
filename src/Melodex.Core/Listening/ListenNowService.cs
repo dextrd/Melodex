@@ -65,6 +65,12 @@ public sealed class ListenNowService(
                 if (editionId != shown.ShownEditionId)
                     shown = (await view.GetAlbumAsync(album.Id, editionId, ct))!;
                 var missing = shown.Tracks.Where(t => t.Status == TrackStatus.Missing).ToList();
+                // Played from a track: those from it on are wanted first.
+                if (shown.Tracks.ToList().FindIndex(t => t.TrackId == start.FromTrackId) is var from and > 0)
+                {
+                    var later = shown.Tracks.Skip(from).Select(t => t.TrackId).ToHashSet();
+                    missing = [.. missing.Where(t => later.Contains(t.TrackId)), .. missing.Where(t => !later.Contains(t.TrackId))];
+                }
                 if (missing.Count == 0)
                     throw new ListenNowException("You have every track of this album, so play it from your library.");
                 var items = new List<ListenNowItem>();
