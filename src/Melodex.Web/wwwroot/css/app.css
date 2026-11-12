@@ -906,7 +906,8 @@ button.link.listen-album-title { display: block; max-width: 100%; color: var(--t
 .icon-button.large svg { width: 1.2rem; height: 1.2rem; }
 .icon-button:has(span:not(.spinner)) { padding: 0 .9rem 0 .7rem; }
 .icon-button.done { border-color: var(--owned); color: var(--owned); }
-.icon-button .spinner { width: .9rem; height: .9rem; }
+/* Its gap spaces a label, so the spinner needs none of the margin it has beside a button's text: alone, it's centred (#83). */
+.icon-button .spinner { width: .9rem; height: .9rem; margin: 0; vertical-align: middle; }
 /* Buttons that open a menu are spaced like any other. */
 td.actions > :is(.icon-button, .queue-menu, .move-menu) + :is(.icon-button, .queue-menu, .move-menu),
 td.actions > :is(.icon-button, .queue-menu, .move-menu) + .badge, td.actions > .badge + :is(.icon-button, .queue-menu, .move-menu) { margin-left: .3rem; }
