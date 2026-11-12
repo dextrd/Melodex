@@ -27,7 +27,7 @@ public static class PluginEndpoints
                 .Where(p => p.Manifest.Type != PluginType.Retrieval)
                 .Select(p => new AvailablePlugin(p.Manifest, p.Source, p.Rejection)).ToList())
             .WithName("ListAvailablePlugins")
-            .WithSummary("Index, artwork and media-server plugins loaded into the core. Retrieval plugins run in their own containers and are added by URL.");
+            .WithSummary("Catalogue, artwork, lyrics and media-server plugins loaded into the core. A plugin of any kind that runs on its own is added by its address instead.");
 
         plugins.MapPost("", async (AddPlugin body, MelodexDbContext db, PluginCatalog catalog, RetrievalPlugins retrieval, ArtworkCache artwork, CancellationToken ct) =>
             {
@@ -36,7 +36,7 @@ public static class PluginEndpoints
                 if (body.Endpoint is { Length: > 0 } url)
                 {
                     if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
-                        return Problem("endpoint", "Must be an http or https URL, for example http://retriever-ytdlp:8080.");
+                        return Problem("endpoint", "Must be an http or https URL, for example http://my-plugin:8080.");
                     try
                     {
                         manifest = await RetrievalClient.GetManifestAsync(retrieval.Client(url), ct);
@@ -45,10 +45,10 @@ public static class PluginEndpoints
                     {
                         return Problem("endpoint", $"Couldn't read the plugin's manifest from {url}: {e.Message}");
                     }
-                    if (manifest.Type != PluginType.Retrieval)
-                        return Problem("endpoint", $"{manifest.Name} is a {manifest.Type.ToString().ToLowerInvariant()} plugin, not a retrieval plugin.");
-                    if (!ContractVersions.Retrieval.Supports(ContractVersion.Parse(manifest.ContractVersion)))
-                        return Problem("endpoint", $"{manifest.Name} is built for retrieval contract {manifest.ContractVersion}; this Melodex supports {ContractVersions.Retrieval}.");
+                    if (body.Type is { } type && manifest.Type != type)
+                        return Problem("endpoint", $"{manifest.Name} is {KindOf(manifest.Type)}, not {KindOf(type)}.");
+                    if (VersionOf(manifest) is not { } version || !ContractVersions.For(manifest.Type).Supports(version))
+                        return Problem("endpoint", $"{manifest.Name} is built for {manifest.Type.ToString().ToLowerInvariant()} contract {manifest.ContractVersion}; this Melodex supports {ContractVersions.For(manifest.Type)}.");
                     endpoint = url.TrimEnd('/');
                 }
                 else if (body.PluginId is { } pluginId && catalog.Find(pluginId) is { } found)
@@ -61,7 +61,7 @@ public static class PluginEndpoints
                 }
                 else
                 {
-                    return Problem("pluginId", "Give a retrieval plugin's endpoint, or the ID of a plugin from /plugins/available.");
+                    return Problem("pluginId", "Give a plugin's endpoint, or the ID of a plugin from /plugins/available.");
                 }
 
                 var settings = SettingsSchema.Defaults(manifest.SettingsSchema);
@@ -89,7 +89,7 @@ public static class PluginEndpoints
                 await ArtworkChangedAsync(db, instance, catalog, artwork, ct);
                 return Results.Created($"/api/v1/plugins/{instance.Id}", ToInfo(instance, catalog));
             })
-            .WithName("AddPlugin").WithSummary("Set up a plugin: a retrieval plugin by its container URL, or a loaded one by ID. It goes last in the order.")
+            .WithName("AddPlugin").WithSummary("Set up a plugin: one that runs on its own by its address, or a loaded one by ID. It goes last in the order.")
             .Produces<PluginInfo>(StatusCodes.Status201Created).ProducesValidationProblem();
 
         plugins.MapPut("/{id:guid}", async (Guid id, UpdatePlugin body, MelodexDbContext db, PluginCatalog catalog, ArtworkCache artwork, CancellationToken ct) =>
@@ -110,7 +110,7 @@ public static class PluginEndpoints
                     instance.Name = name.Trim();
                 if (body.Enabled is { } enabled)
                     instance.Enabled = enabled;
-                if (body.Endpoint is { } endpoint && instance.Type == PluginType.Retrieval)
+                if (body.Endpoint is { } endpoint && instance.Endpoint is not null)
                 {
                     if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
                         return Problem("endpoint", "Must be an http or https URL.");
@@ -143,12 +143,16 @@ public static class PluginEndpoints
                 HealthReport report;
                 try
                 {
-                    if (instance.Type == PluginType.Retrieval)
+                    if (instance.Endpoint is not null)
                     {
                         // Testing also picks up a newer manifest, for example after the container was updated.
-                        var manifest = await RetrievalClient.GetManifestAsync(retrieval.Client(instance.Endpoint!), ct);
+                        var manifest = await RetrievalClient.GetManifestAsync(retrieval.Client(instance.Endpoint), ct);
+                        if (manifest.Type != instance.Type)
+                            throw new InvalidOperationException($"The plugin at {instance.Endpoint} is now {KindOf(manifest.Type)}, not {KindOf(instance.Type)}.");
                         instance.ManifestJson = JsonSerializer.Serialize(manifest, RetrievalJson.Options);
-                        report = await retrieval.Create(instance).CheckHealthAsync(ct);
+                        report = instance.Type == PluginType.Retrieval
+                            ? await retrieval.Create(instance).CheckHealthAsync(ct)
+                            : await host.Get<IPlugin>(instance).CheckHealthAsync(ct);
                     }
                     else if (await host.ResolveAsync(db, instance, ct) is { } running)
                     {
@@ -236,6 +240,27 @@ public static class PluginEndpoints
         if (changed.Type is PluginType.Artwork or PluginType.Index || lent)
             await artwork.ResetAsync(ct);
     }
+
+    private static ContractVersion? VersionOf(PluginManifest manifest)
+    {
+        try
+        {
+            return ContractVersion.Parse(manifest.ContractVersion);
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+    }
+
+    private static string KindOf(PluginType type) => type switch
+    {
+        PluginType.Retrieval => "a source",
+        PluginType.Connector => "a media server",
+        PluginType.Index => "a catalogue",
+        PluginType.Lyrics => "a lyrics plugin",
+        _ => "an artwork plugin",
+    };
 
     private static PluginManifest? Manifest(PluginInstance instance, PluginCatalog catalog) =>
         instance.ManifestJson is not null

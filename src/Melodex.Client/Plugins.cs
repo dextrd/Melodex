@@ -27,16 +27,20 @@ public sealed record PluginInfo(
     JsonElement Settings,
     PluginManifest? Manifest);
 
-/// <summary>A plugin that can be set up: loaded into the core, or, for retrieval plugins, any container you point it at.</summary>
+/// <summary>A plugin loaded into the core that can be set up. Any plugin that runs on its own is set up by its address instead.</summary>
 /// <param name="Problem">Why it can't be set up, if it can't.</param>
 public sealed record AvailablePlugin(PluginManifest Manifest, string Source, string? Problem);
 
 /// <summary>Body of <c>POST /plugins</c>.</summary>
-/// <param name="PluginId">An in-process plugin from <c>GET /plugins/available</c>; leave out for a retrieval plugin.</param>
-/// <param name="Endpoint">A retrieval plugin's container URL, for example <c>http://retriever-ytdlp:8080</c>.</param>
+/// <param name="PluginId">An in-process plugin from <c>GET /plugins/available</c>; leave out for one at an address.</param>
+/// <param name="Endpoint">
+/// The address of a plugin that runs on its own, such as a retrieval plugin's container, for example
+/// <c>http://retriever-ytdlp:8080</c>. Its manifest says what kind of plugin it is.
+/// </param>
 /// <param name="Name">Defaults to the plugin's name.</param>
 /// <param name="Settings">Defaults to the schema's defaults.</param>
-public sealed record AddPlugin(string? PluginId = null, string? Endpoint = null, string? Name = null, JsonElement? Settings = null);
+/// <param name="Type">The kind of plugin expected at the endpoint; one of another kind is refused.</param>
+public sealed record AddPlugin(string? PluginId = null, string? Endpoint = null, string? Name = null, JsonElement? Settings = null, PluginType? Type = null);
 
 /// <summary>Body of <c>PUT /plugins/{id}</c>. Anything left out stays as it is; a secret left out of the settings keeps its value.</summary>
 public sealed record UpdatePlugin(string? Name = null, JsonElement? Settings = null, bool? Enabled = null, string? Endpoint = null);
