@@ -20,6 +20,7 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 - The full-screen player's play button keeps the theme's colour after it's tapped on a phone, rather than turning grey
   until the player is opened again (#82).
+- The spinner in the play button while a song loads is centred in it (#83).
 - Artists with the same name no longer get the same Deezer picture. Deezer finds an artist by their Deezer ID, or
   through Wikidata by their MusicBrainz ID, and by name only when just one Deezer artist has it or one of them has an
   album of theirs; otherwise it offers none rather than someone else's. Artist pictures Deezer found are looked for
