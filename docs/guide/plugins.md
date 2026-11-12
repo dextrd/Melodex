@@ -6,7 +6,7 @@ Melodex is pluggable in five ways. Manage them under **Settings → Plugins**, w
 | Kind | Does | Comes with Melodex |
 | --- | --- | --- |
 | **Catalogue** | Where artists, albums and songs come from | MusicBrainz (its public server, or your own mirror), Deezer |
-| **Media server** | Told to scan when music arrives; Navidrome also lends its covers, and can sync playlists | Navidrome, Plex |
+| **Media server** | Told to scan when music arrives; can sync playlists, and Navidrome also lends its covers | Navidrome, Jellyfin, Plex |
 | **Retrieval** | Fetches music | YouTube Music (yt-dlp) and the inbox folder; Internet Archive, Prowlarr, Qobuz, Tidal and Bandcamp when you turn them on |
 | **Artwork** | Covers and artist pictures | Cover Art Archive, Wikimedia Commons, Deezer, fanart.tv (with your own key) |
 | **Lyrics** | The words of songs, synced where they can be | LRCLIB |
@@ -36,6 +36,22 @@ Bandcamp's, straight from the store, and Prowlarr's with a rip's log and cue, or
 **Trackers known for lossless** setting (by their names in Prowlarr, separated by commas). Whatever it's said to be, a
 lossless download is checked by its spectrum before it's kept; see
 [lossless that seems lossy](requests-and-listening.md#lossless-that-seems-lossy).
+
+## Jellyfin
+
+Melodex can tell Jellyfin about new music instead of Navidrome. In Jellyfin's **Dashboard → API Keys**, make a key
+for Melodex, then add **Jellyfin** under **Media server**, with:
+
+- **Server URL**, where Melodex reaches Jellyfin, such as `http://jellyfin:8096`.
+- **API key**, the one you made.
+- **Music library** and **Music folder on the Jellyfin server**, as for [Plex](#plex), when they aren't the first
+  music library and its first folder.
+- **Sync playlists**, to keep each user's playlists the same in both, as with Navidrome: each user links their own
+  Jellyfin login on their account page (see [playlists](playlists.md#syncing-with-your-media-server)).
+
+Jellyfin is told which folders new music went into, and finds each song by its MusicBrainz recording ID, its file or
+its tags. A playlist's description goes both ways too. Jellyfin doesn't keep pictures for playlists as Navidrome
+does, so those stay in Melodex.
 
 ## Plex
 

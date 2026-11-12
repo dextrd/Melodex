@@ -8,6 +8,7 @@ COPY src/Melodex.Web/Melodex.Web.csproj src/Melodex.Web/
 COPY src/Melodex.Plugins.MusicBrainz/Melodex.Plugins.MusicBrainz.csproj src/Melodex.Plugins.MusicBrainz/
 COPY src/Melodex.Plugins.Navidrome/Melodex.Plugins.Navidrome.csproj src/Melodex.Plugins.Navidrome/
 COPY src/Melodex.Plugins.Plex/Melodex.Plugins.Plex.csproj src/Melodex.Plugins.Plex/
+COPY src/Melodex.Plugins.Jellyfin/Melodex.Plugins.Jellyfin.csproj src/Melodex.Plugins.Jellyfin/
 COPY src/Melodex.Plugins.FanartTv/Melodex.Plugins.FanartTv.csproj src/Melodex.Plugins.FanartTv/
 COPY src/Melodex.Plugins.Wikimedia/Melodex.Plugins.Wikimedia.csproj src/Melodex.Plugins.Wikimedia/
 COPY src/Melodex.Plugins.Deezer/Melodex.Plugins.Deezer.csproj src/Melodex.Plugins.Deezer/

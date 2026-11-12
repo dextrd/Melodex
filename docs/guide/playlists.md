@@ -49,24 +49,25 @@ takes what's in it out of the folder.
 
 ## Syncing with your media server
 
-With Navidrome, your playlists can be the same in both places, both ways: make or change one in Melodex and it's
-changed in Navidrome, make or change one in Navidrome (or an app that uses it) and it's changed in Melodex.
+With Navidrome or Jellyfin, your playlists can be the same in both places, both ways: make or change one in Melodex
+and it's changed in the media server, make or change one there (or in an app that uses it) and it's changed in
+Melodex. Plex's accounts are plex.tv's rather than the server's, so playlists don't sync with Plex.
 
-1. Someone who may change settings ticks **Sync playlists** in the Navidrome plugin's settings, under
+1. Someone who may change settings ticks **Sync playlists** in the media server plugin's settings, under
    **Settings → Plugins**.
-2. Each user links their own Navidrome login under **Playlists** on their account page. It's checked first, then
+2. Each user links their own Navidrome or Jellyfin login under **Playlists** on their account page. It's checked first, then
    kept encrypted with Melodex's data protection keys. Someone who may manage users can link a login for someone else
    from **Settings → Users**.
 
-Syncing happens a few seconds after you change a playlist, every 10 minutes for changes made in Navidrome, and when you
+Syncing happens a few seconds after you change a playlist, every 10 minutes for changes made in the media server, and when you
 click the sync button on the Playlists tab. Each user only ever sees and changes their own playlists: Navidrome's
 public playlists from other users aren't brought over.
 
 - **Changed in one place** since the last sync: copied to the other.
 - **Changed in both**: the later change wins.
 - **Deleted in one place**: deleted in the other, unless it's been changed there since, in which case it's kept.
-- **Pictures** go both ways too, the later change winning. A picture Navidrome makes from a playlist's songs isn't
-  brought over, only one someone gave it.
+- **Pictures** go both ways too with Navidrome, the later change winning. A picture Navidrome makes from a playlist's
+  songs isn't brought over, only one someone gave it. Jellyfin doesn't keep playlist pictures, so they stay in Melodex.
 - **Songs Navidrome has that your library doesn't** stay in the playlist, marked *only on the media server*, and go
   back to Navidrome with it. Songs are recognised by their MusicBrainz IDs where the files have them, and otherwise by
   their title, artist and length as the files' own tags or the catalogue have them, however they're written: "Don't"

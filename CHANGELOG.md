@@ -6,6 +6,9 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ### Added
 
+- Jellyfin can be the media server. Melodex tells it which folders new music went into, finds each song there by its
+  MusicBrainz recording ID, its file or its tags, and can keep each user's playlists the same in both, with their own
+  Jellyfin login (#48).
 - Plex can be the media server instead of Navidrome. Melodex tells it to scan just the folders new music went into,
   and finds each song there by its file, its MusicBrainz ID or its tags. Setup's music step offers a choice of media
   server. Playlists don't sync with Plex (#47).
@@ -19,6 +22,8 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   screen (#42).
 - Stopping Melodex no longer leaves the library's views being worked out and saved in the background: a save under
   way is finished, and nothing more is started (#45).
+- Switching to another media server no longer leaves Melodex sending it the old server's song IDs, which made
+  playlists fail to sync: each song is found again on the new server, even one only the old server had (#48).
 
 ## [1.1.0] - 2026-11-11
 
