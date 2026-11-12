@@ -185,7 +185,8 @@ else
                             <td class="num actions">
                                 @if (track.Status is TrackStatus.Owned or TrackStatus.OwnedElsewhere)
                                 {
-                                    <IconButton Icon="play" Requires="@UserPermissions.Listen" Title="Play the tracks you have from here" OnClick="() => PlayOwnedFromAsync(track)" />
+                                    <IconButton Icon="play" Requires="@UserPermissions.Listen" Title="@(_album.Tracks.Any(t => t.Status == TrackStatus.Missing) ? "Play the album from here, fetching the tracks you don't have to listen to" : "Play the album from here")"
+                                                OnClick="() => Player.PlayAlbumAsync(_album, track.TrackId)" />
                                     <QueueButton Title="Add to the queue: next, or at the end"
                                                 OnQueue="next => Player.AddAsync([PlayerEntry.Owned(track, album, _album.ShownEditionId)], next)" />
                                     <IconButton Icon="playlist" Requires="@UserPermissions.Listen" Class="hide-narrow" Title="Add to a playlist"
@@ -194,8 +195,16 @@ else
                                 else if (track.Status is TrackStatus.Missing or TrackStatus.Elsewhere && Tracker.Find(RequestKind.Album, album.Id) is not { Active: true })
                                 {
                                     <FetchButton Kind="RequestKind.Track" Id="track.TrackId" EditionId="_album.ShownEditionId" Hint="Get it into your library">
-                                        <IconButton Icon="listen" Requires="@UserPermissions.Listen" Title="Listen: fetch it to play now, without adding it to your library"
-                                                    OnClick="() => Player.ListenAsync(track.TrackId, _album.ShownEditionId)" />
+                                        @if (track.Status == TrackStatus.Missing)
+                                        {
+                                            <IconButton Icon="listen" Requires="@UserPermissions.Listen" Title="Listen: play the album from here, fetching the tracks you don't have, without adding them to your library"
+                                                        OnClick="() => Player.PlayAlbumAsync(_album, track.TrackId)" />
+                                        }
+                                        else
+                                        {
+                                            <IconButton Icon="listen" Requires="@UserPermissions.Listen" Title="Listen: fetch it to play now, without adding it to your library"
+                                                        OnClick="() => Player.ListenAsync(track.TrackId, _album.ShownEditionId)" />
+                                        }
                                         <IconButton Icon="queue" Requires="@UserPermissions.Listen" Class="hide-narrow" Title="Add to the queue, fetching it to listen to" Confirm="true"
                                                     OnClick="() => Player.ListenAsync(track.TrackId, _album.ShownEditionId, next: true)" />
                                         @if (track.Status == TrackStatus.Missing)
@@ -319,12 +328,6 @@ else
         ScanStatus.LibraryChanged -= Reload;
         Tracker.Changed -= Redraw;
         Player.Changed -= Redraw;
-    }
-
-    private Task PlayOwnedFromAsync(TrackRow from)
-    {
-        var owned = _album!.Tracks.Where(t => t.Status is TrackStatus.Owned or TrackStatus.OwnedElsewhere).ToList();
-        return Player.PlayAsync(owned.Select(t => PlayerEntry.Owned(t, _album.Album, _album.ShownEditionId)).ToList(), owned.IndexOf(from));
     }
 
     private async Task LoadAsync(Guid? editionId)

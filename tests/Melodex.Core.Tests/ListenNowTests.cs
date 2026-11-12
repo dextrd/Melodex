@@ -147,6 +147,22 @@ public sealed class ListenNowTests(RequestFixture fixture, ITestOutputHelper out
         await WaitAsync(started, ListenNowState.Playable);
     }
 
+    [TestLibraryFact]
+    public async Task An_album_played_from_a_track_fetches_from_that_track_on_first()
+    {
+        await fixture.AddSourceAsync(new FakeSource("from"));
+        var album = await MissingAlbumAsync(3);
+        var edition = (await Api.GetAlbumAsync(album.Id))!.ShownEditionId;
+        var tracks = (await Api.GetAlbumAsync(album.Id, edition))!.Tracks.Where(t => t.Status == TrackStatus.Missing).Select(t => t.TrackId).ToList();
+        Assert.True(tracks.Count >= 3);
+
+        var started = await Api.StartListeningAsync(new StartListen(RequestKind.Album, album.Id, edition, tracks[2]));
+
+        Assert.Equal([.. tracks.Skip(2), .. tracks.Take(2)], started.Select(i => i.TrackId));
+        // Let them finish, so the next test can remove its source.
+        await WaitAsync(started, ListenNowState.Playable);
+    }
+
     /// <summary>A missing album of a library artist that no other test fetches; <paramref name="index"/> picks another for each test.</summary>
     private async Task<AlbumSummary> MissingAlbumAsync(int index)
     {

@@ -19,6 +19,9 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 - Searching no longer lists an artist twice, once from MusicBrainz and once from Deezer. An album or song Deezer finds
   is by the artist MusicBrainz has of that name, when it's clear which: the one with that album, else the only one,
   else the only one in your library. Artists already added twice are merged when Melodex starts (#58).
+- Playing a track on an album page plays the album on from it with the tracks you don't have too, fetched to listen
+  to, as **Listen now** does for the whole album, even on an album you have none of. The tracks from it on are fetched
+  first. Before, only the tracks you have were queued, and a track you don't have played on its own (#63).
 
 ## [1.2.0] - 2026-11-12
 
