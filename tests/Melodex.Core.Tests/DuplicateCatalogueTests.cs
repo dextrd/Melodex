@@ -143,6 +143,56 @@ public sealed class DuplicateCatalogueTests : IDisposable
     }
 
     [Fact]
+    public async Task An_album_Deezer_added_first_becomes_the_one_MusicBrainz_has()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MelodexDbContext>();
+        var catalogue = scope.ServiceProvider.GetRequiredService<CatalogueService>();
+        var olivia = MusicBrainzArtist(db, "Olivia Rodrigo", "mb-olivia");
+        await db.SaveChangesAsync();
+        var copy = await catalogue.ImportAlbumAsync(DeezerAlbum("1", "you seem pretty sad for a girl so in love", "1424821", "Olivia Rodrigo"), null, default);
+        await db.SaveChangesAsync();
+
+        var album = await catalogue.ImportAlbumAsync(new IndexAlbum(new ProviderId(Providers.MusicBrainz, "rg-sad"), "you seem pretty sad for a girl so in love",
+            new ArtistRef(new ProviderId(Providers.MusicBrainz, "mb-olivia"), "Olivia Rodrigo"), "Olivia Rodrigo", AlbumType.Single, []), null, default);
+        await db.SaveChangesAsync();
+
+        Assert.Equal(copy.Id, album.Id);
+        Assert.Equal(AlbumType.Single, album.Type);
+        Assert.Single(await db.Albums.Where(a => a.ArtistId == olivia.Id).ToListAsync());
+        Assert.Equal(album.Id, await catalogue.FindAsync(EntityKind.Album, new ProviderId(Providers.MusicBrainz, "rg-sad"), default));
+        Assert.Equal(album.Id, await catalogue.FindAsync(EntityKind.Album, new ProviderId(Providers.Deezer, "1"), default));
+    }
+
+    [Fact]
+    public async Task Search_lists_a_song_once_on_an_album_that_has_it_twice()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MelodexDbContext>();
+        var search = scope.ServiceProvider.GetRequiredService<CatalogueSearch>();
+        var olivia = MusicBrainzArtist(db, "Olivia Rodrigo", "mb-olivia");
+        var single = new Album { ArtistId = olivia.Id, Title = "you seem pretty sad for a girl so in love", ArtistCredit = "Olivia Rodrigo" };
+        var edition = new Edition { AlbumId = single.Id, Title = single.Title, TrackCount = 2 };
+        // Two recordings of it, as MusicBrainz has, and one on another album, which is listed too.
+        var first = new Track { ArtistId = olivia.Id, Title = "less", ArtistCredit = "Olivia Rodrigo" };
+        var second = new Track { ArtistId = olivia.Id, Title = "Less", ArtistCredit = "Olivia Rodrigo" };
+        var live = new Album { ArtistId = olivia.Id, Title = "Live", ArtistCredit = "Olivia Rodrigo" };
+        var liveEdition = new Edition { AlbumId = live.Id, Title = "Live", TrackCount = 1 };
+        var third = new Track { ArtistId = olivia.Id, Title = "less", ArtistCredit = "Olivia Rodrigo" };
+        db.AddRange(single, edition, first, second, live, liveEdition, third,
+            new EditionTrack { EditionId = edition.Id, Disc = 1, Position = 1, Number = "1", Title = "less", TrackId = first.Id },
+            new EditionTrack { EditionId = edition.Id, Disc = 1, Position = 2, Number = "2", Title = "less", TrackId = second.Id },
+            new EditionTrack { EditionId = liveEdition.Id, Disc = 1, Position = 1, Number = "1", Title = "less", TrackId = third.Id });
+        // The second is the one you have, so it's the one listed.
+        db.LibraryFiles.Add(new LibraryFile { Path = "Olivia Rodrigo/less.flac", TrackId = second.Id, EditionId = edition.Id, ArtistId = olivia.Id, MatchedAt = DateTime.UtcNow });
+        await db.SaveChangesAsync();
+
+        var results = await search.SearchAsync("less", null, local: true, default);
+
+        Assert.Equal(new[] { second.Id, third.Id }.Order(), results.Tracks.Select(t => t.Id).Order());
+    }
+
+    [Fact]
     public async Task An_album_added_twice_before_is_merged_with_its_editions_and_files()
     {
         using var scope = _factory.Services.CreateScope();

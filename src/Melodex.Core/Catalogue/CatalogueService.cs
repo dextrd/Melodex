@@ -271,6 +271,26 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
         return candidates.Count == 1 ? candidates[0] : null;
     }
 
+    /// <summary>
+    /// For the core catalogue's album, unknown by its ID: the album by the same artist with the same title that only
+    /// gap-filling catalogues know, so it can become the core's. Only when there's one, and no album of the core's has
+    /// that title already. Null for gap-filling catalogues' albums.
+    /// </summary>
+    private async Task<Album?> CopyOfAlbumAsync(Guid artistId, string title, string provider, CancellationToken ct)
+    {
+        var indexes = await IndexesAsync(ct);
+        if (indexes.Count < 2 || indexes[0].Provider != provider || TextMatch.NormaliseAlbum(title) is not { Length: > 0 } key)
+            return null;
+        var copies = new List<Album>();
+        foreach (var album in await AlbumsTitledAsync(artistId, key, ct))
+        {
+            if (await HasIdAsync(EntityKind.Album, album.Id, provider, ct))
+                return null;
+            copies.Add(album);
+        }
+        return copies.Count == 1 ? copies[0] : null;
+    }
+
     /// <summary>The artist's albums, saved or about to be, with this normalised title.</summary>
     private async Task<List<Album>> AlbumsTitledAsync(Guid artistId, string key, CancellationToken ct)
     {
@@ -434,8 +454,13 @@ public sealed class CatalogueService(MelodexDbContext db, IndexPlugins indexPlug
                 await MapAsync(EntityKind.Album, same.Id, source.Id, ct);
                 return same;
             }
-            album = new Album { ArtistId = artist.Id, Title = source.Title, ArtistCredit = source.ArtistCredit };
-            db.Albums.Add(album);
+            // A copy a gap-filling catalogue added first becomes the core catalogue's album, rather than there being two.
+            album = await CopyOfAlbumAsync(artist.Id, source.Title, source.Id.Provider, ct);
+            if (album is null)
+            {
+                album = new Album { ArtistId = artist.Id, Title = source.Title, ArtistCredit = source.ArtistCredit };
+                db.Albums.Add(album);
+            }
         }
         else if (await OutrankedAsync(EntityKind.Album, album.Id, source.Id.Provider, ct))
         {
