@@ -567,6 +567,34 @@ else
         await Prefs.SetAsync(RecentArtistsKey, _recentArtists);
     }
 
+    /// <summary>
+    /// An artist's page, opened: put first among the recent artists when it was reached from a search, however many
+    /// pages on (a song's, then its artist's); otherwise only brought up to date if it's there, as one opened from a
+    /// song's credit was kept under the credit, which can name several.
+    /// </summary>
+    public static async Task OpenedArtistAsync(Preferences prefs, RecentArtist artist, bool fromSearch)
+    {
+        var recent = await prefs.GetAsync<List<RecentArtist>>(RecentArtistsKey, []);
+        var index = recent.FindIndex(a => a.Id == artist.Id);
+        if (fromSearch)
+        {
+            var updated = index < 0 ? artist : artist with { ImageUrl = artist.ImageUrl ?? recent[index].ImageUrl };
+            List<RecentArtist> next = [updated, .. recent.Where(a => a.Id != artist.Id)];
+            if (next.Count > RecentCount)
+                next = next[..RecentCount];
+            if (!next.SequenceEqual(recent))
+                await prefs.SetAsync(RecentArtistsKey, next);
+            return;
+        }
+        if (index < 0)
+            return;
+        var named = recent[index] with { Name = artist.Name, Disambiguation = artist.Disambiguation, ImageUrl = artist.ImageUrl ?? recent[index].ImageUrl };
+        if (named == recent[index])
+            return;
+        recent[index] = named;
+        await prefs.SetAsync(RecentArtistsKey, recent);
+    }
+
     private async Task ForgetArtistAsync(RecentArtist artist)
     {
         _recentArtists = _recentArtists.Where(a => a.Id != artist.Id).ToList();

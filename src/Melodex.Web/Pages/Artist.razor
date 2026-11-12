@@ -4,6 +4,7 @@
 @inject MelodexClient Api
 @inject Preferences Prefs
 @inject Glimpses Glimpses
+@inject NavSections Sections
 
 <PageTitle>@(_artist?.Name ?? "Artist") · Melodex</PageTitle>
 
@@ -210,29 +211,13 @@ else
         if (_artist is not null)
         {
             Glimpses.Saw(_artist);
-            await RenameRecentAsync(_artist);
+            await Search.OpenedArtistAsync(Prefs, new Search.RecentArtist(_artist.Id, _artist.Name, _artist.Disambiguation, _artist.ImageUrl),
+                Sections.Current == NavSection.Search);
         }
         Follow();
     }
 
     private string Key => $"artist/{Id}";
-
-    /// <summary>
-    /// Among the search page's recent artists, this one as they are: one opened from a song's credit was kept under the
-    /// credit, which can name several.
-    /// </summary>
-    private async Task RenameRecentAsync(ArtistDetail artist)
-    {
-        var recent = await Prefs.GetAsync<List<Search.RecentArtist>>(Search.RecentArtistsKey, []);
-        var index = recent.FindIndex(a => a.Id == artist.Id);
-        if (index < 0)
-            return;
-        var named = recent[index] with { Name = artist.Name, Disambiguation = artist.Disambiguation, ImageUrl = artist.ImageUrl ?? recent[index].ImageUrl };
-        if (named == recent[index])
-            return;
-        recent[index] = named;
-        await Prefs.SetAsync(Search.RecentArtistsKey, recent);
-    }
 
     private void Reload() => InvokeAsync(async () =>
     {

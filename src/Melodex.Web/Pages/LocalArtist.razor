@@ -2,6 +2,8 @@
 @implements IDisposable
 @inject PageCache Pages
 @inject MelodexClient Api
+@inject Preferences Prefs
+@inject NavSections Sections
 
 <PageTitle>@(_artist?.Name ?? "Artist") · Melodex</PageTitle>
 
@@ -40,6 +42,9 @@ else
         ScanStatus.LibraryChanged -= Reload;
         ScanStatus.LibraryChanged += Reload;
         await LoadAsync();
+        if (_artist is not null)
+            await Search.OpenedArtistAsync(Prefs, new Search.RecentArtist(_artist.Id, _artist.Name, null, _artist.ImageUrl, Local: true),
+                Sections.Current == NavSection.Search);
     }
 
     private async Task LoadAsync()
