@@ -4,6 +4,13 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-13
+
+Playback: gapless albums, with a new **Settings → Playback**, and visualiser bars made by Melodex. Phones' lock screens
+and Control Centre get previous and next song buttons, the song's real length, and let go when the music stops. Opus
+songs play properly in Safari. Long names scroll like a ticker. Update the core, the beets worker (for `.bars` files)
+and the Prowlarr plugin (for magnet links) together.
+
 ### Added
 
 - **Settings → Playback**, with how long listen-now songs are kept (moved from General) and when the visualiser's bars
