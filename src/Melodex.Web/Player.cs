@@ -435,6 +435,9 @@ public sealed class Player : IAsyncDisposable
             await StopAsync();
             return;
         }
+        // Where a queue picked up after a reload was left is for its song alone: another starts from its beginning (#105).
+        if (index != Current)
+            _resumeAt = null;
         Current = index;
         await StartAsync();
     }
@@ -442,7 +445,10 @@ public sealed class Player : IAsyncDisposable
     public async Task SeekAsync(double seconds)
     {
         Position = seconds;
-        if (_audio is not null)
+        // Not loaded yet, after a reload: it starts from there when played.
+        if (_resumeAt is not null)
+            _resumeAt = seconds;
+        else if (_audio is not null)
             await _audio.InvokeVoidAsync("seek", seconds);
         TimeChanged?.Invoke();
     }
