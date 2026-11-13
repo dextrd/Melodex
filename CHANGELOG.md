@@ -25,6 +25,8 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ### Fixed
 
+- After reopening the web app, a song other than the one left off at starts from its beginning, rather than from where
+  the other was left, and seeking before pressing play is kept (#105).
 - An iPhone's music controls show Melodex playing as soon as it starts, rather than paused until play is pressed on
   them, and let it go when it's stopped (#94).
 - When the music stops, with stop or at the end of the queue, a phone's lock screen and Control Centre no longer keep a
