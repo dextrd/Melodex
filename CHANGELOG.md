@@ -4,6 +4,11 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ## [Unreleased]
 
+### Fixed
+
+- The Prowlarr plugin no longer fails a fetch as "removed from qBittorrent" the moment it adds a torrent: qBittorrent
+  adds it in the background, so it's waited for, up to a minute. Update the Prowlarr plugin's image for this (#115).
+
 ## [1.3.0] - 2026-11-13
 
 Playback: gapless albums, with a new **Settings → Playback**, and visualiser bars made by Melodex. Phones' lock screens
