@@ -83,6 +83,17 @@ const actions = {
     pause: () => audio.pause(),
     previoustrack: () => player.invokeMethodAsync("OnRemote", "previous"),
     nexttrack: () => player.invokeMethodAsync("OnRemote", "next"),
+    // Dragging along the phone's bar: once Melodex says which buttons it has, an iPhone offers only those.
+    seekto: details => {
+        if (details.fastSeek && audio.fastSeek)
+            audio.fastSeek(details.seekTime);
+        else
+            audio.currentTime = details.seekTime;
+    },
+    // Said outright to be none: an iPhone otherwise offers buttons that jump 10 seconds, rather than previous and next
+    // song (#99).
+    seekbackward: null,
+    seekforward: null,
 };
 
 function controls(on) {
