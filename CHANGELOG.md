@@ -20,6 +20,11 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   the song and artist in the player and the full-screen player, and the album it's playing from. They stay still for
   anyone whose device asks for reduced motion, and pause while pointed at (#86).
 
+### Fixed
+
+- An iPhone's music controls show Melodex playing as soon as it starts, rather than paused until play is pressed on
+  them, and let it go when it's stopped (#94).
+
 ## [1.2.1] - 2026-11-12
 
 Fixes from using 1.2.0: Deezer's artists and albums no longer show twice beside MusicBrainz's, seeking lands where it's
