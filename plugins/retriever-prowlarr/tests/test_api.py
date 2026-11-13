@@ -55,12 +55,13 @@ def release(title, link=None, magnet=None, info_hash=None, seeders=5, protocol="
 class FakeProwlarr:
     def __init__(self, results, torrents):
         self.results, self.torrents, self.queries, self.keys = results, torrents, [], []
+        self.answers = lambda query: True  # whether the indexers have anything for a search
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.keys.append(request.headers.get("X-Api-Key") or request.url.params.get("apikey"))
         if request.url.path == "/api/v1/search":
             self.queries.append(request.url.params["query"])
-            return httpx.Response(200, json=self.results)
+            return httpx.Response(200, json=self.results if self.answers(request.url.params["query"]) else [])
         if request.url.path == "/api/v1/system/status":
             return httpx.Response(200, json={"version": "2.6.5"})
         if request.url.path == "/api/v1/indexer":
@@ -241,6 +242,29 @@ def test_a_song_is_found_inside_an_album_torrent(fakes):
     assert best["title"] == "Sour Times"
     assert json.loads(best["candidateId"])["f"] == [[None, None, 1, "Portishead - Dummy (1994) [FLAC]/02 - Portishead - Sour Times.flac"]]
     assert prowlarr.queries == ["Portishead Dummy", "Portishead Sour Times"]
+
+
+def test_a_song_by_two_artists_is_found_by_its_lead_artist(fakes):
+    client, prowlarr, _, settings = fakes
+    album, _ = make_torrent("Olivia Rodrigo - Second Album (2026) [FLAC]",
+                            [("01 - Olivia Rodrigo - First Song.flac", 30_000_000), ("02 - Olivia Rodrigo - Duet Song.flac", 28_000_000)])
+    prowlarr.torrents["duets"] = album
+    prowlarr.results = [release("Olivia Rodrigo - Second Album (2026) [FLAC]", "http://prowlarr:9696/1/download?file=duets", seeders=6)]
+    prowlarr.answers = lambda query: "Robert" not in query  # torrents are named for her alone
+    target = {"kind": "track", "title": "Duet Song", "artist": "Olivia Rodrigo & Robert Smith", "album": "Second Album"}
+    candidates = client.post("/v1/search", json={"settings": settings, "target": target}).json()["candidates"]
+
+    assert "Olivia Rodrigo Second Album" in prowlarr.queries
+    assert [c["title"] for c in candidates] == ["Duet Song"]
+    assert candidates[0]["score"] >= 0.6
+
+
+def test_a_lead_artist_is_the_first_a_credit_names():
+    assert retrieve.lead("Olivia Rodrigo & Robert Smith") == "Olivia Rodrigo"
+    assert retrieve.lead("Calvin Harris feat. Rihanna") == "Calvin Harris"
+    # A name with a joiner in it is still searched for and matched whole, first.
+    assert retrieve.artists("Tyler, The Creator") == ["Tyler, The Creator", "Tyler"]
+    assert retrieve.artists("Portishead") == ["Portishead"]
 
 
 def test_a_concert_is_searched_for_by_its_date(fakes):

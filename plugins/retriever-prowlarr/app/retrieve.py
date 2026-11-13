@@ -36,6 +36,19 @@ _GLUED = re.compile(r"(?<=\d)(?=[^\W\d])|(?<=[^\W\d])(?=\d)")
 _TAPER = re.compile(r"d(\d{1,2})t(\d{2,3})", re.IGNORECASE)
 _DATE = re.compile(r"\b(\d{4})[-‐‑–./](\d{2})[-‐‑–./](\d{2})\b")
 _DISC = re.compile(r"\b(?:cd|disc|disk)\s*(\d+)\b", re.IGNORECASE)
+_JOINED = re.compile(r"\s+(?:&|\+|and|x|with|vs\.?|feat\.?|ft\.?|featuring)\s+|\s*,\s+", re.IGNORECASE)
+
+
+def lead(artist: str) -> str:
+    """The first artist a credit names: "Olivia Rodrigo & Robert Smith" is Olivia Rodrigo. Releases are mostly named
+    for them alone, so they're searched for and matched by them too; a band named that way ("Simon & Garfunkel") still
+    matches by its whole name."""
+    return _JOINED.split(artist, maxsplit=1)[0].strip() or artist
+
+
+def artists(artist: str) -> list[str]:
+    """The credit, and its lead artist when that's someone else."""
+    return list(dict.fromkeys([artist, lead(artist)]))
 
 
 # ---- What's in a torrent ----
@@ -114,8 +127,9 @@ def describe(path: str, artist: str = "") -> tuple[int | None, int | None, str]:
         words = words[i + 1:]
         break
     title = " ".join(words)
-    if artist and (name := normalise(artist)):
-        title = re.sub(rf"(?i)^\W*{re.escape(artist)}\W+-\W*|^\W*{re.escape(name)}\s+-\s+", "", title)
+    for credited in artists(artist) if artist else []:
+        if name := normalise(credited):
+            title = re.sub(rf"(?i)^\W*{re.escape(credited)}\W+-\W*|^\W*{re.escape(name)}\s+-\s+", "", title)
     return disc, number, title.strip(" -.")
 
 
@@ -149,7 +163,8 @@ def match_album(target: Target, files: list[torrents.TorrentFile]) -> tuple[list
 
 def match_track(target: Target, name: str, files: list[torrents.TorrentFile]) -> tuple[torrents.TorrentFile, float] | None:
     """The file that's the requested song, and how well it matches."""
-    scored = [(f, track_score(target.title, target.artist, None, describe(f.path, target.artist)[2], [name, f.path], None))
+    scored = [(f, max(track_score(target.title, artist, None, describe(f.path, target.artist)[2], [name, f.path], None)
+                      for artist in artists(target.artist)))
               for f in files]
     return max(scored, key=lambda s: s[1], default=None)
 
@@ -160,7 +175,7 @@ def title_score(target: Target, name: str) -> float:
     """How well a torrent's name fits the request before its files are looked at."""
     wanted = target.album or target.title if target.kind == Kind.album else target.album or ""
     album = similarity(wanted, name) if wanted else 0.5
-    artist = similarity(target.artist, name)
+    artist = max(similarity(a, name) for a in artists(target.artist))
     return 0.6 * album + 0.4 * artist
 
 
@@ -189,9 +204,10 @@ def search(target: Target, limit: int, settings: dict[str, Any]) -> list[Candida
     known = trackers(settings)
     min_score = float(settings.get("minScore", 0.6))
     min_seeders = int(settings.get("minSeeders", 1))
-    queries = [query(target.artist, target.title)]
+    # Indexers want every word searched for, so a song credited to two artists is searched for by its lead artist too.
+    queries = [query(artist, target.title) for artist in artists(target.artist)]
     if target.kind == Kind.track and target.album:
-        queries.insert(0, query(target.artist, target.album))
+        queries[:0] = [query(artist, target.album) for artist in artists(target.artist)]
 
     with Prowlarr(settings) as prowlarr:
         releases: dict[str, dict[str, Any]] = {}
@@ -243,7 +259,8 @@ def _candidate(target: Target, release: dict[str, Any], found: Any, format: str,
             if matched is None:
                 return None
             chosen, tracks = matched
-            score = 0.35 * similarity(target.title, name) + 0.2 * similarity(target.artist, name) + 0.45 * tracks
+            score = (0.35 * similarity(target.title, name) + 0.2 * max(similarity(a, name) for a in artists(target.artist))
+                     + 0.45 * tracks)
             picked = [(d, p, f) for d, p, f in chosen]
         else:
             matched = match_track(target, name, files)
