@@ -38,6 +38,7 @@ function element() {
         if (now !== second) {
             second = now;
             player.invokeMethodAsync("OnTime", audio.currentTime, Number.isFinite(audio.duration) ? audio.duration : 0);
+            position();
         }
         if (prepared && !watching && Number.isFinite(lengthOf(audio)) && lengthOf(audio) - audio.currentTime < 1.5)
             watch();
@@ -46,6 +47,7 @@ function element() {
     on("seeked", () => {
         second = Math.floor(audio.currentTime);
         player.invokeMethodAsync("OnTime", audio.currentTime, Number.isFinite(audio.duration) ? audio.duration : 0);
+        position();
         if (lyrics?.isConnected)
             light(true);
     });
@@ -57,8 +59,15 @@ function element() {
         else
             player.invokeMethodAsync("OnEnded");
     });
-    on("playing", () => player.invokeMethodAsync("OnPlaying", true));
-    on("pause", () => { if (!audio.ended) player.invokeMethodAsync("OnPlaying", false); });
+    on("playing", () => { player.invokeMethodAsync("OnPlaying", true); state("playing"); position(); });
+    on("pause", () => {
+        if (audio.ended)
+            return;
+        player.invokeMethodAsync("OnPlaying", false);
+        state("paused");
+        position();
+    });
+    on("durationchange", position);
     on("error", () => {
         if (audio.getAttribute("src"))
             player.invokeMethodAsync("OnError", audio.error?.message || "The file couldn't be played.");
@@ -76,13 +85,19 @@ export function init(dotnet) {
 }
 
 // Media keys, and the lock screen and Control Centre on a phone: taken as each song is loaded, and given back when the
-// music stops, so a phone no longer shows Melodex with nothing to play (#98). Whether it's playing is left to the
-// phone, which follows the music itself: told outright, an iPhone showed it paused as it started (#94).
+// music stops, so a phone no longer shows Melodex with nothing to play (#98).
 const actions = {
     play: () => audio.play(),
     pause: () => audio.pause(),
     previoustrack: () => player.invokeMethodAsync("OnRemote", "previous"),
-    nexttrack: () => player.invokeMethodAsync("OnRemote", "next"),
+    // The next song is started at once if it's loaded already, as it is to run on without a gap: a locked phone runs the
+    // page slowly, and asking for it first took a while (#103).
+    nexttrack: () => {
+        if (prepared && !handing && !audio.paused)
+            handOff();
+        else if (!handing)
+            player.invokeMethodAsync("OnRemote", "next");
+    },
     // Dragging along the phone's bar: once Melodex says which buttons it has, an iPhone offers only those.
     seekto: details => {
         if (details.fastSeek && audio.fastSeek)
@@ -106,8 +121,45 @@ function controls(on) {
             // An action this browser doesn't know.
         }
     }
-    if (!on)
+    if (!on) {
         navigator.mediaSession.playbackState = "none";
+        try {
+            navigator.mediaSession.setPositionState();
+        } catch {
+        }
+    }
+}
+
+// Whether it's playing, told to the phone's controls: left to themselves, they showed a song skipped to as paused while
+// it played (#103). (They'd once shown the music paused as it started, but that was the next song waiting, muted since.)
+function state(value) {
+    if ("mediaSession" in navigator)
+        navigator.mediaSession.playbackState = value;
+}
+
+// How long the song is and where it's got to, told to the phone's controls: they'd go by the browser's own idea of the
+// length otherwise, which Safari gets wrong for some files (#103).
+function start(length) {
+    if (!("mediaSession" in navigator) || !navigator.mediaSession.setPositionState)
+        return;
+    try {
+        if (length > 0)
+            navigator.mediaSession.setPositionState({ duration: length, playbackRate: 1, position: 0 });
+        else
+            navigator.mediaSession.setPositionState();
+    } catch {
+    }
+}
+
+function position() {
+    const length = lengthOf(audio);
+    if (!("mediaSession" in navigator) || !navigator.mediaSession.setPositionState || !(length > 0) || !Number.isFinite(length))
+        return;
+    try {
+        navigator.mediaSession.setPositionState({ duration: length, playbackRate: audio.playbackRate || 1, position: Math.min(Math.max(audio.currentTime, 0), length) });
+    } catch {
+        // A length or time it won't take, for a moment while a song loads.
+    }
 }
 
 function setMetadata(meta) {
@@ -184,6 +236,8 @@ function handOff() {
         from.removeAttribute("src");
         from.load();
         setMetadata(next.meta);
+        state("playing");
+        position();
         player.invokeMethodAsync("OnPlaying", true);
         player.invokeMethodAsync("OnAdvanced", next.token);
         return true;
@@ -255,6 +309,8 @@ export function load(url, meta, length) {
     audio.src = source(url);
     setMetadata(meta);
     controls(true);
+    // From the start of the new song at once, rather than where the last one was until this one has loaded.
+    start(length);
     play();
 }
 
