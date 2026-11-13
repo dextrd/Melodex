@@ -53,11 +53,6 @@ function element() {
         if (audio.getAttribute("src"))
             player.invokeMethodAsync("OnError", audio.error?.message || "The file couldn't be played.");
     });
-    if ("mediaSession" in navigator) {
-        // Said outright, so the phone's controls show the music as it is.
-        on("playing", () => navigator.mediaSession.playbackState = "playing");
-        on("pause", () => navigator.mediaSession.playbackState = "paused");
-    }
     return el;
 }
 
@@ -90,6 +85,9 @@ function setMetadata(meta) {
 /** Loads the next song into the spare, to start as this one ends. */
 export function prepare(url, meta, token) {
     prepared = { token, meta };
+    // Muted until it plays: a phone offers its controls to any player with sound loaded, and an iPhone chose this one,
+    // waiting, showing the music paused while the other played (#94).
+    spare.muted = true;
     if (spare.getAttribute("src") !== url) {
         spare.src = url;
         spare.load();
@@ -130,6 +128,7 @@ function handOff() {
     const from = audio, to = spare, next = prepared, at = epoch;
     prepared = null;
     to.volume = from.volume;
+    to.muted = false;
     handing = to.play().then(() => {
         // Another song was chosen, or the music stopped, while this one was starting (a phone can take a while): it's
         // stopped again, or both would play.
@@ -147,8 +146,6 @@ function handOff() {
         from.removeAttribute("src");
         from.load();
         setMetadata(next.meta);
-        if ("mediaSession" in navigator)
-            navigator.mediaSession.playbackState = "playing";
         player.invokeMethodAsync("OnPlaying", true);
         player.invokeMethodAsync("OnAdvanced", next.token);
         return true;
