@@ -107,6 +107,9 @@ public sealed class Player : IAsyncDisposable
     // Whose queue it is, so it's kept for them in this browser; and where to pick up a song from after a reload.
     private Guid? _owner;
     private double? _resumeAt;
+    // How long the song playing is, as the server measured its file: kept over the browser's own idea, which Safari gets
+    // wrong for files that don't say up front (#93).
+    private double? _length;
     private int _savedSecond = -1;
     private IJSObjectReference? _audio;
     private DotNetObjectReference<Player>? _self;
@@ -504,6 +507,7 @@ public sealed class Player : IAsyncDisposable
 
     private PlayerEntry? _prepared;
     private int _preparedToken;
+    private double? _preparedLength;
     private GaplessPlayback? _gapless;
     private DateTime _gaplessAt;
 
@@ -547,7 +551,7 @@ public sealed class Player : IAsyncDisposable
                 await _audio.InvokeVoidAsync("unprepare");
                 return;
             }
-            var (url, mediaType) = await SourceAsync(next);
+            var (url, mediaType, length) = await SourceAsync(next);
             if (token != _preparedToken)
                 return;
             if (url is null || !await _audio.InvokeAsync<bool>("canPlay", mediaType))
@@ -555,7 +559,8 @@ public sealed class Player : IAsyncDisposable
                 await _audio.InvokeVoidAsync("unprepare");
                 return;
             }
-            await _audio.InvokeVoidAsync("prepare", url, new { title = next.Title, artist = next.ArtistCredit, album = next.AlbumTitle, cover = next.CoverUrl }, token);
+            _preparedLength = length;
+            await _audio.InvokeVoidAsync("prepare", url, new { title = next.Title, artist = next.ArtistCredit, album = next.AlbumTitle, cover = next.CoverUrl }, token, length);
         }
         catch (JSException)
         {
@@ -604,7 +609,7 @@ public sealed class Player : IAsyncDisposable
         var attempt = ++_starting;
         while (Now is { } entry)
         {
-            var (url, mediaType) = await SourceAsync(entry);
+            var (url, mediaType, length) = await SourceAsync(entry);
             if (attempt != _starting)
                 return;
             if (url is not null)
@@ -613,10 +618,11 @@ public sealed class Player : IAsyncDisposable
                 if (await audio.InvokeAsync<bool>("canPlay", mediaType))
                 {
                     Position = 0;
-                    Duration = entry.DurationSeconds ?? 0;
+                    _length = length;
+                    Duration = length ?? entry.DurationSeconds ?? 0;
                     // Loaded ahead again as it plays: a start of the next song that this overtook took the spare with it.
                     _prepared = null;
-                    await audio.InvokeVoidAsync("load", url, new { title = entry.Title, artist = entry.ArtistCredit, album = entry.AlbumTitle, cover = entry.CoverUrl });
+                    await audio.InvokeVoidAsync("load", url, new { title = entry.Title, artist = entry.ArtistCredit, album = entry.AlbumTitle, cover = entry.CoverUrl }, length);
                     if (_visualising)
                         _ = WarmNextAsync();
                     if (_resumeAt is { } at)
@@ -649,11 +655,11 @@ public sealed class Player : IAsyncDisposable
         Changed?.Invoke();
     }
 
-    /// <summary>A fresh stream URL for the entry, or null if it can't be played (yet).</summary>
-    private async Task<(string? Url, string? MediaType)> SourceAsync(PlayerEntry entry)
+    /// <summary>A fresh stream URL for the entry, or null if it can't be played (yet), and how long its file plays if known.</summary>
+    private async Task<(string? Url, string? MediaType, double? Length)> SourceAsync(PlayerEntry entry)
     {
         if (entry.Unplayable)
-            return (null, null);
+            return (null, null, null);
         try
         {
             if (entry.ListenId is { } id)
@@ -661,19 +667,19 @@ public sealed class Player : IAsyncDisposable
                 if (await _api.GetListeningAsync(id) is not { } item)
                 {
                     entry.Unplayable = true;
-                    return (null, null);
+                    return (null, null, null);
                 }
                 entry.Update(item);
                 if (item.StreamUrl is not null)
-                    return (item.StreamUrl, item.MediaType);
+                    return (item.StreamUrl, item.MediaType, entry.DurationSeconds = item.DurationSeconds ?? entry.DurationSeconds);
                 if (item.State != ListenNowState.InLibrary)
-                    return (null, null);
+                    return (null, null, null);
                 // Added since: play it from the library.
             }
             if (await (entry.FileId is { } file ? _api.GetFilePlayInfoAsync(file) : _api.GetPlayInfoAsync(entry.TrackId, entry.EditionId)) is { } play)
             {
-                entry.DurationSeconds ??= play.DurationSeconds;
-                return (play.StreamUrl, play.MediaType);
+                entry.DurationSeconds = play.DurationSeconds ?? entry.DurationSeconds;
+                return (play.StreamUrl, play.MediaType, play.DurationSeconds);
             }
             entry.Unplayable = true;
             entry.Detail = "It's no longer in your library.";
@@ -683,7 +689,7 @@ public sealed class Player : IAsyncDisposable
             entry.Unplayable = true;
             entry.Detail = e.Message;
         }
-        return (null, null);
+        return (null, null, null);
     }
 
     private async Task StopAsync()
@@ -692,6 +698,7 @@ public sealed class Player : IAsyncDisposable
         Current = -1;
         Playing = false;
         Position = Duration = 0;
+        _length = null;
         StopPolling();
         if (_audio is not null)
             await _audio.InvokeVoidAsync("stop");
@@ -758,7 +765,9 @@ public sealed class Player : IAsyncDisposable
     public void OnTime(double position, double duration)
     {
         Position = position;
-        if (duration > 0)
+        if (_length is > 0 and var length)
+            Duration = length;
+        else if (duration > 0)
             Duration = duration;
         TimeChanged?.Invoke();
         // Where it's got to is kept every few seconds, to pick up from after a reload.
@@ -843,7 +852,8 @@ public sealed class Player : IAsyncDisposable
         _prepared = null;
         Current = index;
         Position = 0;
-        Duration = entry.DurationSeconds ?? 0;
+        _length = _preparedLength;
+        Duration = _preparedLength ?? entry.DurationSeconds ?? 0;
         Changed?.Invoke();
         return Task.CompletedTask;
     }

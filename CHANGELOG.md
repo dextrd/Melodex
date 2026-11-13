@@ -10,7 +10,6 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   are made: on demand (the default), for every song after each scan in a `.bars` file beside it, or not at all, which
   takes the visualiser away. Choosing to keep them beside songs says how much room they'd take first; leaving it asks
   whether to delete them (#89).
-
 - Gapless playback: songs from the same album run into each other with no pause, as the record plays them. The next
   song is loaded while this one plays and started as it ends. Choose under **Settings → Playback** whether it's songs
   from the same album (the default), every song, or none (#1).
@@ -28,6 +27,9 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 - An iPhone's music controls show Melodex playing as soon as it starts, rather than paused until play is pressed on
   them, and let it go when it's stopped (#94).
+- In Safari, a listen-now song's length no longer changes a second or two after it starts. Melodex measures each
+  listen-now file as it's stored and the player goes by that, rather than by Safari's guess for files that don't say
+  their length up front, such as Ogg Opus (#93).
 
 ## [1.2.1] - 2026-11-12
 

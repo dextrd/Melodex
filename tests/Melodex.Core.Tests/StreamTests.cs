@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Melodex.Core.Listening;
 
 namespace Melodex.Core.Tests;
@@ -37,5 +38,28 @@ public sealed class StreamTests
     {
         Assert.Equal(expected, MediaTypes.For(path, codec));
         Assert.Equal(expected.Split(';')[0], MediaTypes.Bare(expected));
+    }
+
+    // Safari misjudges an Ogg Opus file's length, which doesn't say it up front, so the player goes by the server's (#93).
+    [FfmpegFact]
+    public async Task A_listen_now_files_length_is_measured_from_it()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"melodex-{Guid.NewGuid():N}.opus");
+        try
+        {
+            using (var ffmpeg = Process.Start(new ProcessStartInfo("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=7.5", "-c:a", "libopus", path])
+                   { RedirectStandardError = true })!)
+                await ffmpeg.WaitForExitAsync();
+
+            var probed = MediaTypes.Probe(path);
+
+            Assert.Equal("opus", probed.Codec);
+            Assert.NotNull(probed.Duration);
+            Assert.InRange(probed.Duration.Value.TotalSeconds, 7.4, 7.6);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 }

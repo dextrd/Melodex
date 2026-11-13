@@ -12,6 +12,16 @@ let watching = 0, handing = null;
 let epoch = 0;
 // How far ahead of the end the next song is started, to make up for the moment it takes to begin.
 const LEAD = 0.04;
+// How long each element's song is, as the server measured its file. Safari misjudges files that don't say up front, such
+// as Ogg Opus, a second or two in (#93): its own idea is only taken when it agrees, being exact to the hundredth.
+const lengths = new WeakMap();
+
+function lengthOf(el) {
+    const measured = lengths.get(el), own = el.duration;
+    if (Number.isFinite(own) && (!(measured > 0) || Math.abs(own - measured) < 1))
+        return own;
+    return measured > 0 ? measured : own;
+}
 
 function element() {
     const el = new Audio();
@@ -29,7 +39,7 @@ function element() {
             second = now;
             player.invokeMethodAsync("OnTime", audio.currentTime, Number.isFinite(audio.duration) ? audio.duration : 0);
         }
-        if (prepared && !watching && Number.isFinite(audio.duration) && audio.duration - audio.currentTime < 1.5)
+        if (prepared && !watching && Number.isFinite(lengthOf(audio)) && lengthOf(audio) - audio.currentTime < 1.5)
             watch();
     });
     // Where a seek landed, at once, which may not be quite where it was asked for; the lyrics jump there too.
@@ -83,11 +93,12 @@ function setMetadata(meta) {
 }
 
 /** Loads the next song into the spare, to start as this one ends. */
-export function prepare(url, meta, token) {
+export function prepare(url, meta, token, length) {
     prepared = { token, meta };
     // Muted until it plays: a phone offers its controls to any player with sound loaded, and an iPhone chose this one,
     // waiting, showing the music paused while the other played (#94).
     spare.muted = true;
+    lengths.set(spare, length);
     if (spare.getAttribute("src") !== url) {
         spare.src = url;
         spare.load();
@@ -109,7 +120,7 @@ function watch() {
     watching = setInterval(() => {
         if (!prepared || audio.paused || audio.seeking)
             return;
-        const left = audio.duration - audio.currentTime;
+        const left = lengthOf(audio) - audio.currentTime;
         // Sought back from the end: watched again when it gets there.
         if (left > 2)
             unwatch();
@@ -199,8 +210,9 @@ export function canPlay(type) {
     return !type || (audio ?? new Audio()).canPlayType(type) !== "";
 }
 
-export function load(url, meta) {
+export function load(url, meta, length) {
     epoch++;
+    lengths.set(audio, length);
     second = -1;
     unwatch();
     audio.src = url;

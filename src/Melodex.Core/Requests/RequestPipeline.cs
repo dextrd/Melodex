@@ -490,6 +490,7 @@ public sealed class RequestPipeline(
         item.Codec = said?.Codec?.ToLowerInvariant() ?? probed.Codec ?? MediaTypes.CodecFor(name);
         item.Container = said?.Container?.ToLowerInvariant() ?? MediaTypes.ContainerFor(name);
         item.BitrateKbps = said?.BitrateKbps ?? probed.BitrateKbps;
+        item.Duration = probed.Duration;
         item.EditionId = request.EditionId;
         item.State = Data.ListenNowState.Playable;
         item.ExpiresAt = DateTime.UtcNow + await listen.ExpiryAsync(ct);
