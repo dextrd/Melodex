@@ -42,9 +42,8 @@ export function init(dotnet) {
         navigator.mediaSession.setActionHandler("pause", () => audio.pause());
         navigator.mediaSession.setActionHandler("previoustrack", () => player.invokeMethodAsync("OnRemote", "previous"));
         navigator.mediaSession.setActionHandler("nexttrack", () => player.invokeMethodAsync("OnRemote", "next"));
-        // Said outright, so the phone's controls show the music as it is.
-        audio.addEventListener("playing", () => navigator.mediaSession.playbackState = "playing");
-        audio.addEventListener("pause", () => navigator.mediaSession.playbackState = "paused");
+        // Whether it's playing is left to the phone, which follows the music itself: told outright, an iPhone showed it
+        // paused as it started, and held on to it after stop (#94).
     }
 }
 
