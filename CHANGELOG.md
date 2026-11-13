@@ -4,6 +4,11 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-11-13
+
+A fix for the Prowlarr plugin, which in 1.3.0 could fail a fetch the moment it added a torrent. Only the Prowlarr
+plugin's image changes.
+
 ### Fixed
 
 - The Prowlarr plugin no longer fails a fetch as "removed from qBittorrent" the moment it adds a torrent: qBittorrent
