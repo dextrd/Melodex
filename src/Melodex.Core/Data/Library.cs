@@ -366,6 +366,13 @@ public class ListenNowItem
     public string? Codec { get; set; }
     public string? Container { get; set; }
     public int? BitrateKbps { get; set; }
+
+    /// <summary>
+    /// How long the file plays, measured from it: the player goes by this, as some browsers misjudge files that don't say
+    /// up front (#93).
+    /// </summary>
+    public TimeSpan? Duration { get; set; }
+
     public DateTime? LastPlayedAt { get; set; }
 
     /// <summary>

@@ -238,6 +238,10 @@ public sealed class ListenNowService(
     }
 
     /// <summary>The item's file in the store, if it has one. Never outside the store, whatever the database says.</summary>
+    // A file stored before lengths were measured (#93) is measured as it's listed: it's gone within hours anyway.
+    private TimeSpan? MeasuredDuration(ListenNowItem item, bool playable) =>
+        item.Duration ?? (playable && FullPath(item) is { } file && File.Exists(file) ? MediaTypes.Probe(file).Duration : null);
+
     public string? FullPath(ListenNowItem item)
     {
         if (item.FilePath is null)
@@ -305,7 +309,7 @@ public sealed class ListenNowService(
             return new ListenNowInfo(item.Id, item.TrackId, listing?.Title ?? track.Title, track.ArtistCredit, track.ArtistId,
                 edition?.AlbumId, edition?.AlbumTitle, item.EditionId,
                 edition is null ? null : LibraryView.CoverUrl(edition.AlbumId, item.EditionId),
-                (Client.ListenNowState)(int)state, request?.Detail, (listing?.Duration ?? track.Duration)?.TotalSeconds,
+                (Client.ListenNowState)(int)state, request?.Detail, (MeasuredDuration(item, playable) ?? listing?.Duration ?? track.Duration)?.TotalSeconds,
                 item.Codec, item.Container, item.BitrateKbps,
                 item.FilePath is null ? null : MediaTypes.For(item.FilePath, item.Codec),
                 playable ? signer.Sign(StreamPath(item.Id)) : null,

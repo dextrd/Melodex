@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Melodex.Core.Listening;
 
 namespace Melodex.Core.Tests;
@@ -37,5 +40,66 @@ public sealed class StreamTests
     {
         Assert.Equal(expected, MediaTypes.For(path, codec));
         Assert.Equal(expected.Split(';')[0], MediaTypes.Bare(expected));
+    }
+
+    // Safari misjudges an Ogg Opus file's length, which doesn't say it up front, so the player goes by the server's (#93).
+    [FfmpegFact]
+    public async Task A_listen_now_files_length_is_measured_from_it()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"melodex-{Guid.NewGuid():N}.opus");
+        try
+        {
+            using (var ffmpeg = Process.Start(new ProcessStartInfo("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=7.5", "-c:a", "libopus", path])
+                   { RedirectStandardError = true })!)
+                await ffmpeg.WaitForExitAsync();
+
+            var probed = MediaTypes.Probe(path);
+
+            Assert.Equal("opus", probed.Codec);
+            Assert.NotNull(probed.Duration);
+            Assert.InRange(probed.Duration.Value.TotalSeconds, 7.4, 7.6);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    // Safari stops counting short of the end of Opus in Ogg, so it's sent a WebM copy, the sound untouched (#93).
+    [FfmpegFact]
+    public async Task Opus_in_ogg_is_repacked_in_webm_once_and_nothing_else_is()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"melodex-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var song = Path.Combine(root, "song.opus");
+            using (var ffmpeg = Process.Start(new ProcessStartInfo("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=7.5", "-c:a", "libopus", song])
+                   { RedirectStandardError = true })!)
+                await ffmpeg.WaitForExitAsync();
+            var copies = new WebmCopies(Options.Create(new MelodexOptions { DataPath = Path.Combine(root, "data") }), NullLogger<WebmCopies>.Instance);
+
+            Assert.True(WebmCopies.Needs(song));
+            Assert.True(WebmCopies.Needs("song.ogg", "opus"));
+            Assert.False(WebmCopies.Needs("song.ogg"));
+            Assert.False(WebmCopies.Needs("song.flac"));
+            Assert.False(WebmCopies.Needs("song.webm", "opus"));
+
+            var copy = await copies.GetAsync(song, CancellationToken.None);
+            Assert.NotNull(copy);
+            Assert.Equal(Path.Combine(root, "data", "webm"), Path.GetDirectoryName(copy));
+            var probed = MediaTypes.Probe(copy);
+            Assert.Equal("opus", probed.Codec);
+            Assert.InRange(probed.Duration!.Value.TotalSeconds, 7.4, 7.6);
+            // Made once: asked again, the same file, left as it was.
+            var made = File.GetLastWriteTimeUtc(copy);
+            Assert.Equal(copy, await Task.WhenAll(copies.GetAsync(song, CancellationToken.None), copies.GetAsync(song, CancellationToken.None)).ContinueWith(t => t.Result.Distinct().Single()));
+            Assert.Single(Directory.GetFiles(Path.GetDirectoryName(copy)!));
+            Assert.True(File.GetLastWriteTimeUtc(copy) >= made);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
     }
 }

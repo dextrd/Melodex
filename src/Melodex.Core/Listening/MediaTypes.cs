@@ -65,11 +65,19 @@ public static class MediaTypes
     /// <summary>The media type without parameters, for the <c>Content-Type</c> header.</summary>
     public static string Bare(string mediaType) => mediaType.Split(';')[0];
 
-    /// <summary>The codec and bitrate as the file says, for when the plugin didn't.</summary>
-    public static (string? Codec, int? BitrateKbps) Probe(string fullPath)
+    /// <summary>The codec and bitrate as the file says, for when the plugin didn't, and how long it plays.</summary>
+    public static (string? Codec, int? BitrateKbps, TimeSpan? Duration) Probe(string fullPath)
     {
-        var quality = ReadQuality(fullPath);
-        return (quality.Codec, quality.BitrateKbps);
+        try
+        {
+            using var file = TagLib.File.Create(fullPath);
+            var quality = QualityOf(file, fullPath);
+            return (quality.Codec, quality.BitrateKbps, file.Properties?.Duration is { TotalSeconds: > 0 } duration ? duration : null);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return (null, null, null);
+        }
     }
 
     /// <summary>A file's encoding as it says (see <see cref="QualityOf"/>); nothing known of it if it can't be read.</summary>

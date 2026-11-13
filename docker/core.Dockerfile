@@ -26,8 +26,9 @@ ARG COMMIT=""
 RUN dotnet publish src/Melodex.Core/Melodex.Core.csproj -c Release -o /app --no-restore \
     ${VERSION:+-p:Version=$VERSION} ${COMMIT:+-p:SourceRevisionId=$COMMIT}
 
-# An ffmpeg that only decodes audio, for the visualiser's bars (#89): about 2 MB, where Debian's is over 400. Like the
-# app, it's built natively, cross-compiled for the image's platform when that's another, and has no GPL parts.
+# An ffmpeg that only decodes audio, for the visualiser's bars (#89), and repacks Opus in WebM for Safari (#93): about
+# 2 MB, where Debian's is over 400. Like the app, it's built natively, cross-compiled for the image's platform when
+# that's another, and has no GPL parts.
 FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS ffmpeg
 ARG FFMPEG_VERSION=7.1.1
 ARG TARGETARCH
@@ -48,7 +49,7 @@ RUN case "$TARGETARCH" in arm64) arch=aarch64 ;; *) arch=x86_64 ;; esac \
         --enable-demuxer=flac,ogg,mp3,mov,wav,aiff,matroska,aac,w64 \
         --enable-parser=flac,opus,vorbis,mpegaudio,aac \
         --enable-decoder=flac,opus,vorbis,mp3,mp3float,aac,aac_fixed,alac,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_s16be,pcm_s24be,pcm_s32be \
-        --enable-encoder=pcm_f32le --enable-muxer=pcm_f32le \
+        --enable-encoder=pcm_f32le --enable-muxer=pcm_f32le,webm \
         --enable-filter=aresample,aformat,anull,amix,pan \
     && make -j"$(nproc)" && make install && ${prefix}strip /out/bin/ffmpeg
 
