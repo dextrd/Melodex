@@ -59,8 +59,14 @@ function element() {
         else
             player.invokeMethodAsync("OnEnded");
     });
-    on("playing", () => { player.invokeMethodAsync("OnPlaying", true); position(); });
-    on("pause", () => { if (!audio.ended) player.invokeMethodAsync("OnPlaying", false); position(); });
+    on("playing", () => { player.invokeMethodAsync("OnPlaying", true); state("playing"); position(); });
+    on("pause", () => {
+        if (audio.ended)
+            return;
+        player.invokeMethodAsync("OnPlaying", false);
+        state("paused");
+        position();
+    });
     on("durationchange", position);
     on("error", () => {
         if (audio.getAttribute("src"))
@@ -79,8 +85,7 @@ export function init(dotnet) {
 }
 
 // Media keys, and the lock screen and Control Centre on a phone: taken as each song is loaded, and given back when the
-// music stops, so a phone no longer shows Melodex with nothing to play (#98). Whether it's playing is left to the
-// phone, which follows the music itself: told outright, an iPhone showed it paused as it started (#94).
+// music stops, so a phone no longer shows Melodex with nothing to play (#98).
 const actions = {
     play: () => audio.play(),
     pause: () => audio.pause(),
@@ -125,8 +130,27 @@ function controls(on) {
     }
 }
 
+// Whether it's playing, told to the phone's controls: left to themselves, they showed a song skipped to as paused while
+// it played (#103). (They'd once shown the music paused as it started, but that was the next song waiting, muted since.)
+function state(value) {
+    if ("mediaSession" in navigator)
+        navigator.mediaSession.playbackState = value;
+}
+
 // How long the song is and where it's got to, told to the phone's controls: they'd go by the browser's own idea of the
 // length otherwise, which Safari gets wrong for some files (#103).
+function start(length) {
+    if (!("mediaSession" in navigator) || !navigator.mediaSession.setPositionState)
+        return;
+    try {
+        if (length > 0)
+            navigator.mediaSession.setPositionState({ duration: length, playbackRate: 1, position: 0 });
+        else
+            navigator.mediaSession.setPositionState();
+    } catch {
+    }
+}
+
 function position() {
     const length = lengthOf(audio);
     if (!("mediaSession" in navigator) || !navigator.mediaSession.setPositionState || !(length > 0) || !Number.isFinite(length))
@@ -212,6 +236,7 @@ function handOff() {
         from.removeAttribute("src");
         from.load();
         setMetadata(next.meta);
+        state("playing");
         position();
         player.invokeMethodAsync("OnPlaying", true);
         player.invokeMethodAsync("OnAdvanced", next.token);
@@ -284,6 +309,8 @@ export function load(url, meta, length) {
     audio.src = source(url);
     setMetadata(meta);
     controls(true);
+    // From the start of the new song at once, rather than where the last one was until this one has loaded.
+    start(length);
     play();
 }
 
