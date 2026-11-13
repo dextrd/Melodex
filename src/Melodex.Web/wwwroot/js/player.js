@@ -73,15 +73,30 @@ export function init(dotnet) {
     document.addEventListener("keydown", shortcut);
     audio = element();
     spare = element();
-    if ("mediaSession" in navigator) {
-        // Media keys, and the lock screen on a phone.
-        navigator.mediaSession.setActionHandler("play", () => audio.play());
-        navigator.mediaSession.setActionHandler("pause", () => audio.pause());
-        navigator.mediaSession.setActionHandler("previoustrack", () => player.invokeMethodAsync("OnRemote", "previous"));
-        navigator.mediaSession.setActionHandler("nexttrack", () => player.invokeMethodAsync("OnRemote", "next"));
-        // Whether it's playing is left to the phone, which follows the music itself: told outright, an iPhone showed it
-        // paused as it started, and held on to it after stop (#94).
+}
+
+// Media keys, and the lock screen and Control Centre on a phone: taken as each song is loaded, and given back when the
+// music stops, so a phone no longer shows Melodex with nothing to play (#98). Whether it's playing is left to the
+// phone, which follows the music itself: told outright, an iPhone showed it paused as it started (#94).
+const actions = {
+    play: () => audio.play(),
+    pause: () => audio.pause(),
+    previoustrack: () => player.invokeMethodAsync("OnRemote", "previous"),
+    nexttrack: () => player.invokeMethodAsync("OnRemote", "next"),
+};
+
+function controls(on) {
+    if (!("mediaSession" in navigator))
+        return;
+    for (const [action, handler] of Object.entries(actions)) {
+        try {
+            navigator.mediaSession.setActionHandler(action, on ? handler : null);
+        } catch {
+            // An action this browser doesn't know.
+        }
     }
+    if (!on)
+        navigator.mediaSession.playbackState = "none";
 }
 
 function setMetadata(meta) {
@@ -228,6 +243,7 @@ export function load(url, meta, length) {
     unwatch();
     audio.src = source(url);
     setMetadata(meta);
+    controls(true);
     play();
 }
 
@@ -254,6 +270,7 @@ export function stop() {
     audio.removeAttribute("src");
     audio.load();
     setMetadata(null);
+    controls(false);
 }
 
 // ---- Volume, kept per browser ----

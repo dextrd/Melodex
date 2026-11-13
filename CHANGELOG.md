@@ -27,6 +27,8 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 - An iPhone's music controls show Melodex playing as soon as it starts, rather than paused until play is pressed on
   them, and let it go when it's stopped (#94).
+- When the music stops, with stop or at the end of the queue, a phone's lock screen and Control Centre no longer keep a
+  Melodex card with nothing to play (#98).
 - Opus songs in Safari, and on an iPhone, keep their length and play to the end with the timer, seek bar and visualiser
   going all the way. Safari gets the time of Opus in an Ogg file wrong, so Melodex sends it a WebM copy instead, with
   the same sound, made when the song first plays and kept a while in its data folder. Listen-now songs' lengths are
