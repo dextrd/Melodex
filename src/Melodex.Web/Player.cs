@@ -614,6 +614,8 @@ public sealed class Player : IAsyncDisposable
                 {
                     Position = 0;
                     Duration = entry.DurationSeconds ?? 0;
+                    // Loaded ahead again as it plays: a start of the next song that this overtook took the spare with it.
+                    _prepared = null;
                     await audio.InvokeVoidAsync("load", url, new { title = entry.Title, artist = entry.ArtistCredit, album = entry.AlbumTitle, cover = entry.CoverUrl });
                     if (_visualising)
                         _ = WarmNextAsync();

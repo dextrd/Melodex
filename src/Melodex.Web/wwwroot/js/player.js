@@ -8,6 +8,8 @@ let second = -1;
 let prepared = null;
 // Watching the last moments of a song, to start the next exactly as it ends; and a start in progress.
 let watching = 0, handing = null;
+// Bumped by every load and stop, so a start of the next song that's overtaken by one of them is called off when it comes.
+let epoch = 0;
 // How far ahead of the end the next song is started, to make up for the moment it takes to begin.
 const LEAD = 0.04;
 
@@ -41,7 +43,7 @@ function element() {
         unwatch();
         // A start of the next one still going decides: on its way, it's played; refused, it's as if there were none.
         if (handing)
-            handing.then(started => { if (!started) player.invokeMethodAsync("OnEnded"); });
+            handing.then(started => { if (started === false) player.invokeMethodAsync("OnEnded"); });
         else
             player.invokeMethodAsync("OnEnded");
     });
@@ -125,10 +127,18 @@ function unwatch() {
 
 function handOff() {
     unwatch();
-    const from = audio, to = spare, next = prepared;
+    const from = audio, to = spare, next = prepared, at = epoch;
     prepared = null;
     to.volume = from.volume;
     handing = to.play().then(() => {
+        // Another song was chosen, or the music stopped, while this one was starting (a phone can take a while): it's
+        // stopped again, or both would play.
+        if (at !== epoch) {
+            to.pause();
+            to.removeAttribute("src");
+            to.load();
+            return null;
+        }
         audio = to;
         spare = from;
         second = -1;
@@ -143,6 +153,8 @@ function handOff() {
         player.invokeMethodAsync("OnAdvanced", next.token);
         return true;
     }, () => {
+        if (at !== epoch)
+            return null;
         // Not allowed to start it without a tap, as some phones won't: the song ends, and the next loads as it always has.
         to.removeAttribute("src");
         to.load();
@@ -191,6 +203,7 @@ export function canPlay(type) {
 }
 
 export function load(url, meta) {
+    epoch++;
     second = -1;
     unwatch();
     audio.src = url;
@@ -215,6 +228,7 @@ export function seek(seconds) {
 }
 
 export function stop() {
+    epoch++;
     unprepare();
     audio.pause();
     audio.removeAttribute("src");
