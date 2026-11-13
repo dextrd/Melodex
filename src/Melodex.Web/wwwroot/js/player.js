@@ -175,6 +175,10 @@ function setMetadata(meta) {
 // decides which it follows, so songs play one after another in one element there, without gapless.
 const ios = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
+export function gaplessWorks() {
+    return !ios;
+}
+
 /** Loads the next song into the spare, to start as this one ends. */
 export function prepare(url, meta, token, length) {
     if (ios) {
