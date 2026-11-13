@@ -301,6 +301,7 @@ def fetch(job: Job, candidate_id: str, target: Target, directory: Path, settings
     info_hash: str = chosen["h"]
     with QBittorrent(settings) as qb:
         added = False
+        mine = f"melodex-{job.id}"
         try:
             existing = qb.info(info_hash)
             if existing is None:
@@ -310,8 +311,11 @@ def fetch(job: Job, candidate_id: str, target: Target, directory: Path, settings
                 else:
                     source = chosen["m"]
                 qb.add(source, str(settings.get("savePath") or "/downloads/melodex"), str(settings.get("category") or "melodex"),
-                       f"melodex,melodex-{job.id}")
+                       f"melodex,{mine}")
                 added = True
+            else:
+                # Each request using the torrent marks it, so the others know not to remove it from under it.
+                qb.add_tags(info_hash, mine)
 
             listed = _wait_for_files(job, qb, info_hash)
             picked = _pick(chosen, listed, target, settings.get("format", "best"))
@@ -329,17 +333,26 @@ def fetch(job: Job, candidate_id: str, target: Target, directory: Path, settings
             clash = len(set(names)) < len(names)
             share = bool(settings.get("reflinks", True))
             written = [_copy(folder / path, directory, disc, position, clash, share) for disc, position, _, path in picked]
-            if added and settings.get("afterwards", "keep") == "remove":
-                qb.delete(info_hash, files=True)
+            _let_go(qb, info_hash, mine, settings.get("afterwards", "keep") == "remove")
             return written
         except BaseException:
-            # A torrent added for this request goes again with what it downloaded; one that was already there stays.
-            if added:
-                try:
-                    qb.delete(info_hash, files=True)
-                except Exception:
-                    pass
+            # A torrent added for this request goes again with what it downloaded, unless another request is using it;
+            # one that was already there stays.
+            try:
+                _let_go(qb, info_hash, mine, added)
+            except Exception:
+                pass
             raise
+
+
+def _let_go(qb: QBittorrent, info_hash: str, mine: str, remove: bool) -> None:
+    """Takes this request's mark off the torrent, and removes it if asked and no other request is using it."""
+    qb.remove_tags(info_hash, mine)
+    if remove and (info := qb.info(info_hash)) is not None:
+        tags = {tag.strip() for tag in str(info.get("tags") or "").split(",")}
+        # Only a torrent Melodex added goes; one someone added by hand that a request used stays.
+        if "melodex" in tags and not any(tag.startswith("melodex-") for tag in tags):
+            qb.delete(info_hash, files=True)
 
 
 def _wait_for_files(job: Job, qb: QBittorrent, info_hash: str) -> list[dict[str, Any]]:
@@ -348,6 +361,7 @@ def _wait_for_files(job: Job, qb: QBittorrent, info_hash: str) -> list[dict[str,
         job.check()
         if listed := qb.files(info_hash):
             return listed
+        _check(qb, qb.info(info_hash))
         time.sleep(POLL_SECONDS)
 
 
@@ -370,18 +384,29 @@ def _wait_for_download(job: Job, qb: QBittorrent, info_hash: str, wanted: set[in
     while True:
         job.check()
         info = qb.info(info_hash)
-        if info is None:
-            raise RuntimeError("The torrent was removed from qBittorrent.")
-        if info.get("state") in ("error", "missingFiles"):
-            raise RuntimeError(f"qBittorrent stopped the torrent ({info['state']}); its log says why, often that it can't "
-                               f"write to the save folder.")
+        _check(qb, info)
         files = [f for f in qb.files(info_hash) if f["index"] in wanted]
+        # Another request sharing the torrent may have turned this one's files off as it added the torrent.
+        if skipped := [f["index"] for f in files if f["priority"] == 0]:
+            qb.priority(info_hash, skipped, 1)
+            qb.start(info_hash)
+            files = [f | {"priority": 1} for f in files]
         size = sum(f["size"] for f in files)
         done = sum(f["size"] * f["progress"] for f in files)
         if files and all(f["progress"] >= 1 for f in files):
             return
         job.progress = min(0.99, done / size) if size else None
         time.sleep(POLL_SECONDS)
+
+
+def _check(qb: QBittorrent, info: dict[str, Any] | None) -> None:
+    if info is None:
+        raise RuntimeError("The torrent was removed from qBittorrent.")
+    if info.get("state") in ("error", "missingFiles"):
+        why = qb.problem(str(info.get("name") or ""))
+        raise RuntimeError(f"qBittorrent stopped the torrent ({info['state']}): {why}" if why else
+                           f"qBittorrent stopped the torrent ({info['state']}); its log says why, often that it can't "
+                           f"write to the save folder.")
 
 
 def _local_folder(settings: dict[str, Any], info: dict[str, Any]) -> Path:

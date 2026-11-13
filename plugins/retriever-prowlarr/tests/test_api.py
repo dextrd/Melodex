@@ -3,6 +3,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import re
 import time
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -77,6 +78,8 @@ class FakeQBittorrent:
 
     def __init__(self, folder: Path, torrents: dict[str, bytes]):
         self.folder, self.known, self.added, self.deleted, self.priorities = folder, torrents, {}, [], {}
+        self.magnets: dict[str, bytes] = {}  # a magnet link, and the torrent its peers would send
+        self.forms: list[dict[str, list[str]]] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path.removeprefix("/api/v2")
@@ -85,19 +88,36 @@ class FakeQBittorrent:
             return httpx.Response(200, text="v5.1.4")
         if path == "/torrents/add":
             body = request.content
-            data = next(t for t in self.known.values() if t in body)
+            self.forms.append(form)
+            if "urls" in form:
+                data = self.magnets[form["urls"][0]]
+            else:
+                data = next(t for t in self.known.values() if t in body)
             info_hash, files = torrent.read(data)
-            self.added[info_hash] = {"files": files, "started": False, "body": body}
+            # Like qBittorrent, a stopped magnet link never fetches its file list.
+            metadata = "urls" not in form or (form["stopped"] == ["false"] and form.get("stopCondition") == ["MetadataReceived"])
+            tags = form["tags"][0] if "tags" in form else re.search(rb'name="tags"\r\n\r\n(.*?)\r\n', body)[1].decode()
+            self.added[info_hash] = {"files": files, "started": False, "body": body, "tags": set(tags.split(",")),
+                                     "metadata": metadata}
             return httpx.Response(200, text="Ok.")
+        if path in ("/torrents/addTags", "/torrents/removeTags"):
+            t = self.added[form["hashes"][0]]
+            t["tags"] = t["tags"] | {form["tags"][0]} if path.endswith("addTags") else t["tags"] - {form["tags"][0]}
+            return httpx.Response(200)
         if path == "/torrents/info":
             h = request.url.params["hashes"]
             t = self.added.get(h)
-            return httpx.Response(200, json=[{"hash": h, "state": "uploading" if t and t["started"] else "stoppedDL",
-                                              "save_path": "/downloads/melodex"}] if t else [])
+            return httpx.Response(200, json=[{"hash": h, "name": "Dummy", "state": t.get("state") or ("uploading" if t["started"] else "stoppedDL"),
+                                              "save_path": "/downloads/melodex", "tags": ", ".join(sorted(t["tags"] - {""}))}] if t else [])
+        if path == "/log/main":
+            return httpx.Response(200, json=[{"id": 1, "message": 'File error alert. Torrent: "Dummy". Reason: "Permission denied"',
+                                              "timestamp": 0, "type": 4}])
         if path == "/torrents/files":
             t = self.added.get(request.url.params["hash"])
             if not t:
                 return httpx.Response(404)
+            if not t["metadata"]:
+                return httpx.Response(200, json=[])
             prio = self.priorities.get(request.url.params["hash"], {})
             return httpx.Response(200, json=[{"index": f.index, "name": f.path, "size": f.size, "priority": prio.get(f.index, 1),
                                               "progress": 1 if t["started"] and prio.get(f.index, 1) else 0} for f in t["files"]])
@@ -270,7 +290,7 @@ def test_a_song_downloads_only_its_file_and_can_be_removed_afterwards(fakes):
 def test_a_torrent_that_was_already_there_is_kept_when_the_fetch_fails(fakes, tmp_path):
     client, _, qb, settings = fakes
     info_hash, files = torrent.read(DUMMY_FLAC)
-    qb.added[info_hash] = {"files": files, "started": True, "body": b""}
+    qb.added[info_hash] = {"files": files, "started": True, "body": b"", "tags": set(), "metadata": True}
     settings = {**settings, "downloadsFolder": str(tmp_path / "elsewhere")}  # where the files aren't
     candidate = client.post("/v1/search", json={"settings": settings, "target": TRACK}).json()["candidates"][0]
     client.post("/v1/fetch", json={"settings": settings, "jobId": "job-3", "target": TRACK, "candidate": candidate, "stagingDirectory": "job-3"})
@@ -279,6 +299,58 @@ def test_a_torrent_that_was_already_there_is_kept_when_the_fetch_fails(fakes, tm
     assert status["state"] == "failed"
     assert "downloads folder" in status["error"]
     assert qb.deleted == []
+
+
+def test_a_magnet_link_fetches_its_file_list_then_downloads_just_the_song(fakes):
+    client, prowlarr, qb, settings = fakes
+    magnet = f"magnet:?xt=urn:btih:{DUMMY_HASH}&dn=Portishead+-+Dummy"
+    prowlarr.results = [release("Portishead - Dummy [FLAC]", "http://prowlarr:9696/1/download?file=magnet", seeders=8)]
+    prowlarr.torrents["magnet"] = magnet
+    qb.magnets[magnet] = DUMMY_FLAC
+    candidate = client.post("/v1/search", json={"settings": settings, "target": TRACK}).json()["candidates"][0]
+    client.post("/v1/fetch", json={"settings": settings, "jobId": "job-4", "target": TRACK, "candidate": candidate, "stagingDirectory": "job-4"})
+    status = wait(client, "job-4")
+
+    assert status["state"] == "completed", status
+    assert [f["path"] for f in status["files"]] == ["02 - Portishead - Sour Times.flac"]
+    assert qb.forms[0]["stopCondition"] == ["MetadataReceived"]
+    assert qb.priorities[DUMMY_HASH] == {0: 0, 2: 0, 3: 0}
+
+
+def test_songs_sharing_a_torrent_keep_each_others_files_and_the_last_removes_it(fakes):
+    client, _, qb, settings = fakes
+    settings = {**settings, "afterwards": "remove"}
+    info_hash, files = torrent.read(DUMMY_FLAC)
+    # Another song's request added the torrent, turned off every file but its own, and is still downloading.
+    qb.added[info_hash] = {"files": files, "started": False, "body": b"", "tags": {"melodex", "melodex-job-0"}, "metadata": True}
+    qb.priorities[info_hash] = {0: 1, 1: 0, 2: 0, 3: 0}
+    candidate = client.post("/v1/search", json={"settings": settings, "target": TRACK}).json()["candidates"][0]
+    client.post("/v1/fetch", json={"settings": settings, "jobId": "job-5", "target": TRACK, "candidate": candidate, "stagingDirectory": "job-5"})
+    status = wait(client, "job-5")
+
+    assert status["state"] == "completed", status
+    assert qb.priorities[info_hash][1] == 1
+    assert qb.deleted == []  # the other request is still using it
+    assert qb.added[info_hash]["tags"] == {"melodex", "melodex-job-0"}
+
+    qb.added[info_hash]["tags"].discard("melodex-job-0")  # it finishes too
+    client.post("/v1/fetch", json={"settings": settings, "jobId": "job-6", "target": TRACK, "candidate": candidate, "stagingDirectory": "job-6"})
+    assert wait(client, "job-6")["state"] == "completed"
+    assert qb.deleted == [(info_hash, "true")]
+
+
+def test_a_torrent_qbittorrent_stops_says_why_and_is_kept_while_another_song_uses_it(fakes):
+    client, _, qb, settings = fakes
+    info_hash, files = torrent.read(DUMMY_FLAC)
+    qb.added[info_hash] = {"files": files, "started": False, "body": b"", "tags": {"melodex", "melodex-job-0"}, "metadata": True,
+                           "state": "error"}
+    candidate = client.post("/v1/search", json={"settings": settings, "target": TRACK}).json()["candidates"][0]
+    client.post("/v1/fetch", json={"settings": settings, "jobId": "job-7", "target": TRACK, "candidate": candidate, "stagingDirectory": "job-7"})
+    status = wait(client, "job-7")
+
+    assert status["state"] == "failed"
+    assert "Permission denied" in status["error"]
+    assert qb.deleted == [] and qb.added[info_hash]["tags"] == {"melodex", "melodex-job-0"}
 
 
 def test_health_reports_both_services(fakes):
