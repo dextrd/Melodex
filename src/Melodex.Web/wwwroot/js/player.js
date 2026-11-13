@@ -99,6 +99,7 @@ export function prepare(url, meta, token, length) {
     // waiting, showing the music paused while the other played (#94).
     spare.muted = true;
     lengths.set(spare, length);
+    url = source(url);
     if (spare.getAttribute("src") !== url) {
         spare.src = url;
         spare.load();
@@ -207,7 +208,17 @@ function shortcut(e) {
 
 /** Whether the browser expects to play this type; an empty type is given the benefit of the doubt. */
 export function canPlay(type) {
+    if (safari && /^audio\/ogg;\s*codecs="?opus/.test(type ?? ""))
+        type = "audio/webm; codecs=opus";
     return !type || (audio ?? new Audio()).canPlayType(type) !== "";
+}
+
+// Safari, on any device, and every browser on an iPhone. It gets the time of Opus in an Ogg file wrong, stopping short of
+// the end while the music plays on (#93), so it's sent such songs in WebM instead; the server repacks them.
+const safari = navigator.vendor?.startsWith("Apple") ?? false;
+
+function source(url) {
+    return safari && url.includes("/stream?") ? url + "&as=webm" : url;
 }
 
 export function load(url, meta, length) {
@@ -215,7 +226,7 @@ export function load(url, meta, length) {
     lengths.set(audio, length);
     second = -1;
     unwatch();
-    audio.src = url;
+    audio.src = source(url);
     setMetadata(meta);
     play();
 }

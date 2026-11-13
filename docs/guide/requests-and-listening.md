@@ -160,6 +160,13 @@ the queue, or none, which loads nothing ahead. Repeating one song, and songs sti
 as before. An MP3 or AAC file may still have a sliver of silence its encoder added; FLAC and Opus join cleanly. A
 phone that won't start a song without a tap plays the next one the usual way.
 
+### Opus in Safari
+
+Safari, and every browser on an iPhone, gets the time of an Opus song in an Ogg file wrong: the timer and seek bar stop
+short of the end while the music plays on. Melodex sends them such songs in a WebM file instead, with the same sound,
+only packed differently. The copy is made the first time a song plays, in a moment, and kept in Melodex's data folder,
+up to about 1 GB, the least lately played forgotten first. Your music folder isn't touched.
+
 ### The visualiser
 
 The visualiser's bars are worked out from each song by Melodex, not your browser, so the song is downloaded once: they
