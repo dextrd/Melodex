@@ -4,6 +4,11 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-11-13
+
+A fix for the Prowlarr plugin: songs credited to more than one artist are found. Only the Prowlarr plugin's image
+changes.
+
 ### Fixed
 
 - The Prowlarr plugin finds songs credited to more than one artist, such as "Olivia Rodrigo & Robert Smith": it
