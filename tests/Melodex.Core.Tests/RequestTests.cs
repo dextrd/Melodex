@@ -79,15 +79,22 @@ public sealed class RequestFixture : IAsyncLifetime
         }
         if (task.State != TaskState.Succeeded)
             throw new InvalidOperationException($"The scan failed: {task.Error}");
+
+        var albums = new List<AlbumSummary>();
+        foreach (var artist in await Api.GetLibraryArtistsAsync())
+            albums.AddRange((await Api.GetArtistAsync(artist.Id))!.Albums.Where(a => a.Status == AlbumStatus.Missing && !a.HiddenByDefault && !a.Ignored));
+        MissingAlbums = [.. albums.OrderBy(a => a.Title, StringComparer.Ordinal)];
     }
+
+    /// <summary>The albums of library artists that were missing just after the scan, by title.</summary>
+    public IReadOnlyList<AlbumSummary> MissingAlbums { get; private set; } = [];
 
     public async Task DisposeAsync()
     {
         if (Factory is not null)
             await Factory.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root))
-            Directory.Delete(_root, recursive: true);
+        TestFolder.Delete(_root);
     }
 
     /// <summary>Adds a fake retrieval plugin by URL, the way a user adds a real one.</summary>
@@ -95,6 +102,30 @@ public sealed class RequestFixture : IAsyncLifetime
     {
         Retrieval.Sources[source.Name] = source;
         return await Api.AddPluginAsync(new AddPlugin(Endpoint: $"http://{source.Name}:8080"));
+    }
+
+    /// <summary>
+    /// Cancels whatever an earlier test left asking, and waits until nothing is being fetched, so a leftover request
+    /// can't use the next test's sources.
+    /// </summary>
+    public async Task SettleRequestsAsync()
+    {
+        foreach (var request in await Api.ListRequestsAsync(activeOnly: true, limit: 1000))
+            await Api.CancelRequestAsync(request.Id);
+        var deadline = DateTime.UtcNow + TimeSpan.FromMinutes(1);
+        while (true)
+        {
+            using (var scope = Factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<Melodex.Core.Data.MelodexDbContext>();
+                if (!await db.Jobs.AnyAsync(j => j.Status == Melodex.Core.Data.JobStatus.Queued || j.Status == Melodex.Core.Data.JobStatus.Running)
+                    && (await Api.ListRequestsAsync(activeOnly: true)).Count == 0)
+                    return;
+            }
+            if (DateTime.UtcNow > deadline)
+                throw new TimeoutException("Requests from an earlier test are still running");
+            await Task.Delay(50);
+        }
     }
 
     public async Task RemoveSourcesAsync()
@@ -145,7 +176,13 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
 {
     private MelodexClient Api => fixture.Api;
 
-    public Task InitializeAsync() => TestLibrary.Exists ? fixture.RemoveSourcesAsync() : Task.CompletedTask;
+    public async Task InitializeAsync()
+    {
+        if (!TestLibrary.Exists)
+            return;
+        await fixture.SettleRequestsAsync();
+        await fixture.RemoveSourcesAsync();
+    }
 
     public Task DisposeAsync() => Task.CompletedTask;
 
@@ -518,9 +555,12 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
             await Task.Delay(20);
 
         await Api.CancelRequestAsync(id);
-        await Task.Delay(300);
-
+        // Once the plugin is told to stop and the job has finished, nothing is left that could set it going again.
         var done = (await Api.GetRequestAsync(id))!;
+        for (var deadline = DateTime.UtcNow.AddSeconds(30);
+             (slow.Cancels == 0 || done.Jobs!.Any(j => j.State is JobState.Queued or JobState.Running)) && DateTime.UtcNow < deadline;
+             done = (await Api.GetRequestAsync(id))!)
+            await Task.Delay(20);
         Dump(done);
         Assert.Equal(RequestState.Cancelled, done.State);
         Assert.Equal(JobState.Cancelled, done.Jobs!.Single().State);
@@ -582,13 +622,22 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
     [TestLibraryFact]
     public async Task Asking_twice_returns_the_same_request()
     {
-        await fixture.AddSourceAsync(new FakeSource("slow") { Finds = false });
+        // Its searches wait, so the first request is still going when it's asked for again.
+        var searching = new TaskCompletionSource();
+        await fixture.AddSourceAsync(new FakeSource("slow") { Finds = false, Hold = searching.Task });
         var album = await fixture.AlbumAsync("Portishead", "Dummy");
-        var first = await Api.CreateRequestAsync(new CreateRequest(RequestKind.Artist, album.ArtistId));
-        var second = await Api.CreateRequestAsync(new CreateRequest(RequestKind.Artist, album.ArtistId));
-        Assert.Equal(first.Id, second.Id);
-        await Api.CancelRequestAsync(first.Id);
-        Assert.Equal(RequestState.Cancelled, (await Api.GetRequestAsync(first.Id))!.State);
+        try
+        {
+            var first = await Api.CreateRequestAsync(new CreateRequest(RequestKind.Artist, album.ArtistId));
+            var second = await Api.CreateRequestAsync(new CreateRequest(RequestKind.Artist, album.ArtistId));
+            Assert.Equal(first.Id, second.Id);
+            await Api.CancelRequestAsync(first.Id);
+            Assert.Equal(RequestState.Cancelled, (await Api.GetRequestAsync(first.Id))!.State);
+        }
+        finally
+        {
+            searching.SetResult();
+        }
     }
 
     [TestLibraryFact]

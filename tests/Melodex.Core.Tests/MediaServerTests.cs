@@ -41,8 +41,7 @@ public sealed class MediaServerTests : IDisposable
     {
         _factory.Dispose();
         SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_dataPath))
-            Directory.Delete(_dataPath, recursive: true);
+        TestFolder.Delete(_dataPath);
     }
 
     [Fact]

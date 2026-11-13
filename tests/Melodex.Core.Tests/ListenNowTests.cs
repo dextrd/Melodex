@@ -20,7 +20,13 @@ public sealed class ListenNowTests(RequestFixture fixture, ITestOutputHelper out
 
     private MelodexClient Api => fixture.Api;
 
-    public Task InitializeAsync() => TestLibrary.Exists ? fixture.RemoveSourcesAsync() : Task.CompletedTask;
+    public async Task InitializeAsync()
+    {
+        if (!TestLibrary.Exists)
+            return;
+        await fixture.SettleRequestsAsync();
+        await fixture.RemoveSourcesAsync();
+    }
 
     public Task DisposeAsync() => Task.CompletedTask;
 
@@ -46,7 +52,7 @@ public sealed class ListenNowTests(RequestFixture fixture, ITestOutputHelper out
         Assert.Equal(fetches, source.Fetches);
 
         // Nothing reached the library, and a Get button wouldn't think it's on its way.
-        Assert.Equal(AlbumStatus.Missing, (await fixture.AlbumAsync(album.ArtistName(), album.Title)).Status);
+        Assert.Equal(AlbumStatus.Missing, await StatusAsync(album));
         Assert.DoesNotContain(await Api.ListRequestsAsync(activeOnly: true), r => r.TargetId == album.Id);
 
         // Play: the stream needs its signature, and seeks.
@@ -76,7 +82,7 @@ public sealed class ListenNowTests(RequestFixture fixture, ITestOutputHelper out
         Assert.Null(added.StreamUrl);
         Assert.Equal(fetches, source.Fetches);
         Assert.False(File.Exists(Path.Combine(fixture.ListenNow, first.Id.ToString("N") + ".wav")));
-        Assert.Equal(AlbumStatus.Partial, (await fixture.AlbumAsync(album.ArtistName(), album.Title)).Status);
+        Assert.Equal(AlbumStatus.Partial, await StatusAsync(album));
         Assert.NotNull(await Api.GetPlayInfoAsync(first.TrackId));
 
         // Discard another: its file goes at once.
@@ -163,15 +169,17 @@ public sealed class ListenNowTests(RequestFixture fixture, ITestOutputHelper out
         await WaitAsync(started, ListenNowState.Playable);
     }
 
-    /// <summary>A missing album of a library artist that no other test fetches; <paramref name="index"/> picks another for each test.</summary>
-    private async Task<AlbumSummary> MissingAlbumAsync(int index)
-    {
-        var albums = new List<AlbumSummary>();
-        foreach (var artist in await Api.GetLibraryArtistsAsync())
-            albums.AddRange((await Api.GetArtistAsync(artist.Id))!.Albums
-                .Where(a => a.Status == AlbumStatus.Missing && !a.HiddenByDefault && !a.Ignored && !Taken.Contains(a.Title)));
-        return albums.OrderBy(a => a.Title, StringComparer.Ordinal).ElementAt(index);
-    }
+    /// <summary>
+    /// A missing album of a library artist that no other test fetches, with a few tracks to play; <paramref name="index"/>
+    /// picks another for each test. They're listed as they were after the fixture's scan, so what other tests add since
+    /// can't make two tests pick the same one.
+    /// </summary>
+    private Task<AlbumSummary> MissingAlbumAsync(int index) =>
+        Task.FromResult(fixture.MissingAlbums.Where(a => !Taken.Contains(a.Title) && a.TotalTracks >= 3).ElementAt(index));
+
+    /// <summary>The album's status now. Looked up by its ID, as an artist can have several albums of one title.</summary>
+    private async Task<AlbumStatus> StatusAsync(AlbumSummary album) =>
+        (await Api.GetArtistAsync(album.ArtistId))!.Albums.Single(a => a.Id == album.Id).Status;
 
     /// <summary>Follows tracks, as an app would, until each reaches the state.</summary>
     private async Task<IReadOnlyList<ListenNowInfo>> WaitAsync(IReadOnlyList<ListenNowInfo> items, ListenNowState state)
@@ -193,10 +201,4 @@ public sealed class ListenNowTests(RequestFixture fixture, ITestOutputHelper out
             await Task.Delay(50);
         }
     }
-}
-
-internal static class AlbumSummaryExtensions
-{
-    /// <summary>The album's artist name as the library lists it, for <see cref="RequestFixture.AlbumAsync"/>.</summary>
-    public static string ArtistName(this AlbumSummary album) => album.ArtistCredit;
 }

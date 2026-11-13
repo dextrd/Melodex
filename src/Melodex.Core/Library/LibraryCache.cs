@@ -211,6 +211,29 @@ public sealed class LibraryCache(IServiceScopeFactory scopes, IOptions<MelodexOp
         }
     }
 
+    /// <summary>Waits until every view has been worked out from the library as it now is.</summary>
+    public async Task SettleAsync(CancellationToken ct)
+    {
+        while (true)
+        {
+            var stale = false;
+            foreach (var entry in _entries.Values)
+            {
+                Task refresh;
+                lock (entry.Gate)
+                {
+                    if (entry.Value is not null && entry.Generation == Interlocked.Read(ref _generation))
+                        continue;
+                    refresh = entry.Refresh ??= RefreshAsync(entry);
+                }
+                stale = true;
+                await refresh.WaitAsync(ct);
+            }
+            if (!stale)
+                return;
+        }
+    }
+
     private async Task<Answer> GetAsync(string view, CancellationToken ct)
     {
         var entry = _entries[view];
