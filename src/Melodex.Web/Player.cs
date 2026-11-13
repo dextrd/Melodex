@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.JSInterop;
 using Melodex.Client;
 
@@ -660,6 +661,23 @@ public sealed class Player : IAsyncDisposable
     {
         if (entry.Unplayable)
             return (null, null, null);
+        if (_sources.TryGetValue(entry, out var known) && DateTime.UtcNow - known.At < SourceKept)
+            return (known.Url, known.MediaType, known.Length);
+        var source = await FetchSourceAsync(entry);
+        if (source.Url is not null)
+            _sources.AddOrUpdate(entry, new Source(source.Url, source.MediaType, source.Length, DateTime.UtcNow));
+        return source;
+    }
+
+    // Each song's stream URL, kept a while: a skip on a locked phone, where the page runs slowly, needn't ask for it
+    // first (#103). The URLs last 12 hours, and a listen-now song stays at least an hour after it's played.
+    private static readonly TimeSpan SourceKept = TimeSpan.FromMinutes(10);
+    private readonly ConditionalWeakTable<PlayerEntry, Source> _sources = new();
+
+    private sealed record Source(string Url, string? MediaType, double? Length, DateTime At);
+
+    private async Task<(string? Url, string? MediaType, double? Length)> FetchSourceAsync(PlayerEntry entry)
+    {
         try
         {
             if (entry.ListenId is { } id)

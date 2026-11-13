@@ -31,6 +31,8 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
   Melodex card with nothing to play (#98).
 - A phone's lock screen and Control Centre have previous and next song buttons for Melodex, rather than ones that jump
   10 seconds (#99).
+- A phone's controls show the song's real length, as the player does, and skip at once from the lock screen: the
+  next song starts straight away when it's loaded already, and songs played lately needn't be asked for again (#103).
 - Opus songs in Safari, and on an iPhone, keep their length and play to the end with the timer, seek bar and visualiser
   going all the way. Safari gets the time of Opus in an Ogg file wrong, so Melodex sends it a WebM copy instead, with
   the same sound, made when the song first plays and kept a while in its data folder. Listen-now songs' lengths are

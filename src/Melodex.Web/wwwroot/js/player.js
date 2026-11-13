@@ -38,6 +38,7 @@ function element() {
         if (now !== second) {
             second = now;
             player.invokeMethodAsync("OnTime", audio.currentTime, Number.isFinite(audio.duration) ? audio.duration : 0);
+            position();
         }
         if (prepared && !watching && Number.isFinite(lengthOf(audio)) && lengthOf(audio) - audio.currentTime < 1.5)
             watch();
@@ -46,6 +47,7 @@ function element() {
     on("seeked", () => {
         second = Math.floor(audio.currentTime);
         player.invokeMethodAsync("OnTime", audio.currentTime, Number.isFinite(audio.duration) ? audio.duration : 0);
+        position();
         if (lyrics?.isConnected)
             light(true);
     });
@@ -57,8 +59,9 @@ function element() {
         else
             player.invokeMethodAsync("OnEnded");
     });
-    on("playing", () => player.invokeMethodAsync("OnPlaying", true));
-    on("pause", () => { if (!audio.ended) player.invokeMethodAsync("OnPlaying", false); });
+    on("playing", () => { player.invokeMethodAsync("OnPlaying", true); position(); });
+    on("pause", () => { if (!audio.ended) player.invokeMethodAsync("OnPlaying", false); position(); });
+    on("durationchange", position);
     on("error", () => {
         if (audio.getAttribute("src"))
             player.invokeMethodAsync("OnError", audio.error?.message || "The file couldn't be played.");
@@ -82,7 +85,14 @@ const actions = {
     play: () => audio.play(),
     pause: () => audio.pause(),
     previoustrack: () => player.invokeMethodAsync("OnRemote", "previous"),
-    nexttrack: () => player.invokeMethodAsync("OnRemote", "next"),
+    // The next song is started at once if it's loaded already, as it is to run on without a gap: a locked phone runs the
+    // page slowly, and asking for it first took a while (#103).
+    nexttrack: () => {
+        if (prepared && !handing && !audio.paused)
+            handOff();
+        else if (!handing)
+            player.invokeMethodAsync("OnRemote", "next");
+    },
     // Dragging along the phone's bar: once Melodex says which buttons it has, an iPhone offers only those.
     seekto: details => {
         if (details.fastSeek && audio.fastSeek)
@@ -106,8 +116,26 @@ function controls(on) {
             // An action this browser doesn't know.
         }
     }
-    if (!on)
+    if (!on) {
         navigator.mediaSession.playbackState = "none";
+        try {
+            navigator.mediaSession.setPositionState();
+        } catch {
+        }
+    }
+}
+
+// How long the song is and where it's got to, told to the phone's controls: they'd go by the browser's own idea of the
+// length otherwise, which Safari gets wrong for some files (#103).
+function position() {
+    const length = lengthOf(audio);
+    if (!("mediaSession" in navigator) || !navigator.mediaSession.setPositionState || !(length > 0) || !Number.isFinite(length))
+        return;
+    try {
+        navigator.mediaSession.setPositionState({ duration: length, playbackRate: audio.playbackRate || 1, position: Math.min(Math.max(audio.currentTime, 0), length) });
+    } catch {
+        // A length or time it won't take, for a moment while a song loads.
+    }
 }
 
 function setMetadata(meta) {
@@ -184,6 +212,7 @@ function handOff() {
         from.removeAttribute("src");
         from.load();
         setMetadata(next.meta);
+        position();
         player.invokeMethodAsync("OnPlaying", true);
         player.invokeMethodAsync("OnAdvanced", next.token);
         return true;
