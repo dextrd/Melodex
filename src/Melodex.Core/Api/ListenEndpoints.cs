@@ -177,7 +177,7 @@ public static class ListenEndpoints
 
         api.MapGet("/playback", (SettingsService s, CancellationToken ct) => s.GetPlaybackAsync(ct))
             .WithTags("Listen now").RequireScope(Scopes.Listen).WithName("GetPlayback")
-            .WithSummary("How music is played: whether there's a visualiser, and when its bars are made.");
+            .WithSummary("How music is played: which songs run into each other without a gap, whether there's a visualiser, and when its bars are made.");
 
         api.MapGet("/library/files/{id:guid}/stream", async (Guid id, long? exp, string? sig, MelodexDbContext db, StreamSigner signer,
                 Microsoft.Extensions.Options.IOptions<MelodexOptions> options, CancellationToken ct) =>

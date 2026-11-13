@@ -122,6 +122,7 @@ public sealed class Player : IAsyncDisposable
         events.Received += OnEvent;
         events.EnsureStarted();
         Changed += () => _ = SaveAsync();
+        Changed += () => _ = PrepareNextAsync();
     }
 
     /// <summary>The queue changed, or what's playing did.</summary>
@@ -499,6 +500,69 @@ public sealed class Player : IAsyncDisposable
 
     // ---- Playing ----
 
+    // ---- Gapless: the next song loaded ahead, to start as this one ends ----
+
+    private PlayerEntry? _prepared;
+    private int _preparedToken;
+    private GaplessPlayback? _gapless;
+    private DateTime _gaplessAt;
+
+    /// <summary>The song to load ahead, if the settings say this one and the next run into each other.</summary>
+    private PlayerEntry? GaplessNext(GaplessPlayback gapless)
+    {
+        if (gapless == GaplessPlayback.Off || Repeat == RepeatMode.One || _resumeAt is not null || Now is not { Waiting: false, Unplayable: false } now)
+            return null;
+        var index = Current + 1 < _queue.Count ? Current + 1 : Repeat == RepeatMode.All ? 0 : -1;
+        if (index < 0 || index == Current || _queue[index] is not { Waiting: false, Unplayable: false } next)
+            return null;
+        return gapless == GaplessPlayback.Always || next.AlbumId is { } album && album == now.AlbumId ? next : null;
+    }
+
+    /// <summary>Has the script load the song after this one ahead, or forget one that's no longer next.</summary>
+    private async Task PrepareNextAsync()
+    {
+        if (_audio is null)
+            return;
+        if (_gapless is null || DateTime.UtcNow - _gaplessAt > TimeSpan.FromMinutes(10))
+        {
+            _gaplessAt = DateTime.UtcNow;
+            try
+            {
+                _gapless = (await _api.GetPlaybackAsync()).Gapless;
+            }
+            catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+            {
+                _gapless ??= GaplessPlayback.Off;
+            }
+        }
+        var next = GaplessNext(_gapless.Value);
+        if (ReferenceEquals(next, _prepared))
+            return;
+        _prepared = next;
+        var token = ++_preparedToken;
+        try
+        {
+            if (next is null)
+            {
+                await _audio.InvokeVoidAsync("unprepare");
+                return;
+            }
+            var (url, mediaType) = await SourceAsync(next);
+            if (token != _preparedToken)
+                return;
+            if (url is null || !await _audio.InvokeAsync<bool>("canPlay", mediaType))
+            {
+                await _audio.InvokeVoidAsync("unprepare");
+                return;
+            }
+            await _audio.InvokeVoidAsync("prepare", url, new { title = next.Title, artist = next.ArtistCredit, album = next.AlbumTitle, cover = next.CoverUrl }, token);
+        }
+        catch (JSException)
+        {
+            // Played the usual way when it comes.
+        }
+    }
+
     /// <summary>Whether the full-screen player's visualiser is showing, so the next song's bars are made ahead of it.</summary>
     public bool Visualising
     {
@@ -550,6 +614,8 @@ public sealed class Player : IAsyncDisposable
                 {
                     Position = 0;
                     Duration = entry.DurationSeconds ?? 0;
+                    // Loaded ahead again as it plays: a start of the next song that this overtook took the spare with it.
+                    _prepared = null;
                     await audio.InvokeVoidAsync("load", url, new { title = entry.Title, artist = entry.ArtistCredit, album = entry.AlbumTitle, cover = entry.CoverUrl });
                     if (_visualising)
                         _ = WarmNextAsync();
@@ -761,6 +827,25 @@ public sealed class Player : IAsyncDisposable
     {
         Playing = playing;
         Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// The script started the song it had loaded ahead, as the one before ended, with no gap: it's what's playing now.
+    /// One loaded for a queue that's changed since is out of date, and the script is told so before it ends; if it
+    /// went on anyway, the song after this one is played as usual.
+    /// </summary>
+    [JSInvokable]
+    public Task OnAdvanced(int token)
+    {
+        if (token != _preparedToken || _prepared is not { } entry || _queue.IndexOf(entry) is var index && index < 0)
+            return NextAsync();
+        _starting++;
+        _prepared = null;
+        Current = index;
+        Position = 0;
+        Duration = entry.DurationSeconds ?? 0;
+        Changed?.Invoke();
+        return Task.CompletedTask;
     }
 
     /// <summary>A song finished: the same again when repeating one, otherwise the next.</summary>

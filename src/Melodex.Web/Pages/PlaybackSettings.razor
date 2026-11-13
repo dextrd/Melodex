@@ -10,6 +10,24 @@
 }
 else
 {
+    <h2>Gapless playback</h2>
+    <p class="muted small">
+        Songs that run into each other, as on a live album, a DJ mix or a symphony, play on without a pause between them: the next song is loaded while
+        this one plays, and started as it ends.
+    </p>
+    <div class="card settings-card">
+        @foreach (var (value, name, hint) in GaplessChoices)
+        {
+            <label class="dialog-choice">
+                <input type="radio" name="gapless" checked="@(_gapless == value)" @onchange="() => { _gapless = value; _saved = false; }" />
+                <span>
+                    <strong>@name</strong>
+                    <span class="muted small">@hint</span>
+                </span>
+            </label>
+        }
+    </div>
+
     <h2>Visualiser</h2>
     <p class="muted small">
         The bars that move with the music under the cover in the full-screen player. The server works them out from each song, so your browser doesn't
@@ -95,7 +113,16 @@ else
         (VisualiserBars.Off, "Off", "No visualiser: its button is gone from the full-screen player."),
     ];
 
+    private static readonly (GaplessPlayback Value, string Name, string Hint)[] GaplessChoices =
+    [
+        (GaplessPlayback.SameAlbum, "Songs from the same album",
+            "One song after another from the same album, as the record plays them. Between albums, there's the usual moment's pause."),
+        (GaplessPlayback.Always, "Every song", "Every song in the queue runs into the next."),
+        (GaplessPlayback.Off, "Off", "Each song starts once the one before has ended, after a moment to load. Nothing's downloaded ahead."),
+    ];
+
     private PlaybackStatus? _status;
+    private GaplessPlayback _gapless;
     private FetchSettings? _fetch;
     private VisualiserBars _visualiser;
     private bool _warning, _deleting, _leaving, _saved;
@@ -106,6 +133,7 @@ else
         _status = await Api.GetPlaybackSettingsAsync();
         _fetch = await Api.GetFetchSettingsAsync();
         _visualiser = _status.Settings.Visualiser;
+        _gapless = _status.Settings.Gapless;
     }
 
     private void Choose(VisualiserBars value)
@@ -128,7 +156,7 @@ else
         _saveError = null;
         try
         {
-            await Api.SavePlaybackSettingsAsync(new SavePlayback(_visualiser, deleteBarsFiles));
+            await Api.SavePlaybackSettingsAsync(new SavePlayback(_visualiser, deleteBarsFiles, _gapless));
             await Api.SaveFetchSettingsAsync(_fetch!);
             _status = await Api.GetPlaybackSettingsAsync();
             _saved = true;
