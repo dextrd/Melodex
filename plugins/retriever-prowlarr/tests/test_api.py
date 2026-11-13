@@ -80,6 +80,7 @@ class FakeQBittorrent:
         self.folder, self.known, self.added, self.deleted, self.priorities = folder, torrents, {}, [], {}
         self.magnets: dict[str, bytes] = {}  # a magnet link, and the torrent its peers would send
         self.forms: list[dict[str, list[str]]] = []
+        self.unlisted = 0  # how many times a torrent just added isn't listed yet, as qBittorrent adds it in the background
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path.removeprefix("/api/v2")
@@ -98,7 +99,7 @@ class FakeQBittorrent:
             metadata = "urls" not in form or (form["stopped"] == ["false"] and form.get("stopCondition") == ["MetadataReceived"])
             tags = form["tags"][0] if "tags" in form else re.search(rb'name="tags"\r\n\r\n(.*?)\r\n', body)[1].decode()
             self.added[info_hash] = {"files": files, "started": False, "body": body, "tags": set(tags.split(",")),
-                                     "metadata": metadata}
+                                     "metadata": metadata, "unlisted": self.unlisted}
             return httpx.Response(200, text="Ok.")
         if path in ("/torrents/addTags", "/torrents/removeTags"):
             t = self.added[form["hashes"][0]]
@@ -107,6 +108,9 @@ class FakeQBittorrent:
         if path == "/torrents/info":
             h = request.url.params["hashes"]
             t = self.added.get(h)
+            if t and t.get("unlisted"):
+                t["unlisted"] -= 1
+                return httpx.Response(200, json=[])
             return httpx.Response(200, json=[{"hash": h, "name": "Dummy", "state": t.get("state") or ("uploading" if t["started"] else "stoppedDL"),
                                               "save_path": "/downloads/melodex", "tags": ", ".join(sorted(t["tags"] - {""}))}] if t else [])
         if path == "/log/main":
@@ -114,7 +118,7 @@ class FakeQBittorrent:
                                               "timestamp": 0, "type": 4}])
         if path == "/torrents/files":
             t = self.added.get(request.url.params["hash"])
-            if not t:
+            if not t or t.get("unlisted"):
                 return httpx.Response(404)
             if not t["metadata"]:
                 return httpx.Response(200, json=[])
@@ -351,6 +355,29 @@ def test_a_torrent_qbittorrent_stops_says_why_and_is_kept_while_another_song_use
     assert status["state"] == "failed"
     assert "Permission denied" in status["error"]
     assert qb.deleted == [] and qb.added[info_hash]["tags"] == {"melodex", "melodex-job-0"}
+
+
+def test_a_torrent_qbittorrent_is_still_adding_is_waited_for(fakes):
+    client, _, qb, settings = fakes
+    qb.unlisted = 3
+    candidate = client.post("/v1/search", json={"settings": settings, "target": TRACK}).json()["candidates"][0]
+    client.post("/v1/fetch", json={"settings": settings, "jobId": "job-8", "target": TRACK, "candidate": candidate, "stagingDirectory": "job-8"})
+    status = wait(client, "job-8")
+
+    assert status["state"] == "completed", status
+    assert "melodex-job-8" not in qb.added[DUMMY_HASH]["tags"]  # tagged once listed, and let go when done
+
+
+def test_a_torrent_qbittorrent_never_lists_fails_the_fetch(fakes, monkeypatch):
+    client, _, qb, settings = fakes
+    monkeypatch.setattr(retrieve, "ADD_WAIT_SECONDS", 0.05)
+    qb.unlisted = 10**9
+    candidate = client.post("/v1/search", json={"settings": settings, "target": TRACK}).json()["candidates"][0]
+    client.post("/v1/fetch", json={"settings": settings, "jobId": "job-9", "target": TRACK, "candidate": candidate, "stagingDirectory": "job-9"})
+    status = wait(client, "job-9")
+
+    assert status["state"] == "failed"
+    assert "didn't add the torrent" in status["error"]
 
 
 def test_health_reports_both_services(fakes):

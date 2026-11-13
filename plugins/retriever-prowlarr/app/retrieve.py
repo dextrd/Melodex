@@ -29,6 +29,7 @@ LOSSLESS = {".flac"}
 LOSSLESS_FORMATS = {"flac", "alac", "wav", "aiff"}
 LOSSY = {".mp3", ".m4a", ".ogg", ".opus", ".aac"}
 POLL_SECONDS = 2.0
+ADD_WAIT_SECONDS = 60.0
 
 _CHECKED = 6  # torrents whose file lists are read per search
 _GLUED = re.compile(r"(?<=\d)(?=[^\W\d])|(?<=[^\W\d])(?=\d)")
@@ -313,12 +314,12 @@ def fetch(job: Job, candidate_id: str, target: Target, directory: Path, settings
                 qb.add(source, str(settings.get("savePath") or "/downloads/melodex"), str(settings.get("category") or "melodex"),
                        f"melodex,{mine}")
                 added = True
-            # Each request using the torrent marks it, so the others know not to remove it from under it. It's marked
-            # again after adding, as qBittorrent ignores adding a torrent it has, along with its tags, when two
-            # requests add it at once.
-            qb.add_tags(info_hash, mine)
 
             listed = _wait_for_files(job, qb, info_hash)
+            # Each request using the torrent marks it, so the others know not to remove it from under it. It's marked
+            # again after adding, as qBittorrent ignores adding a torrent it has, along with its tags, when two
+            # requests add it at once; and once it's listed, as it's added in the background.
+            qb.add_tags(info_hash, mine)
             picked = _pick(chosen, listed, target, settings.get("format", "best"))
             wanted = {index for _, _, index, _ in picked}
             if added:
@@ -358,11 +359,19 @@ def _let_go(qb: QBittorrent, info_hash: str, mine: str, remove: bool) -> None:
 
 def _wait_for_files(job: Job, qb: QBittorrent, info_hash: str) -> list[dict[str, Any]]:
     """The torrent's files, once qBittorrent has them; a magnet link has to fetch them from peers first."""
+    # qBittorrent adds a torrent in the background after saying it has, so for a moment it may not list it.
+    seen, give_up = False, time.monotonic() + ADD_WAIT_SECONDS
     while True:
         job.check()
         if listed := qb.files(info_hash):
             return listed
-        _check(qb, qb.info(info_hash))
+        info = qb.info(info_hash)
+        if info is None and not seen:
+            if time.monotonic() > give_up:
+                raise RuntimeError("qBittorrent didn't add the torrent.")
+        else:
+            seen = True
+            _check(qb, info)
         time.sleep(POLL_SECONDS)
 
 
