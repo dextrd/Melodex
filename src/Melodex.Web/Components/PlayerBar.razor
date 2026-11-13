@@ -33,10 +33,10 @@
                     }
                     else
                     {
-                        <div class="ellipsis player-title">
+                        <div class="ticker player-title">
                             @if (now.AlbumHref is { } album) { <a href="@album">@now.Title</a> } else { @now.Title }
                         </div>
-                        <div class="muted small ellipsis">
+                        <div class="muted small ticker">
                             @if (now.ArtistId is { } artist) { <a class="muted" href="artists/@artist">@now.ArtistCredit</a> } else { @now.ArtistCredit }
                             @if (now.ListenId is not null)
                             {

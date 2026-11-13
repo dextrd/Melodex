@@ -26,7 +26,7 @@
             @if (now?.AlbumTitle is { } album)
             {
                 <span class="muted">Playing from</span>
-                @if (now.AlbumHref is { } href) { <a href="@href" @onclick="CloseAsync">@album</a> } else { <strong>@album</strong> }
+                <span class="ticker np-from-name">@if (now.AlbumHref is { } href) { <a href="@href" @onclick="CloseAsync">@album</a> } else { @album }</span>
             }
         </div>
         <div class="np-head-end">
@@ -79,8 +79,8 @@
                 }
                 else
                 {
-                    <div class="np-title ellipsis">@now.Title</div>
-                    <div class="muted ellipsis">
+                    <div class="np-title ticker">@now.Title</div>
+                    <div class="muted ticker">
                         @if (now.ArtistId is { } artist) { <a class="muted" href="artists/@artist" @onclick="CloseAsync">@now.ArtistCredit</a> } else { @now.ArtistCredit }
                     </div>
                 }

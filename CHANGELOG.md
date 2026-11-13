@@ -16,6 +16,9 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 - The visualiser's bars are made by Melodex rather than your browser, which no longer downloads each song a second
   time to draw them. The core image comes with a small ffmpeg, made only to decode audio, for this; update the beets
   worker too, to write and move `.bars` files (#89).
+- Names too long for their space scroll round like a ticker instead of being cut off: the song playing in a track list,
+  the song and artist in the player and the full-screen player, and the album it's playing from. They stay still for
+  anyone whose device asks for reduced motion, and pause while pointed at (#86).
 
 ## [1.2.1] - 2026-11-12
 
