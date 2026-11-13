@@ -762,7 +762,7 @@ public sealed class RequestPipeline(
     }
 
     private static string Summary(List<string> tried) =>
-        tried.Count == 0 ? "No plugin found it" : string.Join("; ", tried);
+        tried.Count == 0 ? "No plugin found it" : string.Join("; ", tried.Distinct());
 
     private static string Plural(int n, string one, string many) => LibraryMatcher.Plural(n, one, many);
 

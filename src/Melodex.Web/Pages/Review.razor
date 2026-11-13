@@ -10,6 +10,7 @@
 @inject Preferences Preferences
 @inject LibraryStore Library
 @using Microsoft.JSInterop
+@using System.Text.RegularExpressions
 @inject IJSRuntime JS
 
 <PageTitle>Review · Melodex</PageTitle>
@@ -48,7 +49,8 @@
             Requests that ended without a copy to keep: nothing was found, what was found wasn't the right song, or it wasn't a quality
             you keep, such as lossless that seemed lossy. <strong>Keep it anyway</strong> files a copy turned away only for its quality,
             as it is. <strong>Look again</strong> searches every plugin again. <strong>Details</strong> shows each attempt, where you can
-            pick another candidate.
+            pick another candidate. <strong>Dismiss</strong> takes one off the list. One leaves by itself once it's in the library
+            however it got there, or when it's asked for again.
         </p>
         break;
     default:
@@ -125,6 +127,9 @@ else
             {
                 <IconButton Icon="retry" Primary="true" Label="@(some ? "Look again for these" : "Look again for all")" Disabled="@(_busy || !VisibleRequests.Any())"
                             Title="@($"Search every plugin again for every request {(some ? "the filter shows" : "here")}")" OnClick="RetryShownAsync" />
+                <IconButton Icon="cancel" Label="@(some ? "Dismiss these" : "Dismiss all")" Disabled="@(_busy || !VisibleRequests.Any())"
+                            Title="@($"Take every request {(some ? "the filter shows" : "here")} off this list, without fetching anything")"
+                            OnClick="@(() => _confirm = "dismiss")" />
             }
             else if (Tab == "upgraded")
             {
@@ -283,6 +288,16 @@ else
     }
     else if (Tab == "couldnt-fetch")
     {
+        @if (_confirm == "dismiss")
+        {
+            <Dialog Title="@($"Dismiss {Format.Count(VisibleRequests.Count(), "request", "requests")}?")" OnClose="() => _confirm = null" Alert="true">
+                <p>Each leaves this list and nothing more is fetched for it. It can still be tried again from Activity.</p>
+                <div class="toolbar dialog-buttons">
+                    <button @onclick="() => _confirm = null">Cancel</button>
+                    <button class="danger" disabled="@_busy" @onclick="DismissShownAsync">@if (_busy) { <span class="spinner"></span> }Dismiss</button>
+                </div>
+            </Dialog>
+        }
         @foreach (var request in VisibleRequests)
         {
             var (title, artist) = ReviewSong.Split(request.Title);
@@ -295,8 +310,9 @@ else
                     </ReviewSong>
                 </div>
                 <div>
-                    <div class="label">Why it wasn't kept</div>
-                    <div class="small">@(request.Detail ?? "Nothing was found")</div>
+                    <div class="label">What went wrong</div>
+                    @if (Reasons(request.Detail) is [var only]) { <div class="small">@only</div> }
+                    else { <ol class="small reasons">@foreach (var reason in Reasons(request.Detail)) { <li>@reason</li> }</ol> }
                     @if (keepable?.VerificationDetail is { } why && request.Detail?.Contains(why) != true) { <div class="muted small">@why</div> }
                 </div>
                 <div class="review-actions">
@@ -308,6 +324,7 @@ else
                                         OnClick="() => KeepAsync(request, keepable)" />
                         }
                         <IconButton Icon="retry" Primary="@(keepable is null)" Title="Look again: search every plugin again" Disabled="_busy" OnClick="() => RetryAsync(request)" />
+                        <IconButton Icon="cancel" Title="Dismiss: take it off this list, without fetching anything" Disabled="_busy" OnClick="() => DismissAsync(request)" />
                     }
                     <IconButton Icon="open" Title="Details: each attempt, where you can pick another candidate" OnClick="@(() => Nav.NavigateTo($"activity?open={request.Id}"))" />
                 </div>
@@ -929,6 +946,35 @@ else
         _busy = false;
         ScanStatus.RaiseLibraryChanged();
     }
+
+    private async Task DismissAsync(RequestInfo request)
+    {
+        await Api.CancelRequestAsync(request.Id);
+        await Tracker.RefreshAsync();
+    }
+
+    private async Task DismissShownAsync()
+    {
+        _busy = true;
+        try
+        {
+            foreach (var request in VisibleRequests.ToList())
+                await Api.CancelRequestAsync(request.Id);
+            await Tracker.RefreshAsync();
+        }
+        finally
+        {
+            _busy = false;
+            _confirm = null;
+        }
+    }
+
+    // Each attempt's reason, which a request's summary joins with "; ": split where the next names its plugin ("YouTube
+    // (yt-dlp): …"), so a reason's own semicolons stay in it.
+    private static readonly Regex NextReason = new(@";\s+(?=[^;:]{1,40}:\s)");
+
+    private static IReadOnlyList<string> Reasons(string? detail) =>
+        string.IsNullOrWhiteSpace(detail) ? ["Nothing was found"] : NextReason.Split(detail).Select(r => r.Trim()).Distinct().ToList();
 
     private async Task RetryAsync(RequestInfo request)
     {

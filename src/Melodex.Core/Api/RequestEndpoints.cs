@@ -51,7 +51,9 @@ public static class RequestEndpoints
                 await service.CancelAsync(request, ct);
                 return Results.NoContent();
             })
-            .RequireScope(Scopes.Request).WithName("CancelRequest").WithSummary("Cancel a request and its unfinished parts. Files already in the library stay.");
+            .RequireScope(Scopes.Request).WithName("CancelRequest")
+            .WithSummary("Cancel a request and its unfinished parts. Files already in the library stay. A request that needs review or failed "
+                         + "is dismissed: cancelled with its parts that did, so it leaves Couldn't fetch.");
 
         requests.MapPost("/{id:guid}/pause", async (Guid id, MelodexDbContext db, RequestService service, CancellationToken ct) =>
             {

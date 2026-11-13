@@ -482,6 +482,8 @@ td.actions > * + * { margin-left: .6rem; }
 .suggestion-text .confidence { flex: none; }
 .review-item .label { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; margin-bottom: .15rem; }
 .review-item .path { overflow-wrap: anywhere; }
+.review-item .reasons { margin: 0; padding-left: 1.2rem; }
+.review-item .reasons li + li { margin-top: .2rem; }
 .review-actions { display: flex; gap: .5rem; align-items: center; justify-content: flex-end; white-space: nowrap; }
 .suggestion { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
 .confidence { font-size: .78rem; font-weight: 700; padding: .05rem .45rem; border-radius: 999px; font-variant-numeric: tabular-nums; }

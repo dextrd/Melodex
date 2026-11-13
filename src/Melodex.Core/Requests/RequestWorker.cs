@@ -37,6 +37,15 @@ public sealed class RequestWorker(IServiceScopeFactory scopes, RequestSignal sig
             {
                 var parallel = Math.Clamp((await scope.ServiceProvider.GetRequiredService<SettingsService>().GetFetchAsync(stoppingToken)).ParallelFetches, 1, 8);
                 var db = scope.ServiceProvider.GetRequiredService<MelodexDbContext>();
+                try
+                {
+                    // Requests that stopped short are settled once what they asked for is here, or asked for again.
+                    await scope.ServiceProvider.GetRequiredService<RequestService>().SettleAsync(stoppingToken);
+                }
+                catch (Exception e) when (e is not OperationCanceledException)
+                {
+                    logger.LogWarning("Couldn't settle requests that stopped short: {Message}", e.Message);
+                }
                 var busy = _running.Keys.ToList();
                 var listening = _listening.Count;
                 next.AddRange((await db.Requests.Where(r => r.Status == RequestStatus.Queued && r.Mode == RequestMode.ListenNow && !r.Paused && !busy.Contains(r.Id))

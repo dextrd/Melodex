@@ -601,6 +601,53 @@ public sealed class RequestTests(RequestFixture fixture, ITestOutputHelper outpu
         await Api.CancelRequestAsync(done.Id);
     }
 
+    [TestLibraryFact]
+    public async Task A_request_that_failed_can_be_dismissed()
+    {
+        var track = await MissingTrackAsync("Daft Punk", "Homework");
+        var done = await fixture.WaitAsync((await Api.CreateRequestAsync(new CreateRequest(RequestKind.Track, track))).Id);
+        Assert.Equal(RequestState.Failed, done.State);
+
+        await Api.CancelRequestAsync(done.Id);
+
+        var dismissed = (await Api.GetRequestAsync(done.Id))!;
+        Assert.Equal(RequestState.Cancelled, dismissed.State);
+        Assert.Equal("Dismissed", dismissed.Detail);
+    }
+
+    [TestLibraryFact]
+    public async Task A_request_that_stopped_short_is_settled_once_its_song_is_here_or_asked_for_again()
+    {
+        var (owned, scope) = await OwnedAsync("Discovery (2001)/10 Voyager.mp3");
+        var missing = await MissingTrackAsync("Daft Punk", "Homework");
+        using (scope)
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Melodex.Core.Data.MelodexDbContext>();
+            Melodex.Core.Data.Request Stuck(Guid track, DateTime at) => new()
+            {
+                TargetKind = Melodex.Core.Data.EntityKind.Track, TargetId = track, Title = "Song", Requester = "test",
+                Mode = Melodex.Core.Data.RequestMode.Permanent, Status = Melodex.Core.Data.RequestStatus.NeedsReview, CreatedAt = at,
+            };
+            var now = DateTime.UtcNow;
+            // In the library by other means; asked for twice and failed both times; and still missing.
+            var here = Stuck(owned.TrackId!.Value, now);
+            var older = Stuck(missing, now.AddMinutes(-5));
+            var newer = Stuck(missing, now);
+            db.Requests.AddRange(here, older, newer);
+            await db.SaveChangesAsync();
+
+            await scope.ServiceProvider.GetRequiredService<RequestService>().SettleAsync(CancellationToken.None);
+
+            foreach (var request in new[] { here, older, newer })
+                await db.Entry(request).ReloadAsync();
+            Assert.Equal((Melodex.Core.Data.RequestStatus.InLibrary, "In the library now"), (here.Status, here.Detail));
+            Assert.Equal((Melodex.Core.Data.RequestStatus.Cancelled, "Asked for again"), (older.Status, older.Detail));
+            Assert.Equal(Melodex.Core.Data.RequestStatus.NeedsReview, newer.Status);
+            db.Requests.RemoveRange(here, older, newer);
+            await db.SaveChangesAsync();
+        }
+    }
+
     /// <summary>An owned file of the test library, by the end of its path, with the database to look at it.</summary>
     private async Task<(Melodex.Core.Data.LibraryFile File, IServiceScope Scope)> OwnedAsync(string pathEnd)
     {
