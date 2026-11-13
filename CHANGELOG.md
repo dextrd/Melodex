@@ -25,6 +25,10 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ### Fixed
 
+- The Prowlarr plugin's magnet links no longer sit stopped in qBittorrent: they run until they have their file list,
+  then the songs' files are picked and they start. Songs fetched at once from one torrent no longer turn each other's
+  files off or delete it from under each other; it's removed only by the last one using it. When qBittorrent stops a
+  torrent, the error gives its reason from qBittorrent's log. Update the Prowlarr plugin's image for this (#110).
 - After reopening the web app, a song other than the one left off at starts from its beginning, rather than from where
   the other was left, and seeking before pressing play is kept (#105).
 - An iPhone's music controls show Melodex playing as soon as it starts, rather than paused until play is pressed on

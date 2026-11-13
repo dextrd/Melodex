@@ -102,6 +102,8 @@ class QBittorrent:
         # qBittorrent 5 calls it stopped, 4 paused; each ignores the other.
         data = {"savepath": save_path, "category": category, "tags": tags, "stopped": "true", "paused": "true"}
         if isinstance(torrent, str):
+            # A stopped magnet link never asks peers for its file list, so it runs until it has that, then stops.
+            data |= {"stopped": "false", "paused": "false", "stopCondition": "MetadataReceived"}
             response = self.client.post("/torrents/add", data={**data, "urls": torrent})
         else:
             response = self.client.post("/torrents/add", data=data,
@@ -133,6 +135,22 @@ class QBittorrent:
         if response.status_code == 404:  # qBittorrent 4
             response = self.client.post("/torrents/resume", data={"hashes": info_hash})
         response.raise_for_status()
+
+    def add_tags(self, info_hash: str, tags: str) -> None:
+        self.client.post("/torrents/addTags", data={"hashes": info_hash, "tags": tags}).raise_for_status()
+
+    def remove_tags(self, info_hash: str, tags: str) -> None:
+        self.client.post("/torrents/removeTags", data={"hashes": info_hash, "tags": tags}).raise_for_status()
+
+    def problem(self, name: str) -> str | None:
+        """The latest warning in qBittorrent's log about the named torrent, which says why it stopped."""
+        try:
+            response = self.client.get("/log/main", params={"normal": "false", "info": "false", "warning": "true",
+                                                            "critical": "true"})
+            response.raise_for_status()
+            return next((entry["message"] for entry in reversed(response.json()) if name and name in entry["message"]), None)
+        except Exception:
+            return None
 
     def delete(self, info_hash: str, files: bool) -> None:
         self.client.post("/torrents/delete", data={"hashes": info_hash, "deleteFiles": str(files).lower()}).raise_for_status()
