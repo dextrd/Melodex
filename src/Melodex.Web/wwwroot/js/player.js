@@ -170,8 +170,22 @@ function setMetadata(meta) {
         }) : null;
 }
 
+// iPhones and iPads, in any browser: all are WebKit. After a song started in the other element, iOS sometimes kept its
+// lock screen controls on the one before, showing the music paused and not following seeks (#107). Nothing a page does
+// decides which it follows, so songs play one after another in one element there, without gapless.
+const ios = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+export function gaplessWorks() {
+    return !ios;
+}
+
 /** Loads the next song into the spare, to start as this one ends. */
 export function prepare(url, meta, token, length) {
+    if (ios) {
+        // Its first byte only, so the server has it ready (a WebM copy made, for one) and it starts quickly.
+        fetch(source(url), { headers: { Range: "bytes=0-0" } }).catch(() => { });
+        return;
+    }
     prepared = { token, meta };
     // Muted until it plays: a phone offers its controls to any player with sound loaded, and an iPhone chose this one,
     // waiting, showing the music paused while the other played (#94).

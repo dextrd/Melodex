@@ -34,6 +34,10 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 - A phone's controls show the song's real length, as the player does, from its start when a new song comes, and show
   a song skipped to as playing. They skip at once from the lock screen: the next song starts straight away when it's
   loaded already, and songs played lately needn't be asked for again (#103).
+- Gapless playback is off on iPhones and iPads, in any browser, where it sometimes left the lock screen's music
+  controls showing the song before, paused, while the next played; **Settings → Playback** says so there. Songs play
+  one after another as before, with the next made ready on the server ahead of time, and the songs either side of the
+  one playing are asked for as it starts, so a skip soon after doesn't wait for the server (#107).
 - Opus songs in Safari, and on an iPhone, keep their length and play to the end with the timer, seek bar and visualiser
   going all the way. Safari gets the time of Opus in an Ogg file wrong, so Melodex sends it a WebM copy instead, with
   the same sound, made when the song first plays and kept a while in its data folder. Listen-now songs' lengths are

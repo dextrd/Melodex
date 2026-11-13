@@ -127,6 +127,7 @@ public sealed class Player : IAsyncDisposable
         events.EnsureStarted();
         Changed += () => _ = SaveAsync();
         Changed += () => _ = PrepareNextAsync();
+        Changed += () => _ = WarmAroundAsync();
     }
 
     /// <summary>The queue changed, or what's playing did.</summary>
@@ -663,10 +664,49 @@ public sealed class Player : IAsyncDisposable
             return (null, null, null);
         if (_sources.TryGetValue(entry, out var known) && DateTime.UtcNow - known.At < SourceKept)
             return (known.Url, known.MediaType, known.Length);
-        var source = await FetchSourceAsync(entry);
-        if (source.Url is not null)
-            _sources.AddOrUpdate(entry, new Source(source.Url, source.MediaType, source.Length, DateTime.UtcNow));
-        return source;
+        // Asked for once at a time: warming ahead and a skip to it share the one answer.
+        if (!_fetching.TryGetValue(entry, out var fetching))
+        {
+            fetching = FetchAndKeepAsync(entry);
+            _fetching.AddOrUpdate(entry, fetching);
+        }
+        return await fetching;
+    }
+
+    private async Task<(string? Url, string? MediaType, double? Length)> FetchAndKeepAsync(PlayerEntry entry)
+    {
+        try
+        {
+            var source = await FetchSourceAsync(entry);
+            if (source.Url is not null)
+                _sources.AddOrUpdate(entry, new Source(source.Url, source.MediaType, source.Length, DateTime.UtcNow));
+            return source;
+        }
+        finally
+        {
+            _fetching.Remove(entry);
+        }
+    }
+
+    private readonly ConditionalWeakTable<PlayerEntry, Task<(string? Url, string? MediaType, double? Length)>> _fetching = new();
+    private PlayerEntry? _warmedAround;
+
+    /// <summary>
+    /// Asks ahead for the stream URLs of the songs either side of this one, as it starts: a skip soon after, on a locked
+    /// phone where the page runs slowly, took seconds asking for its song first (#107).
+    /// </summary>
+    private async Task WarmAroundAsync()
+    {
+        if (Now is not { } now || ReferenceEquals(now, _warmedAround))
+            return;
+        _warmedAround = now;
+        foreach (var index in new[] { Current + 1, Current - 1, Current + 2, Current + 3 })
+        {
+            if (index < 0 || index >= _queue.Count || !ReferenceEquals(Now, now))
+                continue;
+            if (_queue[index] is { Unplayable: false, Waiting: false } entry)
+                await SourceAsync(entry);
+        }
     }
 
     // Each song's stream URL, kept a while: a skip on a locked phone, where the page runs slowly, needn't ask for it
@@ -722,6 +762,9 @@ public sealed class Player : IAsyncDisposable
             await _audio.InvokeVoidAsync("stop");
         Changed?.Invoke();
     }
+
+    /// <summary>Whether songs can run into each other in this browser: not on iPhones and iPads (#107).</summary>
+    public async Task<bool> GaplessWorksAsync() => await (await AudioAsync()).InvokeAsync<bool>("gaplessWorks");
 
     private async Task<IJSObjectReference> AudioAsync()
     {
