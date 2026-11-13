@@ -160,6 +160,10 @@ the queue, or none, which loads nothing ahead. Repeating one song, and songs sti
 as before. An MP3 or AAC file may still have a sliver of silence its encoder added; FLAC and Opus join cleanly. A
 phone that won't start a song without a tap plays the next one the usual way.
 
+It isn't available on iPhones and iPads, in any browser: playing two songs in turn like this sometimes left the lock
+screen's music controls showing the one before, paused. There, each song starts once the one before has ended, with
+the next made ready on the server ahead of time so it starts quickly.
+
 ### Opus in Safari
 
 Safari, and every browser on an iPhone, gets the time of an Opus song in an Ogg file wrong: the timer and seek bar stop
