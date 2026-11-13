@@ -83,6 +83,10 @@ const actions = {
     pause: () => audio.pause(),
     previoustrack: () => player.invokeMethodAsync("OnRemote", "previous"),
     nexttrack: () => player.invokeMethodAsync("OnRemote", "next"),
+    // Said outright to be none: an iPhone otherwise offers buttons that jump 10 seconds, rather than previous and next
+    // song (#99). Seeking by dragging is the phone's own, and carries on.
+    seekbackward: null,
+    seekforward: null,
 };
 
 function controls(on) {
