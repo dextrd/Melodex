@@ -4,6 +4,12 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ## [Unreleased]
 
+### Fixed
+
+- The Prowlarr plugin finds songs credited to more than one artist, such as "Olivia Rodrigo & Robert Smith": it
+  searches for and matches releases by the lead artist too, as torrents are named for them alone. Update the Prowlarr
+  plugin's image for this (#118).
+
 ## [1.3.1] - 2026-11-13
 
 A fix for the Prowlarr plugin, which in 1.3.0 could fail a fetch the moment it added a torrent. Only the Prowlarr
