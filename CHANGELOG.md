@@ -4,6 +4,19 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ## [Unreleased]
 
+### Added
+
+- **Settings → Playback**, with how long listen-now songs are kept (moved from General) and when the visualiser's bars
+  are made: on demand (the default), for every song after each scan in a `.bars` file beside it, or not at all, which
+  takes the visualiser away. Choosing to keep them beside songs says how much room they'd take first; leaving it asks
+  whether to delete them (#89).
+
+### Changed
+
+- The visualiser's bars are made by Melodex rather than your browser, which no longer downloads each song a second
+  time to draw them. The core image comes with a small ffmpeg, made only to decode audio, for this; update the beets
+  worker too, to write and move `.bars` files (#89).
+
 ## [1.2.1] - 2026-11-12
 
 Fixes from using 1.2.0: Deezer's artists and albums no longer show twice beside MusicBrainz's, seeking lands where it's

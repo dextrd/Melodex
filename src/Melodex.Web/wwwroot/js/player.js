@@ -150,82 +150,56 @@ export function setVolume(value) {
 
 // ---- The visualiser: bars that move with the music, drawn under the cover in the full-screen player ----
 
-// The bars are worked out from the song itself, downloaded and decoded once into memory, at the moment the music is
-// at. Nothing else plays: the music sent through Web Audio would go quiet when a phone put the browser in the
-// background, and a second, silent copy playing beside it took an iPhone's controls with it, showing the music stopped
-// when Safari was left while it carried on (#65).
-const SIZE = 2048, RATE = 22050, SMOOTHING = 0.8, MIN_DB = -100, MAX_DB = -30;
-let frame = 0, canvas, decoded = null, decodedSrc = null, decoding = null;
-const window_ = new Float32Array(SIZE), smoothed = new Float32Array(SIZE / 2), data = new Uint8Array(SIZE / 2);
-const re = new Float32Array(SIZE), im = new Float32Array(SIZE);
-for (let i = 0; i < SIZE; i++)
-    window_[i] = 0.42 - 0.5 * Math.cos(2 * Math.PI * i / SIZE) + 0.08 * Math.cos(4 * Math.PI * i / SIZE);
+// The bars are worked out from each song by the server (#89): how loud each band of pitch is, many times a second, from
+// bass up. They're fetched once for each song and played back with it. Nothing else plays: the music sent through Web
+// Audio would go quiet when a phone put the browser in the background, and a second, silent copy playing beside it took
+// an iPhone's controls with it, showing the music stopped when Safari was left while it carried on (#65).
+const HEADER = 8;
+let frame = 0, canvas, bars = null, barsSrc = null, loading = null;
+// Each bar's height now, 0 to 255, falling away while paused.
+let levels = new Float32Array(64);
 
-/** The song at src, as one channel of samples at RATE; null if it can't be. One at a time, the latest wanted. */
-function decode(src) {
-    if (decodedSrc === src || decoding?.src === src)
+/** The song at src's bars, from the server: { fps, count, frames }; null until they're here, or if there are none. */
+function loadBars(src) {
+    if (barsSrc === src || loading?.src === src)
         return;
-    decoded = null;
-    decodedSrc = null;
+    bars = null;
+    barsSrc = null;
     const controller = new AbortController();
-    decoding?.controller.abort();
-    decoding = { src, controller };
-    fetch(src, { signal: controller.signal })
+    loading?.controller.abort();
+    loading = { src, controller };
+    fetch(src.replace("/stream?", "/bars?"), { signal: controller.signal })
         .then(response => response.ok ? response.arrayBuffer() : Promise.reject(response.status))
-        .then(bytes => new OfflineAudioContext(1, 1, RATE).decodeAudioData(bytes))
         .then(buffer => {
-            if (decoding?.src !== src)
+            const bytes = new Uint8Array(buffer);
+            // MDXB, the version, frames a second, bars a frame.
+            if (loading?.src !== src)
                 return;
-            // One channel: the others averaged in.
-            const mono = new Float32Array(buffer.length);
-            for (let c = 0; c < buffer.numberOfChannels; c++) {
-                const channel = buffer.getChannelData(c);
-                for (let i = 0; i < mono.length; i++)
-                    mono[i] += channel[i] / buffer.numberOfChannels;
-            }
-            decoded = mono;
-            decodedSrc = src;
-            smoothed.fill(0);
+            barsSrc = src;
+            if (bytes.length < HEADER || String.fromCharCode(...bytes.subarray(0, 4)) !== "MDXB" || bytes[4] !== 1)
+                return;
+            bars = { fps: bytes[5], count: bytes[6], frames: bytes.subarray(HEADER) };
+            if (levels.length !== bars.count)
+                levels = new Float32Array(bars.count);
         })
-        .catch(() => {})
-        .finally(() => { if (decoding?.src === src) decoding = null; });
+        // Not asked for again for this song: the bars stay down.
+        .catch(() => { if (loading?.src === src) barsSrc = src; })
+        .finally(() => { if (loading?.src === src) loading = null; });
 }
 
-/** How loud each frequency is at this moment of the song, 0 to 255, as a Web Audio analyser would say. */
+/** Each bar's height at this moment of the song, between the frames either side of it; with no moment, falling away. */
 function spectrum(at) {
-    const start = Math.floor(at * RATE) - SIZE;
-    for (let i = 0; i < SIZE; i++) {
-        const j = start + i;
-        re[i] = j >= 0 && j < decoded.length ? decoded[j] * window_[i] : 0;
-        im[i] = 0;
+    if (at < 0 || !bars || bars.frames.length < bars.count) {
+        for (let i = 0; i < levels.length; i++)
+            levels[i] *= 0.85;
+        return;
     }
-    // A radix-2 FFT, in place.
-    for (let i = 1, j = 0; i < SIZE; i++) {
-        let bit = SIZE >> 1;
-        for (; j & bit; bit >>= 1)
-            j ^= bit;
-        j ^= bit;
-        if (i < j) {
-            [re[i], re[j]] = [re[j], re[i]];
-            [im[i], im[j]] = [im[j], im[i]];
-        }
-    }
-    for (let length = 2; length <= SIZE; length <<= 1) {
-        const angle = -2 * Math.PI / length;
-        for (let i = 0; i < SIZE; i += length)
-            for (let k = 0; k < length / 2; k++) {
-                const wr = Math.cos(angle * k), wi = Math.sin(angle * k);
-                const a = i + k, b = a + length / 2;
-                const tr = re[b] * wr - im[b] * wi, ti = re[b] * wi + im[b] * wr;
-                re[b] = re[a] - tr; im[b] = im[a] - ti;
-                re[a] += tr; im[a] += ti;
-            }
-    }
-    for (let k = 0; k < SIZE / 2; k++) {
-        smoothed[k] = SMOOTHING * smoothed[k] + (1 - SMOOTHING) * Math.hypot(re[k], im[k]) / SIZE;
-        const db = 20 * Math.log10(smoothed[k] || 1e-12);
-        data[k] = Math.max(0, Math.min(255, 255 * (db - MIN_DB) / (MAX_DB - MIN_DB)));
-    }
+    const { fps, count, frames } = bars;
+    const last = frames.length / count - 1;
+    const position = Math.min(Math.max(at * fps, 0), last);
+    const a = Math.floor(position), b = Math.min(a + 1, last), t = position - a;
+    for (let i = 0; i < count; i++)
+        levels[i] = frames[a * count + i] * (1 - t) + frames[b * count + i] * t;
 }
 
 export function startVisualiser(target) {
@@ -241,7 +215,7 @@ export function startVisualiser(target) {
         }
         const src = audio.getAttribute("src");
         if (src)
-            decode(src);
+            loadBars(src);
         const ratio = window.devicePixelRatio || 1;
         const width = canvas.clientWidth, height = canvas.clientHeight;
         if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) {
@@ -252,23 +226,18 @@ export function startVisualiser(target) {
         g.setTransform(ratio, 0, 0, ratio, 0, 0);
         g.clearRect(0, 0, width, height);
         // Still while paused, falling away as they would.
-        if (decoded && decodedSrc === src)
-            spectrum(audio.paused ? -1 : audio.currentTime);
-        else
-            data.fill(0);
-        // Bars over a logarithmic scale, as we hear pitch, from about 40 Hz to 10 kHz, mirrored from the middle out:
-        // bass in the centre. Each bar is the loudest of the frequencies it covers.
-        const hz = RATE / 2 / data.length;
-        const low = Math.max(1, Math.floor(40 / hz)), high = Math.min(data.length - 1, Math.floor(10000 / hz));
+        spectrum(bars && barsSrc === src && !audio.paused ? audio.currentTime : -1);
+        // Mirrored from the middle out: bass in the centre. Each bar drawn is the loudest of the bands it covers, about
+        // 40 Hz to 10 kHz on a logarithmic scale, as we hear pitch.
         const half = Math.max(8, Math.floor(width / 14));
         const bar = width / (half * 2);
         g.fillStyle = getComputedStyle(canvas).color;
         for (let i = 0; i < half; i++) {
-            const from = Math.floor(low * Math.pow(high / low, i / half));
-            const to = Math.max(from + 1, Math.floor(low * Math.pow(high / low, (i + 1) / half)));
+            const from = Math.floor(i * levels.length / half);
+            const to = Math.max(from + 1, Math.floor((i + 1) * levels.length / half));
             let peak = 0;
-            for (let b = from; b < to; b++)
-                peak = Math.max(peak, data[b]);
+            for (let b = from; b < to && b < levels.length; b++)
+                peak = Math.max(peak, levels[b]);
             const h = Math.max(2, Math.pow(peak / 255, 1.6) * height);
             const r = Math.min(bar * 0.35, 3);
             for (const x of [width / 2 + i * bar, width / 2 - (i + 1) * bar]) {

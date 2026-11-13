@@ -19,7 +19,9 @@ Variables named `Navidex__…`, from before the rename, still work; a `Melodex__
 
 | Settings section | Holds |
 | --- | --- |
-| **General** | Songs on more than one release, the missing view (each kind of release shown, hidden, or for new songs only), matching, file metadata, the folder layout, and fetching (quality, and how long listen-now songs are kept) |
+| **General** | Songs on more than one release, the missing view (each kind of release shown, hidden, or for new songs only), matching, file metadata, lyrics, the folder layout, and fetching |
+| **Quality** | The [quality profile](requests-and-listening.md#quality) and [upgrades](requests-and-listening.md#upgrades) |
+| **Playback** | When [the visualiser](requests-and-listening.md#the-visualiser)'s bars are made, if at all, and how long listen-now songs are kept |
 | **Log** | Recent activity, and how long logs are kept |
 | **Plugins** | See [Plugins](plugins.md) |
 | **Users**, **API**, **Webhooks** | See [Users and permissions](users-and-permissions.md) and the [client guide](../client-guide.md) |

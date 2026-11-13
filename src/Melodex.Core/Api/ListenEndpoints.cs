@@ -58,6 +58,21 @@ public static class ListenEndpoints
             .WithSummary("The file, with range requests for seeking. Needs the signature from its stream URL. Each play keeps it for the expiry setting from then.")
             .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status206PartialContent).Produces(StatusCodes.Status403Forbidden).Produces(StatusCodes.Status404NotFound);
 
+        listen.MapGet("/{id:guid}/bars", async (Guid id, long? exp, string? sig, bool? warm, HttpContext http, MelodexDbContext db, ListenNowService service,
+                StreamSigner signer, BarsMaker maker, SettingsService settings, CancellationToken ct) =>
+            {
+                if (!signer.Verify(ListenNowService.StreamPath(id), exp ?? 0, sig))
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                if (await db.ListenNowItems.FindAsync([id], ct) is not { } item || service.FullPath(item) is not { } file || !File.Exists(file))
+                    return Results.NotFound();
+                return await BarsAsync(file, null, warm == true, http, maker, settings, ct);
+            })
+            .AllowAnyone()
+            .WithName("GetListeningBars")
+            .WithSummary(BarsSummary + " Needs the signature from its stream URL.")
+            .Produces(StatusCodes.Status200OK, contentType: "application/octet-stream").Produces(StatusCodes.Status202Accepted)
+            .Produces(StatusCodes.Status403Forbidden).Produces(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
         listen.MapPost("/{id:guid}/add", async (Guid id, MelodexDbContext db, ListenNowService service, CancellationToken ct) =>
             {
                 if (await db.ListenNowItems.FindAsync([id], ct) is not { } item)
@@ -140,6 +155,30 @@ public static class ListenEndpoints
                          + "Its track ID is the file's own when it isn't matched.")
             .Produces<PlayInfo>().Produces(StatusCodes.Status404NotFound);
 
+        api.MapGet("/library/files/{id:guid}/bars", async (Guid id, long? exp, string? sig, bool? warm, HttpContext http, MelodexDbContext db,
+                StreamSigner signer, BarsMaker maker, SettingsService settings, Microsoft.Extensions.Options.IOptions<MelodexOptions> options, CancellationToken ct) =>
+            {
+                if (!signer.Verify(LibraryStreamPath(id), exp ?? 0, sig))
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                if (await db.LibraryFiles.FindAsync([id], ct) is not { } row)
+                    return Results.NotFound();
+                var root = Path.GetFullPath(options.Value.LibraryPath);
+                var file = Path.GetFullPath(Path.Combine(root, row.Path));
+                if (!file.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal) || !File.Exists(file))
+                    return Results.NotFound();
+                return await BarsAsync(file, BarsFile.SidecarOf(file), warm == true, http, maker, settings, ct);
+            })
+            .WithTags("Library")
+            .AllowAnyone()
+            .WithName("GetLibraryFileBars")
+            .WithSummary(BarsSummary + " A .bars file beside it is used when there is one. Needs the signature from its stream URL.")
+            .Produces(StatusCodes.Status200OK, contentType: "application/octet-stream").Produces(StatusCodes.Status202Accepted)
+            .Produces(StatusCodes.Status403Forbidden).Produces(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
+        api.MapGet("/playback", (SettingsService s, CancellationToken ct) => s.GetPlaybackAsync(ct))
+            .WithTags("Listen now").RequireScope(Scopes.Listen).WithName("GetPlayback")
+            .WithSummary("How music is played: whether there's a visualiser, and when its bars are made.");
+
         api.MapGet("/library/files/{id:guid}/stream", async (Guid id, long? exp, string? sig, MelodexDbContext db, StreamSigner signer,
                 Microsoft.Extensions.Options.IOptions<MelodexOptions> options, CancellationToken ct) =>
             {
@@ -202,6 +241,35 @@ public static class ListenEndpoints
             .Produces(StatusCodes.Status200OK, contentType: "text/event-stream");
 
         return api;
+    }
+
+    private const string BarsSummary = "The visualiser's bars for the song, made now if they need to be: a gzipped .bars file (see the user guide). "
+                                       + "With warm=true they're made without being sent, ahead of being played (202). 404 while the visualiser is off; "
+                                       + "503 if they can't be made.";
+
+    /// <summary>The song's bars, or with <paramref name="warm"/>, their making started for later.</summary>
+    private static async Task<IResult> BarsAsync(string file, string? sidecar, bool warm, HttpContext http, BarsMaker maker, SettingsService settings,
+        CancellationToken ct)
+    {
+        if ((await settings.GetPlaybackAsync(ct)).Visualiser == VisualiserBars.Off)
+            return Results.NotFound();
+        if (warm)
+        {
+            _ = maker.GetAsync(file, sidecar, CancellationToken.None).ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+            return Results.Accepted();
+        }
+        byte[] bars;
+        try
+        {
+            bars = await maker.GetAsync(file, sidecar, ct);
+        }
+        catch (BarsException e)
+        {
+            return Results.Problem(e.Message, statusCode: StatusCodes.Status503ServiceUnavailable, title: "The visualiser's bars couldn't be made");
+        }
+        http.Response.Headers.ContentEncoding = "gzip";
+        http.Response.Headers.CacheControl = "private, max-age=43200";
+        return Results.Bytes(bars, "application/octet-stream");
     }
 
     /// <summary>How often an idle event stream sends a comment, so proxies keep it open.</summary>

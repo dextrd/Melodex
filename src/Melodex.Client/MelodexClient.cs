@@ -386,6 +386,28 @@ public sealed class MelodexClient(HttpClient http)
     }
 
     /// <summary>Upgrades' settings, how many songs are below their cutoff, held files, and any warning about the media server.</summary>
+    /// <summary>How music is played, as every listener needs to know.</summary>
+    public async Task<PlaybackSettings> GetPlaybackAsync(CancellationToken ct = default) =>
+        await http.GetFromJsonAsync<PlaybackSettings>($"{Api}/playback", MelodexJson.Options, ct) ?? new PlaybackSettings();
+
+    public async Task<PlaybackStatus> GetPlaybackSettingsAsync(CancellationToken ct = default) =>
+        (await http.GetFromJsonAsync<PlaybackStatus>($"{Api}/settings/playback", MelodexJson.Options, ct))!;
+
+    public async Task SavePlaybackSettingsAsync(SavePlayback settings, CancellationToken ct = default)
+    {
+        using var response = await http.PutAsJsonAsync($"{Api}/settings/playback", settings, MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+    }
+
+    /// <summary>The visualiser's bars for a song, by its stream URL: the same, with <c>bars</c> for <c>stream</c>.</summary>
+    public static string BarsUrl(string streamUrl) => streamUrl.Replace("/stream?", "/bars?");
+
+    /// <summary>Has the server make a song's bars ahead of it being played, by its stream URL.</summary>
+    public async Task WarmBarsAsync(string streamUrl, CancellationToken ct = default)
+    {
+        using var response = await http.GetAsync(BarsUrl(streamUrl) + "&warm=true", ct);
+    }
+
     public async Task<UpgradeStatus> GetUpgradesAsync(CancellationToken ct = default) =>
         (await http.GetFromJsonAsync<UpgradeStatus>($"{Api}/upgrades", MelodexJson.Options, ct))!;
 

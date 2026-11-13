@@ -215,6 +215,19 @@ about 16.5 kHz for an MP3 at 128 kbps and 20 kHz at 320, and a hi-res file made 
 what a cutoff means is for the core to say. An encode that keeps the highs (LAME's V0, AAC at 256) can't be told
 this way, and a master cut off on purpose can look like one that wasn't, so it's a suspicion, not proof.
 
+## `POST /v1/bars`
+
+Writes the visualiser's bars beside songs, or deletes them. The core works them out, as it can only read the library.
+
+```json
+{ "files": [{ "path": "Portishead/Dummy/04 Glory Box.flac", "data": "H4sIAAAA…" }, { "path": "Portishead/Dummy/05 Roads.flac" }] }
+```
+
+Each path is a song, relative to the library; its bars go beside it, with its name and `.bars`. `data` is the file,
+base64: gzipped, starting `MDXB` once unzipped. Without `data`, the `.bars` beside the song is deleted. A `.bars` file
+that doesn't start that way is someone else's, and is left alone. The answer has each path, with `error` when it
+couldn't be written or deleted. Formatting moves a song's `.bars` with it, and deleting a song deletes it.
+
 ## `POST /v1/replace`
 
 Replaces a library file with a better copy of the same song, for an upgrade. The copy takes exactly the old file's

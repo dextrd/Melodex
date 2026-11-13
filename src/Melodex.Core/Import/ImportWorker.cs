@@ -153,11 +153,26 @@ public interface IImportWorker
     /// <summary>Puts a file an upgrade replaced back, deleting the copy that replaced it.</summary>
     Task<RestoreResult> RestoreAsync(RestoreRequest request, CancellationToken ct);
 
+    /// <summary>Writes the visualiser's bars beside songs as .bars files, or deletes them.</summary>
+    Task<BarsResult> BarsAsync(BarsRequest request, CancellationToken ct);
+
     Task<HealthReport> CheckHealthAsync(CancellationToken ct);
 
     /// <summary>Whether files can go from staging into the library as reflinks, sharing their data on disk.</summary>
     Task<ReflinkCheck> CheckReflinksAsync(CancellationToken ct);
 }
+
+/// <summary>Body of <c>POST /v1/bars</c>: the visualiser's bars to write beside songs, or to delete.</summary>
+public sealed record BarsRequest(IReadOnlyList<BarsSidecar> Files);
+
+/// <param name="Path">The song, relative to the library; its bars go beside it, with the same name.</param>
+/// <param name="Data">The .bars file, base64; null to delete the one beside it.</param>
+public sealed record BarsSidecar(string Path, string? Data);
+
+/// <summary>Answer to <c>POST /v1/bars</c>: each song, with why its bars couldn't be written or deleted.</summary>
+public sealed record BarsResult(IReadOnlyList<BarsWritten> Files);
+
+public sealed record BarsWritten(string Path, string? Error = null);
 
 /// <summary>Answer to <c>POST /v1/reflinks</c>.</summary>
 /// <param name="Reason">Why not, when they can't.</param>
@@ -238,6 +253,14 @@ public sealed class HttpImportWorker(HttpClient http) : IImportWorker
         if (!response.IsSuccessStatusCode)
             throw new ImportException(await ErrorAsync(response, ct));
         return (await response.Content.ReadFromJsonAsync<RestoreResult>(RetrievalJson.Options, ct))!;
+    }
+
+    public async Task<BarsResult> BarsAsync(BarsRequest request, CancellationToken ct)
+    {
+        using var response = await http.PostAsJsonAsync("v1/bars", request, RetrievalJson.Options, ct);
+        if (!response.IsSuccessStatusCode)
+            throw new ImportException(await ErrorAsync(response, ct));
+        return (await response.Content.ReadFromJsonAsync<BarsResult>(RetrievalJson.Options, ct))!;
     }
 
     public async Task<ReflinkCheck> CheckReflinksAsync(CancellationToken ct)

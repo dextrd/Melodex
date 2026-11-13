@@ -111,9 +111,10 @@ def format_files(library: Path, files: list[FormatFile], artwork: dict[str, byte
                     target = unique(wanted)
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(full, target)
-                    # Its lyrics go with it, under its new name.
-                    if full.with_suffix(".lrc").is_file():
-                        shutil.move(full.with_suffix(".lrc"), target.with_suffix(".lrc"))
+                    # Its lyrics and the visualiser's bars go with it, under its new name.
+                    for sidecar in (".lrc", ".bars"):
+                        if full.with_suffix(sidecar).is_file():
+                            shutil.move(full.with_suffix(sidecar), target.with_suffix(sidecar))
                     moved_from[full.parent].append(target.parent)
             folders.add(target.parent)
             stat = target.stat()

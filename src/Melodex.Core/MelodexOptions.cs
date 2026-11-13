@@ -20,6 +20,9 @@ public class MelodexOptions
     /// <summary>Where in-process plugin assemblies (index plugins and connectors) are loaded from.</summary>
     public string PluginsPath { get; set; } = "plugins";
 
+    /// <summary>The ffmpeg that decodes songs for the visualiser's bars; the image comes with one, made for that alone.</summary>
+    public string FfmpegPath { get; set; } = "ffmpeg";
+
     /// <summary>
     /// Clears the admin's password when the core starts, so the next visit sets a new one: for a forgotten password.
     /// Other users, API keys and everything else are kept. Turn it off again afterwards.

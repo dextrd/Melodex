@@ -46,9 +46,12 @@
             <button class="icon" title="Stop and clear the queue" @onclick="Player.ClearAsync">
                 <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5" /></svg>
             </button>
-            <button class="icon @(_visualiser ? "on" : "")" title="@(_visualiser ? "Hide the visualiser" : "Show the visualiser")" @onclick="ToggleVisualiserAsync">
-                <svg viewBox="0 0 24 24"><path d="M5 20V12M9 20V6M13 20V9M17 20V4M21 20v-6" /></svg>
-            </button>
+            @if (!_barsOff)
+            {
+                <button class="icon @(_visualiser ? "on" : "")" title="@(_visualiser ? "Hide the visualiser" : "Show the visualiser")" @onclick="ToggleVisualiserAsync">
+                    <svg viewBox="0 0 24 24"><path d="M5 20V12M9 20V6M13 20V9M17 20V4M21 20v-6" /></svg>
+                </button>
+            }
             <button class="icon" title="@(_fullscreen ? "Leave full screen" : "Full screen")" @onclick="ToggleFullscreenAsync">
                 @if (_fullscreen)
                 {
@@ -65,7 +68,7 @@
     <div class="np-body @(Player.Panel != PlayerPanel.None ? "with-panel" : "")">
         <section class="np-main">
             <div class="np-art"><Cover Url="@now?.CoverUrl" /></div>
-            @if (_visualiser)
+            @if (Visualiser)
             {
                 <canvas class="np-visualiser" @ref="_canvas" aria-hidden="true"></canvas>
             }
@@ -191,6 +194,11 @@
     private PlayerEntry? _adding;
     private IJSObjectReference? _script;
     private bool _visualiser = true, _visualising, _fullscreen;
+
+    // The visualiser is turned off for everyone under Settings → Playback.
+    private bool _barsOff;
+
+    private bool Visualiser => _visualiser && !_barsOff;
     private TrackLyrics? _lyrics;
     private PlayerEntry? _lyricsOf;
     private bool _following, _finding;
@@ -202,6 +210,14 @@
         Player.Changed += Redraw;
         Player.TimeChanged += Redraw;
         _visualiser = await Preferences.GetAsync("visualiser", true);
+        try
+        {
+            _barsOff = (await Api.GetPlaybackAsync()).Visualiser == VisualiserBars.Off;
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            // Shown, as it is unless it's turned off.
+        }
     }
 
     protected override async Task OnParametersSetAsync() => await LoadLyricsAsync();
@@ -240,9 +256,9 @@
         if (firstRender)
             await _root.FocusAsync();
 
-        if (_visualiser && !_visualising)
+        if (Visualiser && !_visualising)
         {
-            _visualising = true;
+            _visualising = Player.Visualising = true;
             await _script.InvokeVoidAsync("startVisualiser", _canvas);
         }
 
@@ -272,7 +288,7 @@
         await Preferences.SetAsync("visualiser", _visualiser);
         if (!_visualiser && _script is not null)
         {
-            _visualising = false;
+            _visualising = Player.Visualising = false;
             await _script.InvokeVoidAsync("stopVisualiser");
         }
     }
@@ -330,6 +346,7 @@
     {
         Player.Changed -= Redraw;
         Player.TimeChanged -= Redraw;
+        Player.Visualising = false;
         if (_script is not null)
         {
             try

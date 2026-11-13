@@ -13,7 +13,7 @@ namespace Melodex.Core.Library;
 /// Scans the music folder, matches new and changed files, then fills in the catalogue for every library artist:
 /// their discography and the editions of each album the missing view might show, which reveals bootleg-only albums
 /// and albums covered by tracks owned elsewhere. Then, if the settings say so, it queues finding lyrics for songs
-/// without them.
+/// without them, and making the visualiser's bars for them.
 /// </summary>
 public sealed class LibraryScanTask(
     LibraryScanner scanner,
@@ -78,6 +78,9 @@ public sealed class LibraryScanTask(
 
         if ((await settings.GetLibraryAsync(ct)).FetchLyrics && await lyrics.HaveSourcesAsync(ct) && await lyrics.Wanting().AnyAsync(ct))
             await queue.EnqueueAsync(LyricsTask.TaskKind, null, ct);
+        // While they're made when matching, new songs get the visualiser's bars.
+        if ((await settings.GetPlaybackAsync(ct)).Visualiser == VisualiserBars.WhenMatching)
+            await queue.EnqueueAsync(BarsTask.TaskKind, null, ct);
         // New and changed lossless files are checked for lossy music passed off as lossless.
         if (await SpectrumTask.Unchecked(db).AnyAsync(ct))
             await queue.EnqueueAsync(SpectrumTask.TaskKind, null, ct);

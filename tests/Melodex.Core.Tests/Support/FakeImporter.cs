@@ -51,6 +51,28 @@ public sealed class FakeImporter(string stagingRoot, string libraryRoot) : IImpo
             new SpectrumFound(f.Root, f.Path, Cutoffs.TryGetValue(Path.GetFileName(f.Path), out var hz) ? hz : null, null)).ToList()));
     }
 
+    /// <summary>As the worker does: bars written beside each song, or deleted.</summary>
+    public Task<BarsResult> BarsAsync(BarsRequest request, CancellationToken ct)
+    {
+        var written = new List<BarsWritten>();
+        foreach (var file in request.Files)
+        {
+            var song = Path.Combine(libraryRoot, file.Path);
+            var sidecar = Path.ChangeExtension(song, ".bars");
+            if (file.Data is null)
+                File.Delete(sidecar);
+            else if (!File.Exists(song))
+            {
+                written.Add(new BarsWritten(file.Path, "It isn't in the music folder any more."));
+                continue;
+            }
+            else
+                File.WriteAllBytes(sidecar, Convert.FromBase64String(file.Data));
+            written.Add(new BarsWritten(file.Path));
+        }
+        return Task.FromResult(new BarsResult(written));
+    }
+
     /// <summary>What the reflink check answers.</summary>
     public ReflinkCheck Reflinks { get; set; } = new(true);
 

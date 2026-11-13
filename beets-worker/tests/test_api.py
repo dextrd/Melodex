@@ -282,6 +282,38 @@ def test_lyrics_go_beside_the_song_and_into_it_and_move_and_go_with_it(client, r
     assert not (library / "Portishead").exists()
 
 
+def bars(frames: bytes = b"\x00" * 64) -> str:
+    import gzip
+    return base64.b64encode(gzip.compress(b"MDXB\x01\x1e\x40\x00" + frames)).decode()
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
+def test_bars_go_beside_the_song_move_with_it_and_go_with_it(client, roots):
+    library = roots[1]
+    silent_flac(library / "in" / "roads.flac", title="Roads")
+    (library / "in" / "other.bars").write_bytes(b"not ours")
+    written = client.post("/v1/bars", json={"files": [{"path": "in/roads.flac", "data": bars()}, {"path": "in/gone.flac", "data": bars()},
+                                                      {"path": "in/other.flac", "data": bars()}, {"path": "in/roads.flac", "data": PIXEL}]})
+    results = written.json()["files"]
+    assert "error" not in results[0] and (library / "in" / "roads.bars").exists()
+    assert "isn't in the music folder" in results[1]["error"]
+    # Someone else's file of the same name is left alone.
+    assert "isn't Melodex's" in results[2]["error"] and (library / "in" / "other.bars").read_bytes() == b"not ours"
+    assert "aren't bars" in results[3]["error"]
+
+    moved = client.post("/v1/format", json={"files": [{"path": "in/roads.flac", "tags": {"albumartist": "Portishead", "album": "Dummy"}}],
+                                             "pathTemplate": "$albumartist/$album/$title"}).json()["files"][0]
+    assert moved["newPath"] == "Portishead/Dummy/Roads.flac"
+    assert (library / "Portishead" / "Dummy" / "Roads.bars").exists()
+
+    # Without data, they're deleted.
+    client.post("/v1/bars", json={"files": [{"path": "Portishead/Dummy/Roads.flac"}]})
+    assert not (library / "Portishead" / "Dummy" / "Roads.bars").exists()
+    client.post("/v1/bars", json={"files": [{"path": "Portishead/Dummy/Roads.flac", "data": bars()}]})
+    client.post("/v1/delete", json={"paths": ["Portishead/Dummy/Roads.flac"]})
+    assert not (library / "Portishead").exists()
+
+
 def test_formatting_refuses_files_outside_the_library_and_unknown_tags(client, roots):
     library = roots[1]
     (library / "song.flac").write_bytes(b"x")
