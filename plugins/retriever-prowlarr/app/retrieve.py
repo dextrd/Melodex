@@ -313,9 +313,10 @@ def fetch(job: Job, candidate_id: str, target: Target, directory: Path, settings
                 qb.add(source, str(settings.get("savePath") or "/downloads/melodex"), str(settings.get("category") or "melodex"),
                        f"melodex,{mine}")
                 added = True
-            else:
-                # Each request using the torrent marks it, so the others know not to remove it from under it.
-                qb.add_tags(info_hash, mine)
+            # Each request using the torrent marks it, so the others know not to remove it from under it. It's marked
+            # again after adding, as qBittorrent ignores adding a torrent it has, along with its tags, when two
+            # requests add it at once.
+            qb.add_tags(info_hash, mine)
 
             listed = _wait_for_files(job, qb, info_hash)
             picked = _pick(chosen, listed, target, settings.get("format", "best"))
