@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Melodex.Client;
 using Melodex.Core.Plugins;
@@ -33,8 +34,7 @@ public sealed class LibraryViewTests : IDisposable
     {
         _factory.Dispose();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_dataPath))
-            Directory.Delete(_dataPath, recursive: true);
+        TestFolder.Delete(_dataPath);
     }
 
     [TestLibraryFact]
@@ -87,34 +87,60 @@ public sealed class LibraryViewTests : IDisposable
         var http = _factory.CreateSignedInClient();
         var dummy = (await _api.GetLibraryAlbumsAsync()).Single(a => a.Album.Title == "Dummy");
 
-        // Covers of what you have are fetched during the scan, before anyone looks.
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
-        while (_coverArt.Requests == 0 && DateTime.UtcNow < deadline)
+        // Covers of what you have are fetched during the scan, before anyone looks. Every edition's is fetched before
+        // going on, so the counts below are only this test's. (Artist pictures come from other plugins, which have no
+        // recorded answers here, so they're tried again on every pass without asking the archive.)
+        var deadline = DateTime.UtcNow + TimeSpan.FromMinutes(1);
+        while (await CoversToFetchAsync() is > 0 and var left)
+        {
+            Assert.True(DateTime.UtcNow < deadline, $"{left} covers still to fetch");
             await Task.Delay(100);
+        }
         Assert.NotEqual(0, _coverArt.Requests);
-        // Let it finish warming the other covers, so the counts below are only this test's.
-        for (var seen = -1; seen != _coverArt.Requests && DateTime.UtcNow < deadline; await Task.Delay(1000))
-            seen = _coverArt.Requests;
 
-        using (var response = await http.GetAsync(dummy.Album.CoverUrl))
+        using (var response = await GetPictureAsync(http, dummy.Album.CoverUrl!))
         {
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal("image/gif", response.Content.Headers.ContentType?.MediaType);
             Assert.Equal(FakeCoverArt.Image, await response.Content.ReadAsByteArrayAsync());
         }
         var asked = _coverArt.Requests;
-        Assert.Equal(HttpStatusCode.OK, (await http.GetAsync(dummy.Album.CoverUrl)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await GetPictureAsync(http, dummy.Album.CoverUrl!)).StatusCode);
         Assert.Equal(asked, _coverArt.Requests);
 
         // The archive has no artist pictures, and nothing else is set up to find them.
         var artist = (await _api.GetLibraryArtistsAsync()).Single(a => a.Name == "Portishead");
-        Assert.Equal(HttpStatusCode.NotFound, (await http.GetAsync(artist.ImageUrl)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await GetPictureAsync(http, artist.ImageUrl!)).StatusCode);
 
         // Turning the archive off forgets what it found.
         var archive = (await _api.ListPluginsAsync()).Single(p => p.PluginId == "melodex.artwork.coverartarchive");
         await _api.UpdatePluginAsync(archive.Id, new UpdatePlugin(Enabled: false));
-        Assert.Equal(HttpStatusCode.NotFound, (await http.GetAsync(dummy.Album.CoverUrl)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await GetPictureAsync(http, dummy.Album.CoverUrl!)).StatusCode);
         Assert.Equal(asked, _coverArt.Requests);
+    }
+
+    /// <summary>The library's editions whose covers haven't been looked for yet.</summary>
+    private async Task<int> CoversToFetchAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Melodex.Core.Data.MelodexDbContext>();
+        return await db.LibraryFiles.Where(f => f.EditionId != null).Select(f => f.EditionId!.Value).Distinct()
+            .CountAsync(e => !db.Artwork.Any(a => a.EntityKind == Melodex.Core.Data.EntityKind.Edition && a.EntityId == e));
+    }
+
+    /// <summary>A picture, asking again as told while it's still being looked for (503 with Retry-After).</summary>
+    private static async Task<HttpResponseMessage> GetPictureAsync(HttpClient http, string url)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromMinutes(1);
+        while (true)
+        {
+            var response = await http.GetAsync(url);
+            if (response.StatusCode != HttpStatusCode.ServiceUnavailable || DateTime.UtcNow > deadline)
+                return response;
+            Assert.NotNull(response.Headers.RetryAfter);
+            response.Dispose();
+            await Task.Delay(100);
+        }
     }
 
     private async Task ScanAsync()

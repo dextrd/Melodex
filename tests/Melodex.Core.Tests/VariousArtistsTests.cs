@@ -5,6 +5,7 @@ using Melodex.Contracts.Catalogue;
 using Melodex.Core.Catalogue;
 using Melodex.Core.Data;
 using Melodex.Core.Library;
+using Melodex.Core.Tests.Support;
 
 namespace Melodex.Core.Tests;
 
@@ -24,8 +25,7 @@ public sealed class VariousArtistsTests : IDisposable
     {
         _factory.Dispose();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_dataPath))
-            Directory.Delete(_dataPath, recursive: true);
+        TestFolder.Delete(_dataPath);
     }
 
     [Fact]

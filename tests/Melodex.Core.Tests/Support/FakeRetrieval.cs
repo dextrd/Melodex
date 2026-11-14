@@ -38,6 +38,7 @@ public sealed class FakeRetrieval(string stagingRoot) : HttpMessageHandler
         {
             var search = (await request.Content!.ReadFromJsonAsync<SearchRequest>(RetrievalJson.Options, ct))!;
             Interlocked.Increment(ref source.Searches);
+            await source.Hold.WaitAsync(ct);
             if (!source.Finds)
                 return Json(request, new SearchResponse([]));
             var target = search.Target;
@@ -107,6 +108,9 @@ public sealed class FakeSource(string name, bool albums = false)
 
     /// <summary>Whether search finds anything.</summary>
     public bool Finds { get; set; } = true;
+
+    /// <summary>Searches wait for this, so a request can be held in progress for as long as a test needs.</summary>
+    public Task Hold { get; set; } = Task.CompletedTask;
 
     /// <summary>The format its candidates say they are; the files are WAV whatever they say.</summary>
     public string Format { get; set; } = "wav";

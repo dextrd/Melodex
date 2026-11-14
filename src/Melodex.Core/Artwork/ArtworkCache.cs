@@ -16,11 +16,18 @@ public sealed record CachedArtwork(string Path, string ContentType, DateTime Upd
 /// under <c>data/artwork</c>. Pages only ever load them from the core, so the browser never contacts the sources.
 /// </summary>
 public sealed class ArtworkCache(IServiceScopeFactory scopes, IOptions<MelodexOptions> options, ILogger<ArtworkCache> logger)
+    : IAsyncDisposable, IDisposable
 {
     /// <summary>How long "no plugin has a picture" is believed before asking again.</summary>
     public static readonly TimeSpan NoneFor = TimeSpan.FromDays(14);
 
     private readonly ConcurrentDictionary<(EntityKind, Guid), Task<CachedArtwork?>> _finding = new();
+    private readonly CancellationTokenSource _stopping = new();
+
+    // Counts resets, so a search begun before one doesn't save what the plugins found as they were. What a search
+    // found is saved, and a reset made, one at a time.
+    private long _resets;
+    private readonly SemaphoreSlim _saving = new(1, 1);
 
     private string Root => Path.Combine(options.Value.DataPath, "artwork");
 
@@ -76,7 +83,10 @@ public sealed class ArtworkCache(IServiceScopeFactory scopes, IOptions<MelodexOp
     {
         try
         {
-            return await FindAsync(key.Kind, key.Id);
+            // Looked for again if the artwork was reset meanwhile, as the plugins may now be different.
+            while (true)
+                if (await FindAsync(key.Kind, key.Id) is var found && !ReferenceEquals(found, Superseded))
+                    return found;
         }
         finally
         {
@@ -128,45 +138,73 @@ public sealed class ArtworkCache(IServiceScopeFactory scopes, IOptions<MelodexOp
     {
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MelodexDbContext>();
-        await db.Artwork.Where(a => !a.Chosen).ExecuteDeleteAsync(ct);
-        if (Directory.Exists(Root))
+        await _saving.WaitAsync(ct);
+        try
         {
-            try
+            Interlocked.Increment(ref _resets);
+            await db.Artwork.Where(a => !a.Chosen).ExecuteDeleteAsync(ct);
+            if (Directory.Exists(Root))
             {
-                foreach (var folder in Directory.EnumerateDirectories(Root).Where(d => Path.GetFileName(d) != ChosenFolder))
-                    Directory.Delete(folder, recursive: true);
+                try
+                {
+                    foreach (var folder in Directory.EnumerateDirectories(Root).Where(d => Path.GetFileName(d) != ChosenFolder))
+                        Directory.Delete(folder, recursive: true);
+                }
+                catch (IOException e)
+                {
+                    logger.LogWarning("Couldn't clear the artwork folder: {Message}", e.Message);
+                }
             }
-            catch (IOException e)
-            {
-                logger.LogWarning("Couldn't clear the artwork folder: {Message}", e.Message);
-            }
+        }
+        finally
+        {
+            _saving.Release();
         }
         Reset?.Invoke();
     }
 
+    private static readonly CachedArtwork Superseded = new("", "", default);
+
+    /// <summary>What the plugins have, or <see cref="Superseded"/> if the artwork was reset while looking.</summary>
     private async Task<CachedArtwork?> FindAsync(EntityKind kind, Guid id)
     {
         await Task.Yield();
+        var resets = Interlocked.Read(ref _resets);
+        var ct = _stopping.Token;
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MelodexDbContext>();
         if (await QueryAsync(db, kind, id) is not { } query)
             return null;
 
         var failed = false;
-        foreach (var (instance, plugin) in await scope.ServiceProvider.GetRequiredService<ArtworkPlugins>().ForAsync(query.Subject, CancellationToken.None))
+        foreach (var (instance, plugin) in await scope.ServiceProvider.GetRequiredService<ArtworkPlugins>().ForAsync(query.Subject, ct))
         {
             try
             {
-                foreach (var candidate in await plugin.FindAsync(query, CancellationToken.None))
+                foreach (var candidate in await plugin.FindAsync(query, ct))
                 {
-                    if (await plugin.DownloadAsync(candidate, CancellationToken.None) is not { Data.Length: > 0 } image)
+                    if (await plugin.DownloadAsync(candidate, ct) is not { Data.Length: > 0 } image)
                         continue;
-                    var file = Path.Combine(kind.ToString().ToLowerInvariant(), id.ToString("N") + Extension(image.ContentType));
-                    Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(Root, file))!);
-                    await File.WriteAllBytesAsync(Path.Combine(Root, file), image.Data);
-                    var found = await SaveAsync(db, kind, id, file, image.ContentType, instance.Id);
-                    return new CachedArtwork(Path.Combine(Root, file), image.ContentType, found.CheckedAt);
+                    await _saving.WaitAsync(ct);
+                    try
+                    {
+                        if (Interlocked.Read(ref _resets) != resets)
+                            return Superseded;
+                        var file = Path.Combine(kind.ToString().ToLowerInvariant(), id.ToString("N") + Extension(image.ContentType));
+                        Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(Root, file))!);
+                        await File.WriteAllBytesAsync(Path.Combine(Root, file), image.Data, ct);
+                        var found = await SaveAsync(db, kind, id, file, image.ContentType, instance.Id);
+                        return new CachedArtwork(Path.Combine(Root, file), image.ContentType, found.CheckedAt);
+                    }
+                    finally
+                    {
+                        _saving.Release();
+                    }
                 }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception e)
             {
@@ -176,10 +214,39 @@ public sealed class ArtworkCache(IServiceScopeFactory scopes, IOptions<MelodexOp
             }
         }
 
-        if (!failed)
+        if (failed)
+            return null;
+        await _saving.WaitAsync(ct);
+        try
+        {
+            if (Interlocked.Read(ref _resets) != resets)
+                return Superseded;
             await SaveAsync(db, kind, id, null, null, null);
+        }
+        finally
+        {
+            _saving.Release();
+        }
         return null;
     }
+
+    /// <summary>Stops the searches under way, and waits for them, so nothing is written once the app has stopped.</summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (_stopping.IsCancellationRequested)
+            return;
+        await _stopping.CancelAsync();
+        try
+        {
+            await Task.WhenAll(_finding.Values);
+        }
+        catch (Exception)
+        {
+            // Stopped, or failed and logged.
+        }
+    }
+
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
     private static async Task<ArtworkRecord> SaveAsync(MelodexDbContext db, EntityKind kind, Guid id, string? file, string? contentType, Guid? plugin)
     {

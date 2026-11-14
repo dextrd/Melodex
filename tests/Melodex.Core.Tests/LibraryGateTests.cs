@@ -40,8 +40,7 @@ public sealed class LibraryGateTests : IDisposable
     {
         _factory.Dispose();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_dataPath))
-            Directory.Delete(_dataPath, recursive: true);
+        TestFolder.Delete(_dataPath);
     }
 
     [TestLibraryFact]
@@ -64,12 +63,24 @@ public sealed class LibraryGateTests : IDisposable
 
         var settings = await _api.GetLibrarySettingsAsync();
         Assert.Equal(DuplicateTracks.KeepInAlbum, settings.DuplicateTracks);
+        await SettleAsync();
         await CheckAlbumsAsync(key.GetProperty("artists"), fetchedOnce: true);
 
         await _api.SaveLibrarySettingsAsync(settings with { DuplicateTracks = DuplicateTracks.KeepBoth });
+        await SettleAsync();
         await CheckAlbumsAsync(key.GetProperty("artists"), fetchedOnce: false);
 
         Assert.True(_problems.Count == 0, $"{_problems.Count} differences from the answer key:\n" + string.Join('\n', _problems));
+    }
+
+    /// <summary>
+    /// Waits for the cached library views to catch up with what was just written. Pages show the last answer meanwhile,
+    /// but here they're compared with views worked out afresh.
+    /// </summary>
+    private async Task SettleAsync()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+        await _factory.Services.GetRequiredService<Melodex.Core.Library.LibraryCache>().SettleAsync(timeout.Token);
     }
 
     private async Task CheckFilesAsync(JsonElement expected)

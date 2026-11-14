@@ -48,8 +48,7 @@ public sealed class AlbumByRecordingsTests : IAsyncLifetime
         if (_factory is not null)
             await _factory.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root))
-            Directory.Delete(_root, recursive: true);
+        TestFolder.Delete(_root);
     }
 
     private void Retag(string from, string to, string album)

@@ -214,20 +214,12 @@ public sealed class RequestPipeline(
         try
         {
             status = await plugin.Plugin.StartFetchAsync(job.Id.ToString(), target.ToRetrieval(), candidate, job.StagingDirectory, ct);
-            // A torrent can take hours and still be fine, so the limit is on time without progress.
+            // A torrent can take hours and still be fine, so the limit is on time without progress. It's judged only on
+            // a poll that has just seen none, so a pause on this side, however long, isn't taken for a stall.
             var deadline = DateTime.UtcNow + pipelineOptions.Value.FetchTimeout;
             var lastProgress = status.Progress;
             while (status.State is FetchState.Queued or FetchState.Running)
             {
-                if (DateTime.UtcNow > deadline)
-                {
-                    if (plugin.Capabilities.Contains(RetrievalCapabilities.Cancel))
-                        await IgnoreErrors(() => plugin.Plugin.CancelFetchAsync(job.Id.ToString(), CancellationToken.None));
-                    var done = lastProgress is { } p ? $" at {p:P0}" : "";
-                    var limit = pipelineOptions.Value.FetchTimeout;
-                    var span = limit.TotalMinutes >= 1 ? $"{limit.TotalMinutes:0} minutes" : $"{limit.TotalSeconds:0} seconds";
-                    throw new TimeoutException($"The fetch made no progress for {span}{done}");
-                }
                 await Task.Delay(pipelineOptions.Value.PollInterval, ct);
                 status = await plugin.Plugin.GetFetchStatusAsync(job.Id.ToString(), ct);
                 if (status.Progress is { } progress)
@@ -238,6 +230,15 @@ public sealed class RequestPipeline(
                         deadline = DateTime.UtcNow + pipelineOptions.Value.FetchTimeout;
                     }
                     await SetAsync(request, RequestStatus.Fetching, $"Fetching from {plugin.Instance.Name} ({progress:P0})", ct);
+                }
+                if (status.State is FetchState.Queued or FetchState.Running && DateTime.UtcNow > deadline)
+                {
+                    if (plugin.Capabilities.Contains(RetrievalCapabilities.Cancel))
+                        await IgnoreErrors(() => plugin.Plugin.CancelFetchAsync(job.Id.ToString(), CancellationToken.None));
+                    var done = lastProgress is { } p ? $" at {p:P0}" : "";
+                    var limit = pipelineOptions.Value.FetchTimeout;
+                    var span = limit.TotalMinutes >= 1 ? $"{limit.TotalMinutes:0} minutes" : $"{limit.TotalSeconds:0} seconds";
+                    throw new TimeoutException($"The fetch made no progress for {span}{done}");
                 }
             }
         }

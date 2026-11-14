@@ -38,8 +38,7 @@ public sealed class PlaylistTests : IDisposable
     {
         _factory.Dispose();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_dataPath))
-            Directory.Delete(_dataPath, recursive: true);
+        TestFolder.Delete(_dataPath);
     }
 
     [TestLibraryFact]
