@@ -57,6 +57,8 @@ public sealed class RequestService(MelodexDbContext db, RequestSignal signal, Re
     /// <summary>Cancels a request and its unfinished parts. False if it's already finished.</summary>
     public async Task<bool> CancelAsync(Request request, CancellationToken ct)
     {
+        if (request.Status is RequestStatus.NeedsReview or RequestStatus.Failed)
+            return await DismissAsync(request, ct);
         if (Finished.Contains(request.Status))
             return false;
         var ids = await SubtreeAsync(request.Id, ct);
@@ -67,6 +69,52 @@ public sealed class RequestService(MelodexDbContext db, RequestSignal signal, Re
             cancellations.Cancel(id);
         await UpdateAncestorsAsync(request.ParentRequestId, ct);
         return true;
+    }
+
+    /// <summary>
+    /// Takes a request that needs review or failed off the Couldn't fetch list, with its parts that did: they're
+    /// cancelled, as "Dismissed". Nothing is fetched; it can still be tried again from Activity.
+    /// </summary>
+    public async Task<bool> DismissAsync(Request request, CancellationToken ct)
+    {
+        var ids = await SubtreeAsync(request.Id, ct);
+        await db.Requests.Where(r => ids.Contains(r.Id) && Stuck.Contains(r.Status))
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.Status, RequestStatus.Cancelled).SetProperty(r => r.Detail, "Dismissed")
+                .SetProperty(r => r.UpdatedAt, DateTime.UtcNow), ct);
+        await UpdateAncestorsAsync(request.ParentRequestId, ct);
+        return true;
+    }
+
+    /// <summary>Statuses of a request that stopped without a copy to keep.</summary>
+    private static readonly RequestStatus[] Stuck = [RequestStatus.NeedsReview, RequestStatus.Failed];
+
+    /// <summary>
+    /// Settles requests that need review or failed but no longer need anything: a song's or a whole album's once a file
+    /// of each of its songs is in the library, however it got there; and any asked for again since, by a newer request
+    /// for the same artist, album or song. Upgrades and listen-now requests are left alone. Their albums' and artists'
+    /// requests are worked out again from their parts.
+    /// </summary>
+    public async Task SettleAsync(CancellationToken ct)
+    {
+        var stuck = db.Requests.Where(r => Stuck.Contains(r.Status) && r.Mode == RequestMode.Permanent && r.UpgradesFileId == null);
+        var owned = await stuck.Where(r =>
+                r.TargetKind == EntityKind.Track && db.LibraryFiles.Any(f => f.TrackId == r.TargetId)
+                || r.TargetKind == EntityKind.Album && r.EditionId != null && !db.Requests.Any(p => p.ParentRequestId == r.Id)
+                   && db.EditionTracks.Any(et => et.EditionId == r.EditionId)
+                   && db.EditionTracks.Where(et => et.EditionId == r.EditionId).All(et => db.LibraryFiles.Any(f => f.TrackId == et.TrackId)))
+            .ToListAsync(ct);
+        var again = await stuck.Where(r => db.Requests.Any(n => n.TargetKind == r.TargetKind && n.TargetId == r.TargetId && n.Mode == RequestMode.Permanent
+                                                                  && n.UpgradesFileId == null && n.CreatedAt > r.CreatedAt))
+            .ToListAsync(ct);
+        if (owned.Count == 0 && again.Count == 0)
+            return;
+        foreach (var request in owned)
+            (request.Status, request.Detail, request.UpdatedAt) = (RequestStatus.InLibrary, "In the library now", DateTime.UtcNow);
+        foreach (var request in again.Except(owned))
+            (request.Status, request.Detail, request.UpdatedAt) = (RequestStatus.Cancelled, "Asked for again", DateTime.UtcNow);
+        await db.SaveChangesAsync(ct);
+        foreach (var parent in owned.Concat(again).Select(r => r.ParentRequestId).Distinct())
+            await UpdateAncestorsAsync(parent, ct);
     }
 
     /// <summary>Statuses of a request that's being worked on: searching through to telling the media server.</summary>

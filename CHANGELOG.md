@@ -4,6 +4,13 @@ What changed in each release of Melodex. Versions follow [semantic versioning](h
 
 ## [Unreleased]
 
+### Fixed
+
+- **Review → Couldn't fetch** keeps to what still needs you. A request leaves it by itself once its song or album is in
+  the library, however it got there, and an older request is replaced when the same thing is asked for again, so it's
+  listed once. Each can be dismissed, or all of them at once (cancelling a request that needs review or failed through the
+  API does the same). Its reasons are under **What went wrong**, one attempt to a line, without repeats (#122).
+
 ## [1.3.2] - 2026-11-13
 
 A fix for the Prowlarr plugin: songs credited to more than one artist are found. Only the Prowlarr plugin's image
