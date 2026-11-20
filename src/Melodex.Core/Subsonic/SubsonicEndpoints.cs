@@ -64,8 +64,8 @@ public static partial class SubsonicEndpoints
         ["getAlbumInfo"] = _ => Empty("albumInfo"),
         ["getAlbumInfo2"] = _ => Empty("albumInfo"),
         ["getTopSongs"] = _ => Empty("topSongs"),
-        ["getSimilarSongs"] = _ => Empty("similarSongs"),
-        ["getSimilarSongs2"] = _ => Empty("similarSongs2"),
+        ["getSimilarSongs"] = c => GetSimilarSongsAsync(c, "similarSongs"),
+        ["getSimilarSongs2"] = c => GetSimilarSongsAsync(c, "similarSongs2"),
         ["getNowPlaying"] = GetNowPlayingAsync,
         ["scrobble"] = ScrobbleAsync,
         ["stream"] = StreamAsync,
@@ -405,6 +405,21 @@ public static partial class SubsonicEndpoints
             songs = songs.Where(s => s.Year <= to);
         var picked = songs.OrderBy(_ => Random.Shared.Next()).Take(c.P.Count("size", 10));
         return SubsonicResponse.Ok().With("randomSongs", new JsonObject { ["song"] = Array(picked.Select(s => SongOf(library, s))) });
+    }
+
+    /// <summary>
+    /// A players' "instant mix": a radio (#4) from a song, album or artist, of songs you have only, as players can only
+    /// play those. Nothing is found for a file of your own no catalogue knows.
+    /// </summary>
+    private static async Task<object> GetSimilarSongsAsync(SubsonicCall c, string name)
+    {
+        var library = await c.Get<SubsonicLibrary>().GetAsync(c.Ct);
+        var id = IdOf(c);
+        var seed = library.SongsById.TryGetValue(id, out var song) ? song.Track.TrackId : id;
+        var batch = await c.Get<RadioService>().NextAsync(c.UserId, new RadioNext(seed, [seed], c.P.Count("count", 50), OwnedOnly: true), c.Ct);
+        var byTrack = library.Songs.GroupBy(s => s.Track.TrackId).ToDictionary(g => g.Key, g => g.First());
+        var songs = (batch?.Songs ?? []).Select(s => byTrack.GetValueOrDefault(s.TrackId)).OfType<SubsonicSong>();
+        return SubsonicResponse.Ok().With(name, new JsonObject { ["song"] = Array(songs.Select(s => SongOf(library, s))) });
     }
 
     private static async Task<object> GetGenresAsync(SubsonicCall c)

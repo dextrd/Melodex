@@ -24,6 +24,7 @@ guide covers what the reference can't: how the pieces fit together.
 - [Stars, ratings and the play queue](#stars-ratings-and-the-play-queue)
 - [Listening history](#listening-history)
 - [Similar music and recommendations](#similar-music-and-recommendations)
+- [Radio](#radio)
 - [The API reference](#the-api-reference)
 
 ## Getting a key
@@ -396,8 +397,9 @@ listener's side.
   `stream`, `download`, `getCoverArt`, `getLyrics`, `getLyricsBySongId`; `getPlaylists`, `getPlaylist`,
   `createPlaylist`, `updatePlaylist`, `deletePlaylist`; `star`, `unstar`, `setRating`, `getStarred`,
   `getStarred2`; `getPlayQueue`, `savePlayQueue`, with OpenSubsonic's `getPlayQueueByIndex` and
-  `savePlayQueueByIndex` (`indexBasedQueue`); and `scrobble` and `getNowPlaying`. `getArtistInfo`, `getAlbumInfo`,
-  `getTopSongs` and `getSimilarSongs` (and their `2`s) answer empty for now. Anything else is error 70.
+  `savePlayQueueByIndex` (`indexBasedQueue`); `scrobble` and `getNowPlaying`; and `getSimilarSongs` and
+  `getSimilarSongs2`, a radio of songs you have from a song, album or artist. `getArtistInfo`, `getAlbumInfo` and
+  `getTopSongs` (and their `2`s) answer empty for now. Anything else is error 70.
 - **Stars, ratings and the queue** are the same as `/marks` and `/player/queue` below: a song's star is kept on its
   track, so it stays when the file's replaced. A queue saved by a player shows in the web player, and one saved by the
   web player shows in players, less songs not in the library.
@@ -464,6 +466,22 @@ From the discovery plugins, combined, with the `read` scope:
   the plugins know of them through their linked ListenBrainz and Last.fm accounts, and what they've played lately.
 
 Answers are kept a while (a day, or six hours for recommendations), so asking again is cheap.
+
+## Radio
+
+Songs like a song, album, artist or playlist, without end, with the `listen` scope and a key that belongs to a user:
+
+- `POST /radio` gives the next songs: send the `seedId` it was started from (a track ID, or an album, artist or one of
+  your playlists), the `recent` songs it's queued so far as track IDs, oldest first, and how many to `take` (5 by
+  default, at most 50). Nothing is kept on the server, so send them each time. The answer has its `name` and `kind`,
+  and `songs` in the order to play them, shaped as similar songs are: those not `owned` are to fetch to listen to.
+  Started from a song, the first batch starts with it. Songs you don't have make up the server's share,
+  `radioMissingPercent` in `GET /settings/fetch` (0 to 100, 25 by default), counted over the `recent` songs as well,
+  so a batch makes up for those before it. `ownedOnly` leaves them out, whatever the share. A seed that isn't there is a 404.
+- `POST /radio/skips` with a `trackId` says a radio's song was skipped in its first half minute: radios leave it out,
+  and play its artist less, for 90 days.
+- `GET /radio/settings` and `PUT /radio/settings` are the user's: `autoplay`, whether a player carries on with a radio
+  when its queue runs out.
 
 ## The API reference
 

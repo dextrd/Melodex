@@ -96,6 +96,20 @@ else
         </div>
     </div>
 
+    <h2 id="radio">Radio</h2>
+    <div class="card settings-card">
+        <div class="setting-line">
+            Aim for
+            <NumberField Min="0" Max="100" Step="5" Label="Percent" Value="_fetch.RadioMissingPercent" ValueChanged="n => { _fetch = _fetch with { RadioMissingPercent = n }; _saver?.Changed(); }" />
+            % of the songs a radio plays to be ones not in the library
+        </div>
+        <div class="muted small">
+            For everyone's radios. Those songs are fetched to listen to as they come near, without adding them to the library. A radio keeps to
+            this over the songs it plays: when it finds too few of one kind, it makes up for it later. 0 plays only songs you have, 100 only ones
+            you don't.
+        </div>
+    </div>
+
     <AutoSave @ref="_saver" Save="SaveAsync" />
 
     @if (_warning)

@@ -187,6 +187,35 @@ blur of itself, with a visualiser that moves with the music, and beside it, eith
 The visualiser can be hidden, the browser's own full screen turned on, and playing stopped, from the buttons at the
 top. Escape closes it. The volume and whether the visualiser shows are kept in this browser.
 
+### Radio
+
+**Radio** plays songs like a song, album, artist or playlist without end. Start one from the radio button on its page,
+or **Start radio** in the **⋯** menu of any song or album, in a list or in the queue. It replaces the queue, starts
+with the song it's started from, and keeps a few songs queued ahead as it plays.
+
+The songs come from the [discovery plugins](plugins.md#discovery), as **Similar songs** do, and from your library:
+songs by the same artists and those like them, when the plugins know too little. A radio is a mix of songs you have
+and songs you don't, which are fetched to listen to as they come near, as [Listen now](#listen-now) does: a quarter of
+it by default. The share is for everyone's radios: set it, from only songs you have to only songs you don't, under
+**Radio** on the Playback settings page. It's a target over the songs a radio plays, not each handful it adds: when it
+finds too few songs you don't have, as for an artist the plugins hardly know, or too few you do, it makes up for them
+later.
+
+It steers itself as it plays:
+
+- Nothing comes twice, nor anything you played in the last two days while there's enough else.
+- The same artist doesn't come again within three songs while there's someone else to play, and never twice running
+  unless there's nothing else. Keeping to the share comes first, so in a small library an artist may come back sooner.
+- The same song in another version, live or remixed, counts as the same song.
+- Songs you star while it plays bring more like them, and it drifts with what you let play.
+- A song you skip in its first half minute isn't played to you by any radio for 90 days, and its artist comes up less.
+
+Liked something it played that you don't have? Its **⋯** menu in the queue can get it into your library, add it to
+your wishlist, or add it to a playlist once it's yours.
+
+**Autoplay**, on to start with, carries on with a radio from the last song when the queue runs out, unless it's
+repeating. Turn it off under **Radio** on your account page.
+
 ### Gapless playback
 
 Songs from the same album run into each other with no pause between them, as on the record: a live album, a DJ mix,

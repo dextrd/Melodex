@@ -55,6 +55,8 @@ else
                     }
                     <QueueButton Large="true" Left="true" Title="@(missing ? "Add to the queue, to play next or last, fetching the tracks you don't have to listen to" : "Add to the queue: play next, or play last")"
                                 OnQueue="next => Player.QueueAlbumAsync(_album!, next)" />
+                    <IconButton Icon="radio" Requires="@UserPermissions.Listen" Large="true" Title="Start radio: play songs like the album's, without end"
+                                OnClick="() => Player.StartRadioAsync(album.Id)" />
                     @if (tracks.Any(Owned))
                     {
                         <IconButton Icon="playlist" Requires="@UserPermissions.Listen" Large="true" Title="Add the songs you have to a playlist"

@@ -1,0 +1,52 @@
+@inject MelodexClient Api
+@inject Player Player
+
+@*
+    Your radio settings (#4), on your account page: whether the player carries on with a radio when the queue runs out.
+    Saved as it's changed. How much of a radio is songs you don't have is the server's, on the Playback settings page.
+*@
+@if (_settings is not { } settings)
+{
+    <Loading Inline="true" />
+}
+else
+{
+    <label class="check">
+        <input type="checkbox" checked="@settings.Autoplay" @onchange="e => SaveAsync(settings with { Autoplay = e.Value is true })" />
+        Autoplay: when the queue runs out, carry on with a radio from the last song
+    </label>
+    @if (_error is not null) { <p class="error small">@_error</p> }
+}
+
+@code {
+    private RadioSettings? _settings;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _settings = await Api.GetRadioSettingsAsync();
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            _error = e.Message;
+            _settings = new RadioSettings();
+        }
+    }
+
+    private async Task SaveAsync(RadioSettings settings)
+    {
+        _settings = settings;
+        _error = null;
+        try
+        {
+            await Api.SaveRadioSettingsAsync(settings);
+            Player.RadioSettingsChanged(settings);
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            _error = $"Couldn't save it: {e.Message}";
+        }
+    }
+}

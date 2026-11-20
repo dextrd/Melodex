@@ -251,7 +251,7 @@ public sealed class DiscoveryService(MelodexDbContext db, DiscoveryPlugins plugi
     /// Whether each song is in the library, and an album it's on for its cover: one you have; else the one the plugin
     /// named; else a studio album rather than a single, live album or compilation, the earliest first.
     /// </summary>
-    private async Task<IReadOnlyList<DiscoveredSong>> WithAlbumsAsync(List<DiscoveredSong> found, CancellationToken ct)
+    public async Task<IReadOnlyList<DiscoveredSong>> WithAlbumsAsync(IReadOnlyList<DiscoveredSong> found, CancellationToken ct)
     {
         var ids = found.Select(f => f.TrackId).ToList();
         var owned = (await db.LibraryFiles.Where(f => f.TrackId != null && ids.Contains(f.TrackId.Value))

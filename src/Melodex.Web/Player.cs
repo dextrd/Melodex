@@ -87,6 +87,16 @@ public sealed class PlayerEntry
 
     public string? AlbumHref => AlbumId is { } album ? $"{(FileId is null ? "albums" : "local/albums")}/{album}" : null;
 
+    /// <summary>A song a radio or the discovery plugins found: played from the library if you have it, else fetched when it's near.</summary>
+    public static PlayerEntry Discovered(DiscoveredSong song) => new()
+    {
+        TrackId = song.TrackId, Title = song.Title, ArtistCredit = song.ArtistCredit, ArtistId = song.ArtistId, AlbumId = song.AlbumId,
+        AlbumTitle = song.AlbumTitle, CoverUrl = song.CoverUrl, DurationSeconds = song.DurationSeconds, Missing = !song.Owned,
+    };
+
+    /// <summary>The radio it was queued by: what that was started from.</summary>
+    public Guid? RadioSeed => From is { Kind: PlaySourceKind.Radio, Id: { } seed } ? seed : null;
+
     public static PlayerEntry Listening(ListenNowInfo item) => new()
     {
         TrackId = item.TrackId, EditionId = item.EditionId, Title = item.Title, ArtistCredit = item.ArtistCredit, ArtistId = item.ArtistId,
@@ -155,6 +165,7 @@ public sealed class Player : IAsyncDisposable
         Changed += () => _ = PrepareNextAsync();
         Changed += () => _ = WarmAroundAsync();
         Changed += () => _ = FetchAroundAsync();
+        Changed += () => _ = TopUpAsync();
     }
 
     /// <summary>The queue changed, or what's playing did.</summary>
@@ -424,6 +435,119 @@ public sealed class Player : IAsyncDisposable
         }
     }
 
+    // ---- Radio (#4) ----
+
+    /// <summary>How many songs a radio keeps queued after the one playing, and how many it asks for at a time.</summary>
+    private const int RadioAhead = 3, RadioTake = 5;
+
+    /// <summary>A radio's song skipped this soon counts against it and songs like it.</summary>
+    private const double QuickSkip = 30;
+
+    private bool _toppingUp;
+    private RadioSettings? _radioSettings;
+    private DateTime _radioSettingsAt;
+    // Songs a radio couldn't be started from (a file of your own no catalogue knows, say), so autoplay doesn't keep asking.
+    private readonly HashSet<Guid> _noRadio = [];
+
+    /// <summary>
+    /// Replaces the queue with a radio started from a song, album, artist or playlist, and plays it. It keeps itself
+    /// topped up as it plays, and never runs out.
+    /// </summary>
+    public async Task StartRadioAsync(Guid seedId)
+    {
+        Error = null;
+        try
+        {
+            if (await _api.NextRadioAsync(new RadioNext(seedId, [], RadioTake)) is not { Songs.Count: > 0 } batch)
+            {
+                Error = "There's nothing to make a radio from yet.";
+                Changed?.Invoke();
+                return;
+            }
+            await PlayAsync(batch.Songs.Select(PlayerEntry.Discovered).ToList(), from: RadioSource(seedId, batch));
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            Error = e.Message;
+            Changed?.Invoke();
+        }
+    }
+
+    private static PlaySource RadioSource(Guid seedId, RadioBatch batch) => new(PlaySourceKind.Radio, seedId, $"{batch.Name} radio");
+
+    /// <summary>
+    /// Keeps a radio a few songs ahead of the one playing. A queue that isn't a radio, on its last song with nothing
+    /// repeating, carries on as one from that song when autoplay is on.
+    /// </summary>
+    private async Task TopUpAsync()
+    {
+        if (_toppingUp || _owner is null || Now is null || _queue.Count - Current - 1 >= RadioAhead)
+            return;
+        var last = _queue[^1];
+        Guid seed;
+        if (last.RadioSeed is { } radio)
+            seed = radio;
+        else if (Current == _queue.Count - 1 && Repeat == RepeatMode.Off && !_noRadio.Contains(last.TrackId) && last.FileId is null
+                 && (await RadioSettingsAsync()).Autoplay)
+            seed = last.TrackId;
+        else
+            return;
+        _toppingUp = true;
+        try
+        {
+            // What this radio has queued, so none comes again; the latest steer what's next.
+            var recent = _queue.Where(e => e.RadioSeed == seed).Select(e => e.TrackId).TakeLast(100).ToList();
+            if (last.RadioSeed is null)
+                recent.Add(last.TrackId);
+            var batch = await _api.NextRadioAsync(new RadioNext(seed, recent, RadioTake));
+            if (batch is not { Songs.Count: > 0 })
+            {
+                _noRadio.Add(seed);
+                return;
+            }
+            if (_queue.Count == 0 || !ReferenceEquals(_queue[^1], last))
+                return;
+            await AddAsync(batch.Songs.Select(PlayerEntry.Discovered).ToList(), from: RadioSource(seed, batch));
+        }
+        catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+        {
+            // Tried again with the next change.
+        }
+        finally
+        {
+            _toppingUp = false;
+        }
+    }
+
+    /// <summary>This person's radio settings, asked for again every so often.</summary>
+    public async Task<RadioSettings> RadioSettingsAsync()
+    {
+        if (_radioSettings is null || DateTime.UtcNow - _radioSettingsAt > TimeSpan.FromMinutes(10))
+        {
+            _radioSettingsAt = DateTime.UtcNow;
+            try
+            {
+                _radioSettings = await _api.GetRadioSettingsAsync();
+            }
+            catch (Exception e) when (e is HttpRequestException or MelodexApiException)
+            {
+                _radioSettings ??= new RadioSettings(Autoplay: false);
+            }
+        }
+        return _radioSettings;
+    }
+
+    /// <summary>The radio settings were changed here: they count at once.</summary>
+    public void RadioSettingsChanged(RadioSettings settings) => (_radioSettings, _radioSettingsAt) = (settings, DateTime.UtcNow);
+
+    /// <summary>A radio's song skipped in its first half minute: radios steer away from it and songs like it.</summary>
+    private void NoteSkip()
+    {
+        if (_owner is not null && Now is { RadioSeed: not null, Waiting: false, Unplayable: false } now && Playing && Position < QuickSkip
+            && Duration - Position > 5)
+            _ = TellAsync(() => _api.SkipRadioSongAsync(now.TrackId));
+    }
+
     /// <summary>
     /// Replaces the queue and starts playing it. When shuffling, the song started from comes first and the rest follow
     /// in a random order; started from the beginning, all of it is in a random order.
@@ -437,7 +561,8 @@ public sealed class Player : IAsyncDisposable
         Current = entries.Count == 0 ? -1 : Math.Clamp(start, 0, entries.Count - 1);
         _ordered = null;
         _resumeAt = null;
-        if (Shuffle && Current >= 0)
+        // A radio comes in its own order: what it was started from first.
+        if (Shuffle && Current >= 0 && from?.Kind != PlaySourceKind.Radio)
         {
             _ordered = [.. _queue];
             var first = start > 0 ? _queue[Current] : null;
@@ -547,7 +672,11 @@ public sealed class Player : IAsyncDisposable
     }
 
     /// <summary>On to the next song, or round to the first when repeating the queue.</summary>
-    public Task NextAsync() => JumpAsync(Current + 1 >= _queue.Count && Repeat != RepeatMode.Off ? 0 : Current + 1);
+    public Task NextAsync()
+    {
+        NoteSkip();
+        return JumpAsync(Current + 1 >= _queue.Count && Repeat != RepeatMode.Off ? 0 : Current + 1);
+    }
 
     /// <summary>Back to the start of this track, or to the one before if it's only just started.</summary>
     public async Task PreviousAsync()

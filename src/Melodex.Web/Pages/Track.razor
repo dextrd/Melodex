@@ -95,6 +95,8 @@ else
                         </WishButton>
                     </FetchButton>
                 }
+                <IconButton Icon="radio" Requires="@UserPermissions.Listen" Large="true" Label="Radio" Title="Start radio: play it, then songs like it, without end"
+                            OnClick="() => Player.StartRadioAsync(track.Id)" />
             </div>
         </div>
     </div>

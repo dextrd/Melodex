@@ -92,7 +92,7 @@
                                 <div class="muted small tile-quality">@(album.OwnedTracks == total ? $"All {total} tracks" : $"{album.OwnedTracks} of {total} tracks")<QualityBadge Quality="album.Quality" Mixed="album.MixedQuality" Dot="true" /></div>
                             }
                         </a>
-                        <ItemMenu What="album" Class="tile-menu" AlbumId="album.Id" AlbumStatus="album.Status" Name="@album.Title"
+                        <ItemMenu What="album" Class="tile-menu" AlbumId="album.Id" AlbumStatus="album.Status" Name="@album.Title" NoRadio="album.Local"
                                   Upgrade="@(album.Local ? null : new FormatScope(FormatScopeKind.Album, album.Id))"
                                   ArtistHref="@(album.Local ? null : $"artists/{album.ArtistId}")"
                                   OnRemove="@(album.Local ? default : EventCallback.Factory.Create(this, () => RemoveAlbum(item)))" />
@@ -183,6 +183,7 @@
                             </div>
                         </a>
                         <ItemMenu What="artist" Class="tile-menu" Name="@artist.Name" ArtistHref="@($"{(artist.Local ? "local/artists" : "artists")}/{artist.Id}")"
+                                  RadioFrom="@(artist.Local ? null : artist.Id)"
                                   Star="(MarkKind.Artist, artist.Id)" Get="@(artist.Local || artist.MissingAlbums == 0 ? null : (RequestKind.Artist, artist.Id))" GetLabel="Get everything missing"
                                   Upgrade="@(artist.Local ? null : new FormatScope(FormatScopeKind.Artist, artist.Id))"
                                   OnRemove="@(artist.Local ? default : EventCallback.Factory.Create(this, () => Remove(LibraryItemKind.Artist, artist.Id, artist.Name)))" />

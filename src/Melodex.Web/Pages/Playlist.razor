@@ -51,6 +51,8 @@ else
                             OnClick="() => Player.PlayAsync(playable.OrderBy(_ => Random.Shared.Next()).ToList(), from: From)" />
                 <QueueButton Large="true" Left="true" Title="Add to the queue: play next, or play last" Disabled="playable.Count == 0"
                             OnQueue="next => Player.AddAsync(playable, next, From)" />
+                <IconButton Icon="radio" Requires="@UserPermissions.Listen" Large="true" Title="Start radio: play songs like the playlist's, without end"
+                            Disabled="playable.Count == 0" OnClick="() => Player.StartRadioAsync(summary.Id)" />
                 @if (Awaiting.Count > 0 && Auth.May(UserPermissions.Request))
                 {
                     <IconButton Icon="get" Large="true" Label="@($"Get {Awaiting.Count}")" Disabled="_busy"

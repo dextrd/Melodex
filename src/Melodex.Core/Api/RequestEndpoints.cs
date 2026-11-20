@@ -160,6 +160,8 @@ public static class RequestEndpoints
                     errors["listenNowAhead"] = ["Must be between 0 and 20."];
                 if (value.ListenNowBehind is < 0 or > 20)
                     errors["listenNowBehind"] = ["Must be between 0 and 20."];
+                if (value.RadioMissingPercent is < 0 or > 100)
+                    errors["radioMissingPercent"] = ["Must be between 0 and 100."];
                 if (errors.Count > 0)
                     return Results.ValidationProblem(errors);
                 await s.SaveFetchAsync(value, ct);

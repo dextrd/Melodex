@@ -97,6 +97,7 @@ public partial class MelodexDbContext(DbContextOptions<MelodexDbContext> options
     public DbSet<Play> Plays => Set<Play>();
     public DbSet<ScrobbleAccount> ScrobbleAccounts => Set<ScrobbleAccount>();
     public DbSet<ScrobbleSend> ScrobbleSends => Set<ScrobbleSend>();
+    public DbSet<RadioSkip> RadioSkips => Set<RadioSkip>();
     public DbSet<ListImport> Imports => Set<ListImport>();
     public DbSet<ImportLine> ImportLines => Set<ImportLine>();
 
@@ -244,6 +245,12 @@ public partial class MelodexDbContext(DbContextOptions<MelodexDbContext> options
             e.HasIndex(p => new { p.UserId, p.PlayedAt });
             e.HasIndex(p => new { p.UserId, p.TrackId });
             e.HasIndex(p => p.Announced);
+        });
+
+        modelBuilder.Entity<RadioSkip>(e =>
+        {
+            e.HasOne<User>().WithMany().HasForeignKey(s => s.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(s => new { s.UserId, s.SkippedAt });
         });
 
         modelBuilder.Entity<ScrobbleAccount>(e =>

@@ -161,6 +161,7 @@ else
                         @if (artist.InLibrary) { <div><span class="badge owned">In library</span></div> }
                     </a>
                     <ItemMenu What="artist" Class="tile-menu" Name="@artist.Name" ArtistHref="@($"{(artist.Local ? "local/artists" : "artists")}/{artist.Id}")"
+                              RadioFrom="@(artist.Local ? null : artist.Id)"
                               Get="@(artist.Local ? null : (RequestKind.Artist, artist.Id))" GetLabel="Get everything missing"
                               Upgrade="@(artist.InLibrary && !artist.Local ? new FormatScope(FormatScopeKind.Artist, artist.Id) : null)" />
                 </div>
@@ -210,7 +211,7 @@ else
                                 }
                                 @if (album.Local)
                                 {
-                                    <ItemMenu What="album" AlbumId="album.Id" AlbumStatus="album.Status" Name="@album.Title" />
+                                    <ItemMenu What="album" AlbumId="album.Id" AlbumStatus="album.Status" Name="@album.Title" NoRadio="true" />
                                 }
                                 else if (album.Status is AlbumStatus.Missing or AlbumStatus.Partial)
                                 {

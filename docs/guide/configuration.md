@@ -22,7 +22,7 @@ Variables named `Navidex__…`, from before the rename, still work; a `Melodex__
 | **General** | Songs on more than one release, the missing view (each kind of release shown, hidden, or for new songs only), matching, file metadata, lyrics, the folder layout, and fetching |
 | **Quality** | The [quality profile](requests-and-listening.md#quality) and [upgrades](requests-and-listening.md#upgrades) |
 | **Scheduled tasks** | What runs on its own, and when: see [Scheduled tasks](#scheduled-tasks) |
-| **Playback** | Which songs play [without a gap](requests-and-listening.md#gapless-playback), when [the visualiser](requests-and-listening.md#the-visualiser)'s bars are made, if at all, and how long listen-now songs are kept |
+| **Playback** | Which songs play [without a gap](requests-and-listening.md#gapless-playback), when [the visualiser](requests-and-listening.md#the-visualiser)'s bars are made, if at all, how long listen-now songs are kept, and how much of a [radio](requests-and-listening.md#radio) is songs you don't have |
 | **Log** | Recent activity, and how long logs are kept |
 | **Plugins** | See [Plugins](plugins.md) |
 | **Users**, **API**, **Webhooks** | See [Users and permissions](users-and-permissions.md) and the [client guide](../client-guide.md) |

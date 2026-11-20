@@ -8,7 +8,7 @@
 @inject MarkStore Marks
 
 @*
-    Everything for one song, album or artist, behind a "more" button: play it, next or last; star it; add it to a playlist; get
+    Everything for one song, album or artist, behind a "more" button: play it, next or last; start a radio from it; star it; add it to a playlist; get
     it into the library; look for a better copy; move it in its list or take it out; go to its album or artist; or remove it from the library. Right-clicking its row or tile, or pressing
     and holding it on a phone, opens it too (see songmenu.js). Each item shows only where it applies, from what's given.
 *@
@@ -41,6 +41,11 @@
                     <button type="button" role="menuitem" @onclick="() => Do(() => Player.PlayAlbumAsync(album))"><Icon Name="@(AlbumStatus == Melodex.Client.AlbumStatus.Missing ? "listen" : "play")" />@(AlbumStatus == Melodex.Client.AlbumStatus.Missing ? "Listen now" : "Play")</button>
                     <button type="button" role="menuitem" @onclick="() => Do(() => Player.QueueAlbumAsync(album, true))"><Icon Name="play-next" />Play next</button>
                     <button type="button" role="menuitem" @onclick="() => Do(() => Player.QueueAlbumAsync(album, false))"><Icon Name="play-last" />Play last</button>
+                }
+                @if (Radio is { } seed)
+                {
+                    <button type="button" role="menuitem" title="Play songs like it, without end: some you have, and as your radio settings say, some you don't"
+                            @onclick="() => Do(() => Player.StartRadioAsync(seed))"><Icon Name="radio" />Start radio</button>
                 }
                 @if (Wish is { } wish)
                 {
@@ -212,6 +217,17 @@
         ?? (Entry is { Missing: false, ListenId: null } song && Entries is null ? (MarkKind.Song, song.TrackId)
             : What == "album" && AlbumId is { } album && AlbumStatus is not (null or Melodex.Client.AlbumStatus.Missing) ? (MarkKind.Album, album)
             : null);
+
+    /// <summary>What a radio is started from, when it isn't the song or album given otherwise: an artist, say.</summary>
+    [Parameter] public Guid? RadioFrom { get; set; }
+
+    /// <summary>No radio from it: an album of your own files, which no catalogue knows.</summary>
+    [Parameter] public bool NoRadio { get; set; }
+
+    // A song of the catalogue's, one to listen to, or an album: a file of your own no catalogue knows has nothing like it to find.
+    private Guid? Radio => NoRadio ? null : RadioFrom
+        ?? (Entries is null && Entry is { FileId: null } song ? song.TrackId
+            : ListenTrackId ?? (What == "album" && Entries is null ? AlbumId : null));
 
     private FormatScope? UpgradeScope => Upgrade ?? (UpgradeTrackId is { } id ? new FormatScope(FormatScopeKind.Track, id) : null);
 

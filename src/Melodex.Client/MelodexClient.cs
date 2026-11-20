@@ -1057,6 +1057,32 @@ public sealed class MelodexClient(HttpClient http)
     public async Task<IReadOnlyList<SimilarArtist>> ListSimilarArtistsAsync(Guid artistId, int take = 20, CancellationToken ct = default) =>
         await http.GetFromJsonAsync<List<SimilarArtist>>($"{Api}/artists/{artistId}/similar?take={take}", MelodexJson.Options, ct) ?? [];
 
+    /// <summary>The next songs for a radio (#4); null when what it was started from is gone.</summary>
+    public async Task<RadioBatch?> NextRadioAsync(RadioNext next, CancellationToken ct = default)
+    {
+        using var response = await http.PostAsJsonAsync($"{Api}/radio", next, MelodexJson.Options, ct);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        await EnsureAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<RadioBatch>(MelodexJson.Options, ct);
+    }
+
+    /// <summary>Says a radio's song was skipped within its first half minute, so radios steer away from it and songs like it.</summary>
+    public async Task SkipRadioSongAsync(Guid trackId, CancellationToken ct = default)
+    {
+        using var response = await http.PostAsJsonAsync($"{Api}/radio/skips", new RadioSkipped(trackId), MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+    }
+
+    public async Task<RadioSettings> GetRadioSettingsAsync(CancellationToken ct = default) =>
+        (await http.GetFromJsonAsync<RadioSettings>($"{Api}/radio/settings", MelodexJson.Options, ct))!;
+
+    public async Task SaveRadioSettingsAsync(RadioSettings settings, CancellationToken ct = default)
+    {
+        using var response = await http.PutAsJsonAsync($"{Api}/radio/settings", settings, MelodexJson.Options, ct);
+        await EnsureAsync(response, ct);
+    }
+
     /// <summary>Songs like this one, the closest first.</summary>
     public async Task<IReadOnlyList<DiscoveredSong>> ListSimilarSongsAsync(Guid trackId, int take = 20, CancellationToken ct = default) =>
         await http.GetFromJsonAsync<List<DiscoveredSong>>($"{Api}/tracks/{trackId}/similar?take={take}", MelodexJson.Options, ct) ?? [];

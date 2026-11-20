@@ -36,6 +36,19 @@ public class Play
     public bool Announced { get; set; }
 }
 
+/// <summary>
+/// A song someone skipped within its first half minute, as a radio played it (#4): no radio plays it them again, and
+/// songs by the same artist come up less, for <see cref="Listening.RadioService.SkipsKept"/>.
+/// </summary>
+public class RadioSkip
+{
+    public Guid Id { get; set; } = Guid.CreateVersion7();
+    public Guid UserId { get; set; }
+    public Guid TrackId { get; set; }
+    public Guid? ArtistId { get; set; }
+    public DateTime SkippedAt { get; set; } = DateTime.UtcNow;
+}
+
 /// <summary>Someone's account on ListenBrainz or Last.fm, which their plays are sent to.</summary>
 public class ScrobbleAccount
 {

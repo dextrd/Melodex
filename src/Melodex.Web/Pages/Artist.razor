@@ -3,6 +3,7 @@
 @inject PageCache Pages
 @inject MelodexClient Api
 @inject Preferences Prefs
+@inject Player Player
 @inject Glimpses Glimpses
 @inject NavSections Sections
 
@@ -50,6 +51,8 @@ else
             {
                 <IconButton Icon="format" Requires="@UserPermissions.Format" Label="Format" Title="Rewrite this artist's files: their tags, covers and where they live" OnClick="() => _formatting = true" />
             }
+            <IconButton Icon="radio" Requires="@UserPermissions.Listen" Label="Radio" Title="Start radio: play their songs and songs like them, without end"
+                        OnClick="() => Player.StartRadioAsync(_artist.Id)" />
             <IconButton Icon="hide" Requires="@UserPermissions.Settings" On="_artist.OwnShowing" Label="@(_artist.OwnShowing ? "Releases shown: their own" : "Releases shown")"
                         Title="Which kinds of release are listed for this artist: the choices in Settings, or their own" OnClick="() => _showingDialog = true" />
             @if (_artist.InLibrary)
